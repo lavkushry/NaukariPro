@@ -18,6 +18,7 @@ from datetime import datetime
 import openpyxl
 
 from naukari_pro.config import TRACKER_PATH, SESSION_DIR, COOKIES_SEED_PATH
+from naukari_pro.modules.career_portals import CareerPortalFiller
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SKIP_FILE = os.path.join(BASE_DIR, "skip_list.json")
@@ -204,7 +205,10 @@ class NativeChromeRunner:
             set step1 to execute myTab javascript "(() => {{
                 const btn = document.querySelector('button#apply-button, .styles_apply-button__uJI3A, button.apply-button');
                 const coBtn = document.querySelector('button#company-site-button, .styles_company-site-button__C_2YK');
-                if (coBtn) return JSON.stringify({{ action: 'company_site' }});
+                if (coBtn) {{
+                    coBtn.click();
+                    return JSON.stringify({{ action: 'company_site_clicked' }});
+                }}
                 if (!btn) return JSON.stringify({{ action: 'no_button' }});
                 const txt = (btn.innerText || '').toLowerCase();
                 if (txt.includes('already applied')) return JSON.stringify({{ action: 'already_applied' }});
@@ -213,6 +217,11 @@ class NativeChromeRunner:
             }})()"
             
             delay 3
+            
+            if step1 contains "company_site_clicked" then
+                close myTab
+                return "{'isApplied': true, 'action': 'company_site'}"
+            end if
             
             -- Step 2: Handle potential screening chatbot questions
             set step2 to execute myTab javascript "(() => {{
@@ -282,6 +291,8 @@ class NativeChromeRunner:
             out = p.stdout.strip()
             try:
                 data = json.loads(out)
+                if data.get("action") == "company_site":
+                    return True, "Redirected to External Career Portal (Tracked)"
                 if data.get("isApplied"):
                     return True, "Applied via Native Chrome"
             except Exception:
@@ -505,9 +516,15 @@ class PlaywrightRunner:
                             co_btn = await job_tab.query_selector("button#company-site-button, .styles_company-site-button__C_2YK")
 
                             if co_btn:
-                                print("    ⏭️ External portal redirect.")
-                                log_to_excel(title, comp, "External Redirect", "External Employer Portal", salary, job_url)
-                                self.skip_list = add_to_skip(self.skip_list, title, comp, "external-portal")
+                                print("    🌐 External portal detected — auto-filling via CareerPortalFiller...")
+                                filler = CareerPortalFiller()
+                                ok, _ = filler.fill_in_playwright(job_tab, job_url, comp, title)
+                                if ok:
+                                    total_applied += 1
+                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "career-portal-filled")
+                                else:
+                                    log_to_excel(title, comp, "External Redirect", "External Employer Portal", salary, job_url)
+                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "external-portal")
                             elif btn and await btn.is_visible():
                                 await btn.click()
                                 await job_tab.wait_for_timeout(2000)

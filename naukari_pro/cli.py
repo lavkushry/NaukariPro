@@ -18,6 +18,7 @@ from naukari_pro.modules.skill_insights import SkillInsightsEngine
 from naukari_pro.modules.hiring_trends import HiringTrendsEngine
 
 from naukari_pro.modules.early_access import EarlyAccessEngine
+from naukari_pro.modules.career_portals import CareerPortalFiller
 
 BANNER = r"""
 ========================================================================
@@ -42,6 +43,7 @@ def print_menu():
     print("  [7] In-Demand Skill Insights (Real-time Skill Demand & Trends)")
     print("  [8] Industry Hiring Trends (Salary Benchmarks & Top GCCs)")
     print("  [9] Early Access & NVites (Pre-Market Roles & Recruiter Shortlists)")
+    print("  [C] Career Portal Auto-Filler (Greenhouse / Ashby / Lever / Workday / Portals)")
     print("  [D] Run Complete Daily Autonomous Cycle (Bump + Scan + Apply + Log)")
     print("  [A] Authenticate Session (One-time Chrome Login Setup)")
     print("  [0] Exit")
@@ -113,6 +115,32 @@ def handle_skill_insights():
 def handle_hiring_trends():
     engine = HiringTrendsEngine()
     engine.display_market_report()
+
+def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer", headless=False):
+    filler = CareerPortalFiller()
+    if not url:
+        print("\n" + "=" * 65)
+        print("  🌐 CAREER PORTAL AUTO-FILLER (Job-Apply Engine)")
+        print("  Supported: Greenhouse, Ashby, Lever, Workday, Rippling, Portals")
+        print("=" * 65)
+        url = input("Enter job application URL: ").strip()
+        if not url:
+            print("URL cannot be empty.")
+            return
+        c_in = input("Company name (optional, press Enter for auto): ").strip()
+        if c_in: company = c_in
+        r_in = input("Role title (optional, press Enter for 'Azure Data Engineer'): ").strip()
+        if r_in: role = r_in
+
+    import sys
+    if sys.platform == "darwin":
+        filler.fill_in_chrome(url, company=company, role=role)
+    else:
+        with sync_playwright() as p:
+            context = get_stealth_context(p, headless=headless)
+            page = context.pages[0] if context.pages else context.new_page()
+            filler.fill_in_playwright(page, url, company=company, role=role)
+            context.close()
 
 def handle_daily_cycle(headless=False):
     print("\n[*] Launching Complete Autonomous Daily Cycle...")
@@ -201,9 +229,11 @@ def interactive_loop():
             handle_hiring_trends()
         elif choice == "9":
             handle_early_access()
-        elif choice == "D":
+        elif choice.upper() == "C":
+            handle_portal_apply()
+        elif choice.upper() == "D":
             handle_daily_cycle()
-        elif choice == "A":
+        elif choice.upper() == "A":
             handle_auth()
         elif choice == "0":
             print("\nExiting naukariPro. Good luck with your ₹25 LPA goal!\n")
@@ -236,6 +266,11 @@ def main():
     ]:
         subparsers.add_parser(cmd, help=hlp, parents=[common_parser])
 
+    portal_parser = subparsers.add_parser("portal-apply", help="Auto-fill external career portal application (Greenhouse, Ashby, Lever, Workday)", parents=[common_parser])
+    portal_parser.add_argument("--url", required=True, help="Job application URL")
+    portal_parser.add_argument("--company", default="Company", help="Company name")
+    portal_parser.add_argument("--role", default="Azure Data Engineer", help="Role title")
+
     args = parser.parse_args()
 
     if args.command == "auto-apply":
@@ -258,6 +293,8 @@ def main():
         handle_hiring_trends()
     elif args.command == "daily":
         handle_daily_cycle(headless=args.headless)
+    elif args.command == "portal-apply":
+        handle_portal_apply(url=args.url, company=args.company, role=args.role, headless=args.headless)
     elif args.command == "auth":
         handle_auth()
     else:
