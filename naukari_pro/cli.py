@@ -20,6 +20,7 @@ from naukari_pro.modules.hiring_trends import HiringTrendsEngine
 from naukari_pro.modules.early_access import EarlyAccessEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
+from naukari_pro.modules.pro_autopilot import ProAutoPilotEngine
 
 BANNER = r"""
 ========================================================================
@@ -35,6 +36,7 @@ BANNER = r"""
 
 def print_menu():
     print(BANNER)
+    print("  [P] PRO AUTONOMOUS AUTO-PILOT (Complete All-in-One AI Career Engine)")
     print("  [1] Auto-Apply on Naukri (1-Click & Questionnaire Applications)")
     print("  [2] Instant Job Alerts (Scan Fresh Openings & Send Desktop Alerts)")
     print("  [3] AI-Enhanced Profile (Daily Bumper & Resdex 100% Audit)")
@@ -50,6 +52,10 @@ def print_menu():
     print("  [A] Authenticate Session (One-time Chrome Login Setup)")
     print("  [0] Exit")
     print("========================================================================")
+
+def handle_pro(limit=10, headless=False):
+    engine = ProAutoPilotEngine(limit=limit, headless=headless)
+    engine.run_full_pipeline()
 
 def handle_auto_apply(headless=False, limit=20):
     print("\n[*] Starting Auto-Apply on Naukri...")
@@ -216,8 +222,10 @@ def handle_early_access(headless=False):
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, D, A]: ").strip().upper()
-        if choice == "1":
+        choice = input("Select an option [0-9, P, S, C, D, A]: ").strip().upper()
+        if choice == "P":
+            handle_pro()
+        elif choice == "1":
             handle_auto_apply()
         elif choice == "2":
             handle_alerts()
@@ -259,6 +267,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     for cmd, hlp in [
+        ("pro", "Run Complete All-in-One Pro Autonomous Pipeline"),
         ("auto-apply", "Auto-Apply to target vacancies"),
         ("alerts", "Scan instant hot alerts"),
         ("bump", "Bump profile to Today"),
@@ -282,7 +291,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "auto-apply":
+    if args.command == "pro":
+        handle_pro(limit=args.limit, headless=args.headless)
+    elif args.command == "auto-apply":
         handle_auto_apply(headless=args.headless, limit=args.limit)
     elif args.command == "alerts":
         handle_alerts(headless=args.headless)
