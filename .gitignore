@@ -48,6 +48,10 @@ naukri_system/cookies_seed.json
 ._*
 .Spotlight-V100
 .Trashes
+
+# Application logs & state
+skip_list.json
+naukri_applications_log.json
 ehthumbs.db
 Thumbs.db
 
