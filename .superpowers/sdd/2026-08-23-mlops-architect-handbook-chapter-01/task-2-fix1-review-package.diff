@@ -1,0 +1,480 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix1-before/handbook/scripts/test_validate_handbook.sh mlops/architect-handbook/scripts/test_validate_handbook.sh
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix1-before/handbook/scripts/test_validate_handbook.sh	2026-08-23 13:15:12
++++ mlops/architect-handbook/scripts/test_validate_handbook.sh	2026-08-23 13:18:54
+@@ -159,9 +159,87 @@
+ assert_pass "complete release fixture passes release" \
+   "$VALIDATOR" --profile release "$fixture" || test_failures=$((test_failures + 1))
+ 
++fixture="$TEST_TMP/exit-boundary"
++make_valid_fixture "$fixture"
++mkdir -p "$fixture/defects"
++defect_number=1
++while [ "$defect_number" -le 256 ]; do
++  printf '# Defect %s\n' "$defect_number" > "$fixture/defects/defect-$defect_number.md"
++  defect_number=$((defect_number + 1))
++done
++assert_fail_contains "256 accumulated defects retain a non-zero exit" "FAIL: 256 validation failure(s)" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/duplicate-diagrams"
++make_valid_fixture "$fixture"
++{
++  printf '# Chapter 1 Diagrams\n\n'
++  printf -- '- [ML lifecycle 1](ml-lifecycle.mmd)\n'
++  printf -- '- [ML lifecycle 2](ml-lifecycle.mmd)\n'
++  printf -- '- [ML lifecycle 3](ml-lifecycle.mmd)\n'
++  printf -- '- [ML lifecycle 4](ml-lifecycle.mmd)\n\n'
++  printf '## Changelog\n\n### 2026-08-23\n\n- Created duplicate registry.\n'
++} > "$fixture/diagrams/chapter-01/README.md"
++assert_fail_contains "duplicate diagram targets fail release" "duplicate diagram target" \
++  "$VALIDATOR" --profile release "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/wrong-diagrams"
++make_valid_fixture "$fixture"
++printf 'flowchart LR\n' > "$fixture/diagrams/chapter-01/wrong-one.mmd"
++printf 'flowchart LR\n' > "$fixture/diagrams/chapter-01/wrong-two.mmd"
++printf 'flowchart LR\n' > "$fixture/diagrams/chapter-01/wrong-three.mmd"
++printf 'flowchart LR\n' > "$fixture/diagrams/chapter-01/wrong-four.mmd"
++{
++  printf '# Chapter 1 Diagrams\n\n'
++  printf -- '- [Wrong one](wrong-one.mmd)\n'
++  printf -- '- [Wrong two](wrong-two.mmd)\n'
++  printf -- '- [Wrong three](wrong-three.mmd)\n'
++  printf -- '- [Wrong four](wrong-four.mmd)\n\n'
++  printf '## Changelog\n\n### 2026-08-23\n\n- Created wrong registry.\n'
++} > "$fixture/diagrams/chapter-01/README.md"
++assert_fail_contains "unapproved diagram targets fail release" "unapproved diagram target" \
++  "$VALIDATOR" --profile release "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/reference-link"
++make_valid_fixture "$fixture"
++printf '\n[Guide][guide]\n\n[guide]: missing-reference.md\n' >> "$fixture/README.md"
++assert_fail_contains "broken reference-style link names target" "missing-reference.md" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/duplicate-heading-anchor"
++make_valid_fixture "$fixture"
++printf '\n## Repeated heading\n\nFirst.\n\n## Repeated heading\n\nSecond.\n' >> "$fixture/GLOSSARY.md"
++printf '\n[Second heading](GLOSSARY.md?view=full#repeated-heading-1)\n' >> "$fixture/README.md"
++assert_pass "duplicate heading suffix anchor resolves" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/invalid-heading-hierarchy"
++make_valid_fixture "$fixture"
++printf '\n##### Skipped heading level\n' >> "$fixture/README.md"
++assert_fail_contains "invalid heading hierarchy fails" "invalid heading hierarchy" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/placeholder-phrase"
++make_valid_fixture "$fixture"
++printf '\nLorem ipsum content remains unresolved.\n' >> "$fixture/README.md"
++assert_fail_contains "placeholder phrase fails" "placeholder text" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/generic-phrase"
++make_valid_fixture "$fixture"
++printf "\nIn today's rapidly evolving landscape, platform choices matter.\n" >> "$fixture/README.md"
++assert_fail_contains "banned generic phrase fails" "banned generic phrase" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/unqualified-superlative"
++make_valid_fixture "$fixture"
++printf '\nThis architecture is best.\n' >> "$fixture/README.md"
++assert_fail_contains "unqualified superlative fails" "unsupported superlative" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
+ if [ "$test_failures" -ne 0 ]; then
+   printf 'FAIL: %s validator test(s) failed\n' "$test_failures"
+   exit 1
+ fi
+ 
+-printf 'PASS: all 10 validator tests passed\n'
++printf 'PASS: all 19 validator tests passed\n'
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix1-before/handbook/scripts/validate_handbook.sh mlops/architect-handbook/scripts/validate_handbook.sh
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix1-before/handbook/scripts/validate_handbook.sh	2026-08-23 13:15:12
++++ mlops/architect-handbook/scripts/validate_handbook.sh	2026-08-23 13:24:15
+@@ -5,6 +5,10 @@
+ 
+ FAILURES=0
+ EXPECTED_LEDGER_HEADER='claim_id,chapter,section,claim_text,claim_type,risk_level,source_keys,source_version,source_date,accessed_date,status,review_by,notes'
++APPROVED_DIAGRAM_FILES='ml-lifecycle.mmd
++architecture-planes.mmd
++system-of-record.mmd
++failure-flow.mmd'
+ PROFILE='release'
+ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+ HANDBOOK_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
+@@ -18,6 +22,16 @@
+   printf 'PASS: %s\n' "$1"
+ }
+ 
++exit_with_failures() {
++  exit_status=$FAILURES
++  if [ "$exit_status" -lt 1 ]; then
++    exit_status=1
++  elif [ "$exit_status" -gt 255 ]; then
++    exit_status=255
++  fi
++  exit "$exit_status"
++}
++
+ usage() {
+   printf 'Usage: %s [--profile structure|release] [HANDBOOK_ROOT]\n' "$0"
+ }
+@@ -33,18 +47,35 @@
+   find "$HANDBOOK_ROOT" -type f -name '*.md' -print | LC_ALL=C sort
+ }
+ 
++maintained_content_markdown_files() {
++  find "$HANDBOOK_ROOT" -type f -name '*.md' ! -path "$HANDBOOK_ROOT/scripts/*" -print | LC_ALL=C sort
++}
++
+ extract_markdown_targets() {
+   awk '
++    function destination(raw) {
++      sub(/^[[:space:]]+/, "", raw)
++      if (raw ~ /^</) {
++        sub(/^</, "", raw)
++        sub(/>.*/, "", raw)
++      } else {
++        sub(/[[:space:]].*$/, "", raw)
++      }
++      return raw
++    }
+     {
++      definition = $0
++      if (definition ~ /^[[:space:]]*\[[^]]+\]:[[:space:]]*/) {
++        sub(/^[[:space:]]*\[[^]]+\]:[[:space:]]*/, "", definition)
++        target = destination(definition)
++        if (target != "") {
++          printf "%d\t%s\n", FNR, target
++        }
++      }
++
+       remainder = $0
+       while (match(remainder, /\]\([^)]*\)/)) {
+-        target = substr(remainder, RSTART + 2, RLENGTH - 3)
+-        if (target ~ /^</) {
+-          sub(/^</, "", target)
+-          sub(/>.*/, "", target)
+-        } else {
+-          sub(/[[:space:]].*$/, "", target)
+-        }
++        target = destination(substr(remainder, RSTART + 2, RLENGTH - 3))
+         if (target != "") {
+           printf "%d\t%s\n", FNR, target
+         }
+@@ -68,7 +99,15 @@
+       return text
+     }
+     /^#+[[:space:]]+/ {
+-      if (anchor($0) == wanted) {
++      base = anchor($0)
++      candidate = base
++      suffix = 1
++      while (used[candidate]) {
++        candidate = base "-" suffix
++        suffix++
++      }
++      used[candidate] = 1
++      if (candidate == wanted) {
+         found = 1
+         exit
+       }
+@@ -89,14 +128,42 @@
+   [ -f "$registry" ] || return
+ 
+   links=$(extract_markdown_targets "$registry")
+-  registered_count=0
++  ml_lifecycle_count=0
++  architecture_planes_count=0
++  system_of_record_count=0
++  failure_flow_count=0
+   if [ -n "$links" ]; then
+     tab=$(printf '\t')
+     while IFS="$tab" read -r link_line link_target; do
+       is_external_or_same_document_target "$link_target" && continue
+       diagram_path=${link_target%%#*}
+       diagram_path=${diagram_path%%\?*}
+-      registered_count=$((registered_count + 1))
++      case "$diagram_path" in
++        ml-lifecycle.mmd)
++          ml_lifecycle_count=$((ml_lifecycle_count + 1))
++          occurrence_count=$ml_lifecycle_count
++          ;;
++        architecture-planes.mmd)
++          architecture_planes_count=$((architecture_planes_count + 1))
++          occurrence_count=$architecture_planes_count
++          ;;
++        system-of-record.mmd)
++          system_of_record_count=$((system_of_record_count + 1))
++          occurrence_count=$system_of_record_count
++          ;;
++        failure-flow.mmd)
++          failure_flow_count=$((failure_flow_count + 1))
++          occurrence_count=$failure_flow_count
++          ;;
++        *)
++          fail "unapproved diagram target in diagrams/chapter-01/README.md:$link_line: $link_target"
++          continue
++          ;;
++      esac
++      if [ "$occurrence_count" -gt 1 ]; then
++        fail "duplicate diagram target in diagrams/chapter-01/README.md:$link_line: $diagram_path"
++        continue
++      fi
+       if [ ! -f "$(dirname -- "$registry")/$diagram_path" ]; then
+         fail "missing required diagram file: diagrams/chapter-01/$diagram_path"
+       fi
+@@ -105,8 +172,25 @@
+ EOF
+   fi
+ 
+-  if [ "$registered_count" -ne 4 ]; then
+-    fail "diagram registry must register exactly four diagram files (found $registered_count)"
++  unique_count=0
++  while IFS= read -r approved_diagram; do
++    case "$approved_diagram" in
++      ml-lifecycle.mmd) occurrence_count=$ml_lifecycle_count ;;
++      architecture-planes.mmd) occurrence_count=$architecture_planes_count ;;
++      system-of-record.mmd) occurrence_count=$system_of_record_count ;;
++      failure-flow.mmd) occurrence_count=$failure_flow_count ;;
++    esac
++    if [ "$occurrence_count" -eq 0 ]; then
++      fail "diagram registry missing approved target: $approved_diagram"
++    else
++      unique_count=$((unique_count + 1))
++    fi
++  done <<EOF
++$APPROVED_DIAGRAM_FILES
++EOF
++
++  if [ "$unique_count" -ne 4 ]; then
++    fail "diagram registry must register exactly four unique approved .mmd files (found $unique_count)"
+   fi
+ }
+ 
+@@ -177,6 +261,50 @@
+   fi
+ }
+ 
++check_heading_hierarchy() {
++  before=$FAILURES
++  files=$(maintained_content_markdown_files)
++  if [ -n "$files" ]; then
++    while IFS= read -r markdown_file; do
++      matches=$(awk '
++        /^```/ { in_fence = !in_fence; next }
++        !in_fence && /^#+[[:space:]]+/ {
++          match($0, /^#+/)
++          level = RLENGTH
++          reason = ""
++          if (level > 4) {
++            reason = "heading level " level " exceeds ####"
++          } else if (!seen_heading && level != 1) {
++            reason = "first heading must be level 1"
++          } else if (seen_heading && level > previous_level + 1) {
++            reason = "heading jumps from level " previous_level " to " level
++          } else if (level == 1 && h1_count > 0) {
++            reason = "multiple level-1 headings"
++          }
++          if (reason != "") {
++            printf "%d:%s\n", FNR, reason
++          }
++          if (level == 1) h1_count++
++          previous_level = level
++          seen_heading = 1
++        }
++      ' "$markdown_file")
++      if [ -n "$matches" ]; then
++        while IFS= read -r match; do
++          fail "invalid heading hierarchy in $(relative_path "$markdown_file"):$match"
++        done <<EOF
++$matches
++EOF
++      fi
++    done <<EOF
++$files
++EOF
++  fi
++  if [ "$FAILURES" -eq "$before" ]; then
++    pass 'all maintained Markdown heading hierarchies are valid'
++  fi
++}
++
+ check_generated_ids() {
+   before=$FAILURES
+   files=$(markdown_files)
+@@ -221,6 +349,120 @@
+   fi
+ }
+ 
++check_placeholder_text() {
++  before=$FAILURES
++  files=$(maintained_content_markdown_files)
++  if [ -n "$files" ]; then
++    while IFS= read -r markdown_file; do
++      matches=$(awk '
++        /^```/ { in_fence = !in_fence; next }
++        !in_fence {
++          lower = tolower($0)
++          if (lower ~ /lorem[[:space:]]+ipsum/ ||
++              lower ~ /(^|[^[:alnum:]_])(placeholder|tktk)([^[:alnum:]_]|$)/ ||
++              lower ~ /coming[[:space:]]+soon/ ||
++              lower ~ /content[[:space:]]+forthcoming/ ||
++              lower ~ /to[[:space:]]+be[[:space:]]+(completed|written|added)/ ||
++              lower ~ /insert[[:space:]]+[^.]*[[:space:]]+here/) {
++            printf "%d:%s\n", FNR, $0
++          }
++        }
++      ' "$markdown_file")
++      if [ -n "$matches" ]; then
++        while IFS= read -r match; do
++          fail "placeholder text in $(relative_path "$markdown_file"):$match"
++        done <<EOF
++$matches
++EOF
++      fi
++    done <<EOF
++$files
++EOF
++  fi
++  if [ "$FAILURES" -eq "$before" ]; then
++    pass 'no unresolved placeholder text found'
++  fi
++}
++
++check_banned_generic_phrases() {
++  before=$FAILURES
++  files=$(maintained_content_markdown_files)
++  if [ -n "$files" ]; then
++    while IFS= read -r markdown_file; do
++      matches=$(awk '
++        /^```/ { in_fence = !in_fence; next }
++        !in_fence {
++          lower = tolower($0)
++          if (lower ~ /in today.s rapidly evolving landscape/ ||
++              lower ~ /in the ever-evolving (world|landscape)/ ||
++              lower ~ /it is important to note/ ||
++              lower ~ /it is worth noting/ ||
++              lower ~ /(^|[^[:alnum:]_])in conclusion([^[:alnum:]_]|$)/ ||
++              lower ~ /(^|[^[:alnum:]_])to summarize([^[:alnum:]_]|$)/ ||
++              lower ~ /as we delve into/ ||
++              lower ~ /this section will (explore|discuss|cover)/ ||
++              lower ~ /this comprehensive guide/ ||
++              lower ~ /in the realm of/) {
++            printf "%d:%s\n", FNR, $0
++          }
++        }
++      ' "$markdown_file")
++      if [ -n "$matches" ]; then
++        while IFS= read -r match; do
++          fail "banned generic phrase in $(relative_path "$markdown_file"):$match"
++        done <<EOF
++$matches
++EOF
++      fi
++    done <<EOF
++$files
++EOF
++  fi
++  if [ "$FAILURES" -eq "$before" ]; then
++    pass 'no banned generic phrases found'
++  fi
++}
++
++check_unsupported_superlatives() {
++  before=$FAILURES
++  files=$(maintained_content_markdown_files)
++  if [ -n "$files" ]; then
++    while IFS= read -r markdown_file; do
++      matches=$(awk '
++        /^```/ { in_fence = !in_fence; next }
++        !in_fence {
++          lower = tolower($0)
++          scan = lower
++          gsub(/best-effort/, "", scan)
++          gsub(/always-on/, "", scan)
++          has_superlative = scan ~ /(^|[^[:alnum:]_])(best|always|never|guaranteed|latest|currently)([^[:alnum:]_]|$)/
++          qualified = lower ~ /\[[^]]+\]\([^)]*\)/ ||
++                      lower ~ /\[[^]]+\]\[[^]]+\]/ ||
++                      lower ~ /as of [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ ||
++                      lower ~ /(within|for|under) (this|the) / ||
++                      lower ~ /in this (handbook|chapter|section|scenario|example)/ ||
++                      lower ~ /(^|[^[:alnum:]_])(when|unless|if)[[:space:]]/
++          if (has_superlative && !qualified) {
++            printf "%d:%s\n", FNR, $0
++          }
++        }
++      ' "$markdown_file")
++      if [ -n "$matches" ]; then
++        while IFS= read -r match; do
++          fail "unsupported superlative in $(relative_path "$markdown_file"):$match"
++        done <<EOF
++$matches
++EOF
++      fi
++    done <<EOF
++$files
++EOF
++  fi
++  if [ "$FAILURES" -eq "$before" ]; then
++    pass 'no unsupported superlatives found'
++  fi
++}
++
+ check_relative_links() {
+   before=$FAILURES
+   files=$(markdown_files)
+@@ -368,7 +610,7 @@
+   if [ "$#" -lt 2 ]; then
+     fail 'missing value for --profile'
+     usage
+-    exit "$FAILURES"
++    exit_with_failures
+   fi
+   PROFILE="$2"
+   shift 2
+@@ -379,14 +621,14 @@
+   *)
+     fail "unknown profile: $PROFILE"
+     usage
+-    exit "$FAILURES"
++    exit_with_failures
+     ;;
+ esac
+ 
+ if [ "$#" -gt 1 ]; then
+   fail 'too many arguments'
+   usage
+-  exit "$FAILURES"
++  exit_with_failures
+ fi
+ 
+ if [ "$#" -eq 1 ]; then
+@@ -395,14 +637,18 @@
+ 
+ if [ ! -d "$HANDBOOK_ROOT" ]; then
+   fail "handbook root is not a directory: $HANDBOOK_ROOT"
+-  exit "$FAILURES"
++  exit_with_failures
+ fi
+ 
+ check_required_files
+ check_changelogs
+ check_fences
++check_heading_hierarchy
+ check_generated_ids
+ check_markers
++check_placeholder_text
++check_banned_generic_phrases
++check_unsupported_superlatives
+ check_relative_links
+ check_ledger_schema
+ 
+@@ -416,4 +662,4 @@
+ fi
+ 
+ printf 'FAIL: %s validation failure(s)\n' "$FAILURES"
+-exit "$FAILURES"
++exit_with_failures

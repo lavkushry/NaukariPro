@@ -1,0 +1,88 @@
+flowchart LR
+  subgraph producer["Data-producer responsibility"]
+    UnitChange["Trigger: inventory_age unit changes<br/>name and numeric type stay unchanged"]
+    NumericEvents["Structurally valid inventory events"]
+    ProducerOwner["Data producer owner"]
+    VersionedContract["Versioned semantic contract"]
+  end
+
+  subgraph platform["Platform responsibility"]
+    SchemaGreen["Structural schema validation remains green"]
+    FeatureOldMeaning["Shared feature component applies old meaning"]
+    ShiftedRankings["Serving workload produces shifted rankings"]
+    MixedTrainingData["Training dataset mixes unit interpretations"]
+    FutureCandidate["Future candidate inherits contamination"]
+    DistributionAlert["Feature-distribution alert<br/>response owner missing"]
+    AlertBlindEnd["Blind path: no triage action"]
+    ParityMismatch["Training-serving comparison disagrees"]
+    BlockProducer["Block incompatible producer version"]
+    CleanDataReference["Rebuild clean data reference"]
+    ExplicitUnitHandling["Implement explicit unit handling"]
+    RetrainEvaluate["Retrain, evaluate and test compatibility"]
+    RecoveryEvidence["Recovery evidence bundle"]
+    ImmutableRestoredDeployment["Approved immutable artifact<br/>and restored deployment revision"]
+  end
+
+  subgraph product["Product-team responsibility"]
+    ModelInfluencedOutcomes["Model-influenced product observations"]
+    EndpointGreen["Availability and latency remain green"]
+    DelayedProductEvidence["Slice-level product evidence is delayed"]
+    DelayedEvidenceUnavailable["Delayed evidence unavailable at detection"]
+    PreapprovedFallback["Switch to pre-approved product fallback"]
+  end
+
+  subgraph incident["Incident, release and risk authority"]
+    IncidentTriage["Incident triage"]
+    FreezePromotion["Freeze promotion and CT candidate admission"]
+    RiskDecision["Risk owner decides continue under fallback<br/>or stop safely"]
+    ApprovalReview["Approver reviews recovery evidence"]
+    PreventionControls["Prevention: semantic contracts, named alert owners,<br/>immutable links, fallback and rollback tests"]
+  end
+
+  UnitChange --> NumericEvents
+  NumericEvents --> FeatureOldMeaning
+  FeatureOldMeaning --> ShiftedRankings
+  ShiftedRankings --> ModelInfluencedOutcomes
+  ModelInfluencedOutcomes --> MixedTrainingData
+
+  IncidentTriage -.-> FreezePromotion
+  IncidentTriage -.-> PreapprovedFallback
+  IncidentTriage -.-> BlockProducer
+  IncidentTriage -.-> RiskDecision
+  IncidentTriage -.-> ProducerOwner
+  ProducerOwner -.-> VersionedContract
+  ApprovalReview -.-> ImmutableRestoredDeployment
+  IncidentTriage -.-> PreventionControls
+
+  MixedTrainingData ==> FutureCandidate
+  VersionedContract ==> ExplicitUnitHandling
+  VersionedContract ==> CleanDataReference
+  ExplicitUnitHandling ==> CleanDataReference
+  CleanDataReference ==> RetrainEvaluate
+  RetrainEvaluate ==> RecoveryEvidence
+  RecoveryEvidence ==> ApprovalReview
+
+  NumericEvents --o SchemaGreen
+  ShiftedRankings --o EndpointGreen
+  FeatureOldMeaning --o DistributionAlert
+  ShiftedRankings --o DelayedProductEvidence
+  MixedTrainingData --o ParityMismatch
+  DistributionAlert --o AlertBlindEnd
+  ParityMismatch --o IncidentTriage
+  DelayedProductEvidence --o DelayedEvidenceUnavailable
+
+  subgraph legend["Explicit flow legend"]
+    LegendDataA["Source"] --> LegendDataB["Data flow"]
+    LegendControlA["Source"] -.-> LegendControlB["Control or decision flow"]
+    LegendArtifactA["Source"] ==> LegendArtifactB["Artifact or metadata flow"]
+    LegendTelemetryA["Source"] --o LegendTelemetryB["Telemetry or feedback flow"]
+  end
+
+  classDef producerNode fill:#f0ecff,stroke:#6b46a3,color:#111111
+  classDef platformNode fill:#e8f1fb,stroke:#245a8d,color:#111111
+  classDef productNode fill:#eef8ee,stroke:#2f6b3a,color:#111111
+  classDef incidentNode fill:#fff3df,stroke:#9a5a00,color:#111111
+  class UnitChange,NumericEvents,ProducerOwner,VersionedContract producerNode
+  class SchemaGreen,FeatureOldMeaning,ShiftedRankings,MixedTrainingData,FutureCandidate,DistributionAlert,AlertBlindEnd,ParityMismatch,BlockProducer,CleanDataReference,ExplicitUnitHandling,RetrainEvaluate,RecoveryEvidence,ImmutableRestoredDeployment platformNode
+  class ModelInfluencedOutcomes,EndpointGreen,DelayedProductEvidence,DelayedEvidenceUnavailable,PreapprovedFallback productNode
+  class IncidentTriage,FreezePromotion,RiskDecision,ApprovalReview,PreventionControls incidentNode

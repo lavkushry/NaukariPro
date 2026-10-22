@@ -1,0 +1,48 @@
+flowchart TB
+  PlatformExperience["Platform experience plane<br/>supported journeys and capability contracts"]
+  Control["Control plane<br/>declared intent, authoritative state, reconciliation"]
+  SecurityGovernance["Security and governance plane<br/>policy, approval authority, risk and retirement"]
+  Data["Data plane<br/>events, datasets, features, predictions and outcomes"]
+  Training["Training plane<br/>candidate construction and evaluation evidence"]
+  Serving["Serving plane<br/>approved workload execution"]
+  Observability["Observability plane<br/>service, pipeline, data, model and impact signals"]
+  ArtifactAuthority["Artifact authority and store<br/>immutable candidate and runtime bytes"]
+
+  Data --> Training
+  Data --> Serving
+  Serving --> Data
+
+  PlatformExperience -.-> Control
+  SecurityGovernance -.-> Control
+  SecurityGovernance -.-> Data
+  SecurityGovernance -.-> Training
+  SecurityGovernance -.-> Serving
+  Control -.-> Training
+
+  Training ==> ArtifactAuthority
+  Training ==>|"candidate identity and evaluation references"| Control
+  Control ==>|"approved immutable desired reference"| Serving
+  ArtifactAuthority ==>|"resolve approved immutable artifact"| Serving
+  Observability ==> SecurityGovernance
+
+  Data --o Observability
+  Training --o Observability
+  Serving --o Observability
+  Observability --o Control
+  Control --o PlatformExperience
+
+  subgraph legend["Explicit flow legend"]
+    LegendDataA["Source"] --> LegendDataB["Data flow"]
+    LegendControlA["Source"] -.-> LegendControlB["Control or decision flow"]
+    LegendArtifactA["Source"] ==> LegendArtifactB["Artifact or metadata flow"]
+    LegendTelemetryA["Source"] --o LegendTelemetryB["Telemetry or feedback flow"]
+  end
+
+  classDef experienceNode fill:#f0ecff,stroke:#6b46a3,color:#111111
+  classDef controlNode fill:#fff3df,stroke:#9a5a00,color:#111111
+  classDef executionNode fill:#e8f1fb,stroke:#245a8d,color:#111111
+  classDef evidenceNode fill:#eef8ee,stroke:#2f6b3a,color:#111111
+  class PlatformExperience experienceNode
+  class Control,SecurityGovernance controlNode
+  class Data,Training,Serving executionNode
+  class Observability,ArtifactAuthority evidenceNode

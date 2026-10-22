@@ -1,0 +1,46 @@
+{
+  "candidate": {
+    "name": "Lavkush Kumar",
+    "email": "lavkushry@gmail.com",
+    "phone": "9122036484",
+    "current_company": "CGI",
+    "current_designation": "DevOps Engineer",
+    "current_ctc_lakhs": 12,
+    "expected_ctc_lakhs": 25,
+    "total_experience_years": 2.5,
+    "notice_period_days": 30,
+    "primary_location": "Hyderabad",
+    "resume_path": "/Users/lavkushkumar/Desktop/Resume/Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
+  },
+  "search_settings": {
+    "roles": [
+      "azure-data-engineer",
+      "data-engineer",
+      "databricks-engineer",
+      "devops-engineer"
+    ],
+    "locations": [
+      "hyderabad",
+      "bangalore",
+      "pune",
+      "remote"
+    ],
+    "max_experience": 4,
+    "posted_within_days": 1,
+    "daily_application_limit": 20
+  },
+  "answers_to_common_questions": {
+    "experience": "2.5",
+    "pyspark_experience": "2",
+    "databricks_experience": "2",
+    "azure_experience": "2.5",
+    "sql_experience": "2.5",
+    "kubernetes_experience": "2.5",
+    "terraform_experience": "2",
+    "notice_period": "30 days",
+    "current_location": "Hyderabad",
+    "relocation": "Yes"
+  },
+  "headline_template": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
+  "tracker_excel_path": "/Users/lavkushkumar/Desktop/Resume/Naukri_Live_Application_Tracker.xlsx"
+}

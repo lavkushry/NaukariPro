@@ -1,0 +1,147 @@
+flowchart LR
+  subgraph producer["Data-producer responsibility"]
+    UnitChange["Trigger: inventory_age unit changes<br/>name and numeric type stay unchanged"]
+    NumericEvents["Structurally valid inventory events"]
+    ProducerOwner["Data producer owner"]
+    AffectedBoundary["Affected producer revision<br/>and event-time boundary"]
+    VersionedContract["Versioned semantic contract"]
+  end
+
+  subgraph platform["Platform execution mechanisms<br/>not owner of workload behavior or outcomes"]
+    DataAdmissionGate["Data-admission gate"]
+    FeatureMechanism["Reusable feature execution mechanism"]
+    TrainingMechanism["Training execution mechanism"]
+    ServingMechanism["Serving execution mechanism"]
+    FallbackServingMechanism["Fallback serving mechanism"]
+    ProducerQuarantine["Containment effect:<br/>producer revision quarantined at admission"]
+    CandidateQuarantine["Containment effect:<br/>candidate quarantined, no promotion"]
+    BlockProducer["Block incompatible producer version"]
+    ClassifyInterval["Classify affected interval<br/>by revision, event time and provenance"]
+    NormalizeKnownRecords["Normalize records<br/>whose unit is provable"]
+    QuarantineDiscardInterval["Quarantine or discard<br/>indeterminate interval"]
+    VerifiedPostFixWindow["Wait for verified<br/>post-fix data window"]
+    CleanDataReference["Rebuild clean data reference"]
+    RetrainEvaluate["Retrain, evaluate and test compatibility"]
+    CandidateArtifact["Candidate artifact<br/>and evaluation evidence references"]
+    DesiredDeploymentRecord["Passive desired deployment record<br/>approved recovery or safe-stop state"]
+    DeploymentController["Deployment controller reconciliation"]
+  end
+
+  subgraph product["Product workload accountability"]
+    FeatureSemantics["Workload feature semantics<br/>retain old unit meaning"]
+    FeatureOwner["Feature-semantics owner"]
+    ExplicitUnitSemantics["Explicit workload unit semantics"]
+    TrainingIntent["Workload training intent"]
+    MixedTrainingData["Workload training data<br/>mixes unit interpretations"]
+    FutureCandidate["Workload candidate state<br/>inherits contamination"]
+    CandidateAcceptance["Workload candidate-acceptance owner"]
+    ShiftedRankings["Shifted model behavior"]
+    ProductPath["Product request and output path"]
+    ModelInfluencedOutcomes["Model-influenced product observations"]
+    FallbackBehavior["Pre-approved workload fallback behavior<br/>bypasses shifted rankings"]
+    OutcomeReview["Product outcome-review owner"]
+  end
+
+  subgraph observed["Observed state and evidence<br/>neutral facts; named owners choose actions"]
+    SchemaGreen["Structural schema validation remains green"]
+    AvailabilityTelemetry["Availability and latency may remain green<br/>independent service telemetry"]
+    DistributionAlert["Feature-distribution alert<br/>response owner missing"]
+    AlertBlindEnd["Blind path: no triage action"]
+    ParityMismatch["Training-serving comparison disagrees"]
+    DelayedProductEvidence["Slice-level product evidence is delayed"]
+    DelayedEvidenceUnavailable["Delayed evidence unavailable at detection"]
+    ObservedRestoredState["Observed restored state<br/>controller status plus workload telemetry"]
+  end
+
+  subgraph incident["Incident, release and risk authority"]
+    IncidentTriage["Incident triage"]
+    FreezePromotion["Freeze promotion and CT candidate admission"]
+    RiskDecision["Risk owner decides continue under fallback<br/>or stop safely"]
+    ContinueUnderFallback["Risk-authorized continuation<br/>under fallback"]
+    SafeStopDecision["Risk-authorized safe-stop decision"]
+    ApprovalReview["Approver reviews recovery evidence"]
+    ApprovalRecord["Approval record"]
+    PreventionControls["Prevention: semantic contracts, named alert owners,<br/>immutable links, fallback and rollback tests"]
+  end
+
+  UnitChange --> NumericEvents
+  NumericEvents --> DataAdmissionGate
+  DataAdmissionGate --> FeatureMechanism
+  FeatureSemantics ==> FeatureMechanism
+  FeatureMechanism --> ServingMechanism
+  ServingMechanism --> ShiftedRankings
+  ShiftedRankings --> ProductPath
+  ProductPath --> ModelInfluencedOutcomes
+  ModelInfluencedOutcomes --> MixedTrainingData
+  MixedTrainingData ==> TrainingMechanism
+  TrainingIntent -.-> TrainingMechanism
+  TrainingMechanism ==> FutureCandidate
+  FutureCandidate ==> CandidateAcceptance
+  FallbackServingMechanism --> ProductPath
+
+  IncidentTriage -.-> FreezePromotion
+  IncidentTriage -.-> BlockProducer
+  IncidentTriage -.-> RiskDecision
+  IncidentTriage -.-> ProducerOwner
+  BlockProducer -.-> ProducerQuarantine
+  ProducerQuarantine -.-> DataAdmissionGate
+  FreezePromotion -.-> CandidateQuarantine
+  CandidateAcceptance -.->|"reject or hold"| CandidateQuarantine
+  RiskDecision -.-> ContinueUnderFallback
+  RiskDecision -.-> SafeStopDecision
+  ContinueUnderFallback -.-> FallbackBehavior
+  FallbackBehavior ==> FallbackServingMechanism
+  SafeStopDecision ==>|"authorized safe-stop state"| DesiredDeploymentRecord
+  ProducerOwner -.-> AffectedBoundary
+  ProducerOwner -.-> VersionedContract
+  FeatureOwner -.-> ExplicitUnitSemantics
+  IncidentTriage -.-> PreventionControls
+
+  VersionedContract ==> ExplicitUnitSemantics
+  ExplicitUnitSemantics ==> FeatureMechanism
+  AffectedBoundary ==> ClassifyInterval
+  ClassifyInterval ==> NormalizeKnownRecords
+  ClassifyInterval ==> QuarantineDiscardInterval
+  VersionedContract ==> NormalizeKnownRecords
+  NormalizeKnownRecords ==> CleanDataReference
+  QuarantineDiscardInterval ==> VerifiedPostFixWindow
+  VerifiedPostFixWindow ==> CleanDataReference
+  CleanDataReference ==> RetrainEvaluate
+  TrainingIntent -.-> RetrainEvaluate
+  RetrainEvaluate ==> CandidateArtifact
+  CandidateArtifact ==> CandidateAcceptance
+  CandidateAcceptance ==>|"acceptance evidence"| ApprovalReview
+  ApprovalReview ==> ApprovalRecord
+  ApprovalRecord ==>|"approved immutable desired reference"| DesiredDeploymentRecord
+  DesiredDeploymentRecord ==>|"controller watches desired state"| DeploymentController
+  DeploymentController ==> ObservedRestoredState
+  DeploymentController -.-> ServingMechanism
+
+  NumericEvents --o SchemaGreen
+  ServingMechanism --o AvailabilityTelemetry
+  FeatureMechanism --o DistributionAlert
+  ShiftedRankings --o DelayedProductEvidence
+  MixedTrainingData --o ParityMismatch
+  ServingMechanism --o ObservedRestoredState
+  DistributionAlert --o AlertBlindEnd
+  ParityMismatch --o IncidentTriage
+  DelayedProductEvidence --o DelayedEvidenceUnavailable
+  DelayedProductEvidence --o OutcomeReview
+
+  subgraph legend["Explicit flow legend"]
+    LegendDataA["Source"] --> LegendDataB["Data flow"]
+    LegendControlA["Source"] -.-> LegendControlB["Control or decision flow"]
+    LegendArtifactA["Source"] ==> LegendArtifactB["Artifact or metadata flow"]
+    LegendTelemetryA["Source"] --o LegendTelemetryB["Telemetry or feedback flow"]
+  end
+
+  classDef producerNode fill:#f0ecff,stroke:#6b46a3,color:#111111
+  classDef platformNode fill:#e8f1fb,stroke:#245a8d,color:#111111
+  classDef productNode fill:#eef8ee,stroke:#2f6b3a,color:#111111
+  classDef incidentNode fill:#fff3df,stroke:#9a5a00,color:#111111
+  classDef observedNode fill:#f3f4f6,stroke:#6b7280,color:#111111,stroke-dasharray:5 3
+  class UnitChange,NumericEvents,ProducerOwner,AffectedBoundary,VersionedContract producerNode
+  class DataAdmissionGate,FeatureMechanism,TrainingMechanism,ServingMechanism,FallbackServingMechanism,ProducerQuarantine,CandidateQuarantine,BlockProducer,ClassifyInterval,NormalizeKnownRecords,QuarantineDiscardInterval,VerifiedPostFixWindow,CleanDataReference,RetrainEvaluate,CandidateArtifact,DesiredDeploymentRecord,DeploymentController platformNode
+  class FeatureSemantics,FeatureOwner,ExplicitUnitSemantics,TrainingIntent,MixedTrainingData,FutureCandidate,CandidateAcceptance,ShiftedRankings,ProductPath,ModelInfluencedOutcomes,FallbackBehavior,OutcomeReview productNode
+  class IncidentTriage,FreezePromotion,RiskDecision,ContinueUnderFallback,SafeStopDecision,ApprovalReview,ApprovalRecord,PreventionControls incidentNode
+  class SchemaGreen,AvailabilityTelemetry,DistributionAlert,AlertBlindEnd,ParityMismatch,DelayedProductEvidence,DelayedEvidenceUnavailable,ObservedRestoredState observedNode

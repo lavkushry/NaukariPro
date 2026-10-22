@@ -1,0 +1,373 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/CHANGELOG.md mlops/architect-handbook/CHANGELOG.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/CHANGELOG.md	2026-08-23 13:43:12
++++ mlops/architect-handbook/CHANGELOG.md	2026-08-23 13:47:34
+@@ -5,3 +5,4 @@
+ ### 2026-08-23
+ 
+ - Created the handbook directory contract, status records, editorial guide, glossary, source records, diagram area, and validation-script location.
++- Established the binding editorial and publication contract: canonical Chapter 1 template, lifecycle register, reader navigation, evidence labels, glossary seed, and planned-figure registry.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/EDITORIAL_STATUS.md mlops/architect-handbook/EDITORIAL_STATUS.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/EDITORIAL_STATUS.md	2026-08-23 13:43:12
++++ mlops/architect-handbook/EDITORIAL_STATUS.md	2026-08-23 13:47:34
+@@ -4,14 +4,23 @@
+ 
+ - Publication state: Scaffold
+ - Audience: Senior, Staff, and Principal MLOps / ML Platform Architects
+-- Chapter 1 state: Planned
+-- Evidence state: Not started
+-- Review state: Not started
++- Publication claim: Not publication-ready
++- Lifecycle rule: A chapter advances one state at a time after its stated gate is satisfied.
+ 
+ ## Chapter lifecycle
+ 
+-`Planned -> Researching -> Draft -> Technical Review -> Editorial Review -> Verified -> Publication Ready`
++```text
++Planned -> Researching -> Draft -> Technical Review -> Editorial Review -> Verified -> Publication Ready
++```
+ 
++## Chapter register
++
++| Chapter | Title | Content state | Evidence state | Diagram state | Technical review | Editorial review | Validator status | Last reviewed date |
++| --- | --- | --- | --- | --- | --- | --- | --- | --- |
++| 1 | MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy | Planned | Not started | Planned | Not started | Not started | Structure profile passed before Chapter 1 content exists | - |
++
++Chapter 1 remains `Planned` until Task 4 starts. Structure validation confirms framework conformance only; it does not establish research, technical review, editorial review, verification, or publication status.
++
+ ## Raw source observations
+ 
+ `mlops/vol1.md` is append-only raw source material. The observations below are read-only checkpoints; no operation in this milestone changes that file.
+@@ -23,14 +32,15 @@
+ 
+ ## Review gates
+ 
+-- Structural validation: Pending
+-- High-risk claim review: Pending
+-- Diagram semantic review: Pending
+-- Independent technical review: Pending
+-- Independent editorial review: Pending
++- Structural validation: Framework passed; Chapter 1 release validation is not applicable.
++- High-risk claim review: Not started.
++- Diagram semantic review: Not started.
++- Independent technical review: Not started.
++- Independent editorial review: Not started.
+ 
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Recorded matching milestone-start and milestone-end raw source observations and initialized the editorial lifecycle.
++- Added the chapter register, lifecycle transition rule, and explicit distinction between framework validation and publication review.
++- Preserved the original raw-source observation rows without alteration.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/GLOSSARY.md mlops/architect-handbook/GLOSSARY.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/GLOSSARY.md	2026-08-23 13:43:12
++++ mlops/architect-handbook/GLOSSARY.md	2026-08-23 13:47:34
+@@ -2,10 +2,31 @@
+ 
+ ## Controlled terms
+ 
+-The scaffold does not yet admit controlled terms. Research work will add each term with its definition, aliases, and authoritative source before Chapter 1 enters review.
++The rows below seed the Chapter 1 vocabulary. `Definition pending` means the term has not received an authoritative definition or source key. A row cannot be marked `Verified` without a source key in the bibliography.
+ 
++| Term | Definition | Aliases | Source key | Verification state | Notes |
++| --- | --- | --- | --- | --- | --- |
++| MLOps | Definition pending | Machine learning operations | - | Definition pending | Expand at first use. |
++| ML system | Definition pending | Machine learning system | - | Definition pending | Expand ML at first use. |
++| Control plane | Definition pending | - | - | Definition pending | Architectural plane term. |
++| Data plane | Definition pending | - | - | Definition pending | Architectural plane term. |
++| Training plane | Definition pending | - | - | Definition pending | Architectural plane term. |
++| Serving plane | Definition pending | Inference plane | - | Definition pending | Architectural plane term. |
++| Model registry | Definition pending | - | - | Definition pending | System-of-record candidate. |
++| Artifact store | Definition pending | Artifact repository | - | Definition pending | System-of-record candidate. |
++| Lineage | Definition pending | Provenance | - | Definition pending | Requires scope in Chapter 1. |
++| Reproducibility | Definition pending | Reproducible workflow | - | Definition pending | Requires evidence boundary. |
++| Continuous training | Definition pending | CT | - | Definition pending | Expand CT at first use if used. |
++| Service-level indicator | Definition pending | SLI | - | Definition pending | Expand SLI at first use. |
++| Service-level objective | Definition pending | SLO | - | Definition pending | Expand SLO at first use. |
++| Architecture decision record | Definition pending | ADR | - | Definition pending | Expand ADR at first use. |
++
++## Entry contract
++
++Each controlled row records a term, concise definition, aliases, source key, verification state, and scope note. The source key must resolve to [the bibliography](sources/references.md). `Verified` is reserved for a definition whose cited source supports the exact wording; a handbook-specific definition is labeled `Handbook synthesis` and carries its assumptions in the notes.
++
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Initialized controlled terms for the handbook scaffold.
++- Added the foundational Chapter 1 vocabulary as definition-pending rows and defined the source-key verification gate.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/README.md mlops/architect-handbook/README.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/README.md	2026-08-23 13:43:12
++++ mlops/architect-handbook/README.md	2026-08-23 13:47:34
+@@ -1,34 +1,57 @@
+ # MLOps Architect Handbook
+ 
+-## Purpose
++## Reader contract
+ 
+-This maintained handbook provides research-backed architecture guidance for Senior, Staff, and Principal MLOps and ML Platform Architects.
++This maintained handbook serves Senior, Staff, and Principal MLOps / ML Platform Architects who make cross-team decisions about machine learning (ML) systems, platform boundaries, operational controls, and long-term architecture. It favors explicit constraints, evidence, trade-offs, failure recovery, security, cost, and operational ownership over product catalogues or unsupported prescriptions.
+ 
+-## Scope and reading guidance
++## Chapter 1 milestone
+ 
+-The initial milestone establishes the publishing framework and reserves Chapter 1 for **MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy**. Raw source material in [`../vol1.md`](../vol1.md) remains append-only and outside this handbook's editing scope.
++The initial milestone establishes the publication framework and the contract for Chapter 1, **MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy**. Chapter 1 is `Planned`; no chapter is represented as drafted, verified, or publication-ready in this repository state.
+ 
+-## Publication status
++## Raw-source preservation
+ 
+-- Handbook state: Scaffold
+-- Chapter 1 state: Planned
+-- Publication state: Not publication ready
++[`../vol1.md`](../vol1.md) is append-only raw source material outside this handbook's editing scope. Do not write to, rename, move, truncate, format, or roll back that file. Record its SHA-256, byte size, line count, and modification time at milestone checkpoints; concurrent external growth is recorded, not reversed. Any future extraction operates from a frozen, recorded observation.
+ 
++## Table of contents
++
++1. [Reader contract](#reader-contract)
++2. [Chapter 1 milestone](#chapter-1-milestone)
++3. [Raw-source preservation](#raw-source-preservation)
++4. [Reading paths](#reading-paths)
++5. [Evidence and publication policy](#evidence-and-publication-policy)
++6. [Handbook map](#handbook-map)
++7. [Contribution workflow](#contribution-workflow)
++
++## Reading paths
++
++- **Architecture decision path:** Read the Chapter 1 template in [the style guide](STYLE_GUIDE.md), the [diagram registry](diagrams/chapter-01/README.md), then the evidence policy before evaluating a platform decision.
++- **Evidence review path:** Read [the claim ledger](sources/claim-ledger.csv), [the bibliography](sources/references.md), the [glossary](GLOSSARY.md), and [editorial status](EDITORIAL_STATUS.md) to assess claim support and review gates.
++- **Publication review path:** Read [editorial status](EDITORIAL_STATUS.md), apply [the style guide](STYLE_GUIDE.md), and run the local validator with the relevant profile.
++
++## Evidence and publication policy
++
++Factual claims require claim-level evidence appropriate to their risk. Label architectural judgments as `Handbook synthesis`, distinguish them from sourced facts, reproducible calculations, and illustrative scenarios, and version-pin volatile product behavior with an `as of` date and review deadline. Publication status advances only through the lifecycle in [editorial status](EDITORIAL_STATUS.md), after automated checks, evidence review, diagram review, and independent technical and editorial review.
++
+ ## Handbook map
+ 
+-- [Editorial status](EDITORIAL_STATUS.md)
+-- [Style guide](STYLE_GUIDE.md)
+-- [Glossary](GLOSSARY.md)
+-- [References](sources/references.md)
+-- [Claim ledger](sources/claim-ledger.csv)
+-- [Chapter 1 diagrams](diagrams/chapter-01/README.md)
++- [Editorial status](EDITORIAL_STATUS.md): lifecycle, chapter register, and raw-source observations.
++- [Style guide](STYLE_GUIDE.md): binding chapter template and editorial rules.
++- [Glossary](GLOSSARY.md): controlled architectural vocabulary and verification state.
++- [References](sources/references.md): authoritative bibliography and source-key convention.
++- [Claim ledger](sources/claim-ledger.csv): claim-level evidence and review metadata.
++- [Chapter 1 diagrams](diagrams/chapter-01/README.md): figure registry and review metadata.
++- [Handbook changelog](CHANGELOG.md): maintained publication-framework changes.
+ 
+ ## Contribution workflow
+ 
+-Work from a frozen, recorded source observation when extraction is required. Add claim-level evidence before advancing a chapter, maintain editable text diagrams, run local validation, and obtain independent technical and editorial review before publication-ready status.
++1. Start with a read-only raw-source observation if source extraction is in scope.
++2. Research and record claims before drafting factual prose.
++3. Draft to the canonical chapter template and register diagrams before reference.
++4. Run local structure validation during framework work and release validation only when its required content exists.
++5. Advance editorial status only after the corresponding evidence and review gates are satisfied.
+ 
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Created the handbook scaffold and documented its publication contract.
++- Expanded the scaffold into the reader contract, navigation map, reading paths, raw-source rule, and evidence-based publication policy.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/STYLE_GUIDE.md mlops/architect-handbook/STYLE_GUIDE.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/STYLE_GUIDE.md	2026-08-23 13:43:12
++++ mlops/architect-handbook/STYLE_GUIDE.md	2026-08-23 13:47:34
+@@ -1,23 +1,131 @@
+ # Handbook Style Guide
+ 
++## Purpose and scope
++
++This guide is the binding editorial contract for maintained handbook chapters. It applies to prose, diagrams, examples, citations, and exercises written for Senior, Staff, and Principal MLOps / ML Platform Architects.
++
+ ## Voice and audience
+ 
+-Write for Senior, Staff, and Principal MLOps / ML Platform Architects in a direct engineering voice. Lead with a system, artifact, incident, diagram, or decision; explain the reasoning after the concrete context.
++Lead with a system boundary, artifact, incident, diagram, or decision. State the engineering context before analysis. Explain implications with precise language, bounded assumptions, and explicit ownership. Distinguish Senior, Staff, and Principal scope through decision horizon, cross-team influence, organizational constraints, and platform evolution; do not imply scale that evidence does not support.
+ 
+-## Structure
++## Canonical chapter template
+ 
+-Use ATX headings and this hierarchy: one chapter `#` title, `##` major sections, `###` subsections, and `####` only for necessary detail. Expand acronyms at first use and keep each section focused on one purpose.
++Each chapter has one H1 and follows the approved sequence below. A section may contain H3 and H4 detail only when it clarifies a discrete decision, interface, or failure boundary. Do not reorder, omit, or add a peer H2 without an approved editorial change.
+ 
+-## Evidence and claims
++```text
++# Chapter N: Title
++## Reader outcomes and prerequisites
++## Why production ML is a systems problem
++## ML lifecycle and operational feedback loops
++## Architecture planes
++## MLOps capability and maturity model
++## System-of-record boundaries
++## Platform and product-team responsibilities
++## Build, buy, and managed-service decisions
++## Senior, Staff, and Principal decision scope
++## Reference architecture and lifecycle flows
++## Production failure case study
++## Architecture decision record exercise
++## Interview questions and evaluation rubric
++## Key takeaways
++## Glossary additions and authoritative references
++### Decision or implementation detail
++#### Narrow exception or interface detail
++```
+ 
+-Record claims in the claim ledger. Label architectural judgment as synthesis, distinguish scenarios from observed facts, version-pin volatile product behavior, and avoid unsupported superlatives.
++Where a major concept has enough substance, use this treatment order:
+ 
+-## Diagrams and examples
++```text
++problem -> constraints -> architecture -> trade-offs -> failure modes -> security -> cost -> operations -> decision framework -> exercises
++```
+ 
+-Keep diagrams text-based and editable. Every diagram requires an identifier, caption, purpose, assumptions, provenance, text alternative, and a semantic review of directionality and responsibility boundaries.
++The order is a reasoning pattern, not permission to add unneeded headings. State the boundary with later chapters when a concept is introduced but not fully developed.
+ 
++## Heading and terminology rules
++
++- Use ATX headings: one `#` chapter title, `##` major sections, `###` subsections, and `####` only for necessary detail.
++- Do not skip heading levels, create a second H1, or use generated heading identifiers.
++- Expand an acronym at first use in each chapter and in its glossary definition, then use the shortened form consistently. Example: `machine learning (ML)` and `machine learning operations (MLOps)`.
++- Define a controlled term through [the glossary](GLOSSARY.md) before treating it as a stable handbook term.
++
++## Evidence, citations, and synthesis
++
++Use a claim ledger row for each factual claim that is quantitative, normative, product- or version-specific, scientific, security-related, or safety-related. Cite sources in prose with the stable key from [the bibliography](sources/references.md), for example `NIST-AI-RMF-2023`, and place the same key in the ledger's `source_keys` field.
++
++Use one of the following labels at the point of use:
++
++- **Sourced fact:** A claim supported by a source key whose source entails the stated claim.
++- **Reproducible calculation:** A calculation with inputs, method, units, and source keys recorded.
++- **Illustrative scenario:** A bounded example that is not reported production evidence.
++- **Handbook synthesis:** An architectural judgment that combines stated assumptions and trade-offs; it is not presented as an externally verified fact.
++
++Version-pin product behavior and include an `as of` date plus a review deadline in the ledger. Prefer laws, standards, official specifications, first-party documentation, and peer-reviewed work. A vendor source supports claims about that vendor, not a general industry claim.
++
++## Examples and callouts
++
++Use examples to make a decision or interface testable. Identify whether an example is sourced, calculated, illustrative, or synthesis, then include its assumptions and the decision it informs. Do not use code fences for prose-only lists.
++
++Use this callout syntax:
++
++```markdown
++> **Decision:** State the decision and its owner.
++>
++> **Assumptions:** State the constraints that make the decision applicable.
++>
++> **Trade-off:** State the benefit, cost, and rejected alternative.
++```
++
++Use this example syntax:
++
++```markdown
++**Illustrative scenario:** A product team selects a model registry as the approval boundary.
++
++**Assumptions:** The scenario is a handbook synthesis and does not report an observed deployment.
++```
++
++## Diagram and reference rules
++
++Keep diagrams text-based and editable. Register each figure in [the Chapter 1 diagram registry](diagrams/chapter-01/README.md) before it is referenced by chapter prose. A figure requires a caption, purpose, assumptions, legend where symbols need explanation, provenance, text alternative, semantic reviewer, and review status. Review directionality and responsibility boundaries before an editorial state can advance.
++
++Use CommonMark-compatible relative links for maintained files. Cite a diagram by its figure ID and include a readable caption in the surrounding prose.
++
++## Banned generic phrasing and unsupported claims
++
++Do not use generic transitions, inflated framing, repetitive wrap-ups, or unbounded superlatives in chapter prose. The validation policy recognizes the following examples; this fenced block documents the policy and is not approved copy.
++
++```text
++game-changer
++cutting-edge
++revolutionary
++in today's rapidly evolving landscape
++in the ever-evolving world
++in the ever-evolving landscape
++it is important to note
++it is worth noting
++in conclusion
++to summarize
++as we delve into
++this section will explore
++this section will discuss
++this section will cover
++this comprehensive guide
++in the realm of
++best
++always
++never
++guaranteed
++latest
++currently
++```
++
++Replace vague transitions with the system condition, decision, evidence, or consequence. Constrain a comparative or temporal claim with a source, an `as of` date, or an explicit scenario boundary.
++
++## Publication checks
++
++Before a chapter advances, confirm that its headings, fences, links, markers, placeholder forms, generic phrases, superlatives, changelog, diagrams, citations, and claim-ledger state pass the applicable local validation profile. Automated validation is necessary but does not replace evidence-entailment or semantic diagram review.
++
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Created the initial editorial rules for the handbook scaffold.
++- Replaced the scaffold rules with the binding chapter template, evidence labels, citation convention, example and callout formats, diagram rules, and editorial policy.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/diagrams/chapter-01/README.md mlops/architect-handbook/diagrams/chapter-01/README.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-3-before/handbook/diagrams/chapter-01/README.md	2026-08-23 13:43:12
++++ mlops/architect-handbook/diagrams/chapter-01/README.md	2026-08-23 13:47:35
+@@ -2,18 +2,45 @@
+ 
+ ## Purpose
+ 
+-This directory will contain editable, text-based diagrams for Chapter 1: ML lifecycle, architecture planes, system-of-record relationships, and a production failure flow.
++This directory is the figure registry for the editable, text-based diagrams that support Chapter 1. The registry describes planned figures without claiming that diagram files or semantic reviews exist.
+ 
+-## Diagram requirements
++## Metadata contract
+ 
+-Each diagram must include a figure identifier, caption, purpose, assumptions, legend when needed, provenance, text alternative, and semantic review of directionality and responsibility boundaries.
++Each registry row and final diagram must provide these fields:
+ 
+-## Status
++- Figure ID
++- Filename
++- Section
++- Purpose
++- Assumptions
++- Legend
++- Provenance
++- Alt text
++- Semantic reviewer
++- Review status
+ 
+-No diagrams exist at scaffold stage. Chapter 1 remains Planned.
++Use `Original handbook synthesis` for a new diagram. An adapted diagram names its source key and describes the adaptation. The semantic reviewer verifies arrow direction, responsibility boundaries, labels, and the relationship between the diagram and the associated chapter prose.
+ 
++## Planned figure registry
++
++| Figure ID | Filename | Section | Purpose | Assumptions | Legend | Provenance | Alt text | Semantic reviewer | Review status |
++| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
++| fig-01-ml-lifecycle | fig-01-ml-lifecycle.mmd | ML lifecycle and operational feedback loops | Show lifecycle stages and feedback boundaries. | Chapter assumptions pending research. | Pending diagram design. | Original handbook synthesis planned. | Pending diagram design. | Unassigned. | Planned |
++| fig-02-architecture-planes | fig-02-architecture-planes.mmd | Architecture planes | Separate control, data, training, and serving responsibilities. | Chapter assumptions pending research. | Pending diagram design. | Original handbook synthesis planned. | Pending diagram design. | Unassigned. | Planned |
++| fig-03-systems-of-record | fig-03-systems-of-record.mmd | System-of-record boundaries | Identify authoritative stores and ownership boundaries. | Chapter assumptions pending research. | Pending diagram design. | Original handbook synthesis planned. | Pending diagram design. | Unassigned. | Planned |
++| fig-04-failure-propagation | fig-04-failure-propagation.mmd | Production failure case study | Trace a failure path, detection, containment, and recovery boundary. | Chapter assumptions pending research. | Pending diagram design. | Original handbook synthesis planned. | Pending diagram design. | Unassigned. | Planned |
++
++The filenames are registry values, not links, until Task 6 creates the approved diagram files. The release validator then requires each approved filename to be registered once as a resolvable link.
++
++## Review rules
++
++- Keep figure IDs stable once chapter prose cites them.
++- Keep component names consistent with the chapter and glossary.
++- Record source-key attribution for adapted diagrams.
++- Do not mark a figure beyond `Planned` until its required metadata and semantic review are complete.
++
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Created the Chapter 1 diagram contract and reserved the diagram directory.
++- Expanded the diagram scaffold into the binding metadata contract and registered four planned Chapter 1 figures.

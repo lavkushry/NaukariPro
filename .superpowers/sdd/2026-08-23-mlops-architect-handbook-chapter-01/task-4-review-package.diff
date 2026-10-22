@@ -1,0 +1,620 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/EDITORIAL_STATUS.md mlops/architect-handbook/EDITORIAL_STATUS.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/EDITORIAL_STATUS.md	2026-08-23 13:55:41
++++ mlops/architect-handbook/EDITORIAL_STATUS.md	2026-08-23 14:39:35
+@@ -17,9 +17,9 @@
+ 
+ | Chapter | Title | Content state | Evidence state | Diagram state | Technical review | Editorial review | Validator status | Last reviewed date |
+ | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| 1 | MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy | Planned | Not started | Planned | Not started | Not started | Structure profile passed before Chapter 1 content exists | - |
++| 1 | MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy | Researching | Research reports complete; evidence synthesis pending | Planned | Not started | Not started | Structure profile passed for the handbook framework and research checkpoint; Chapter 1 release validation is not applicable | 2026-08-23 |
+ 
+-Chapter 1 remains `Planned` until Task 4 starts. Structure validation confirms framework conformance only; it does not establish research, technical review, editorial review, verification, or publication status.
++Chapter 1 entered `Researching` after Task 4 completed three bounded research reports and its combined review corrections. This state records research completion only: Task 5 must still synthesize and verify claim-level evidence, and no chapter draft, diagram, technical review, editorial review, verification, or publication approval exists. Structure validation confirms framework and checkpoint conformance only; it does not establish those later gates.
+ 
+ ## Raw source observations
+ 
+@@ -44,3 +44,4 @@
+ 
+ - Added the chapter register, lifecycle transition rule, and explicit distinction between framework validation and publication review.
+ - Preserved the original raw-source observation rows without alteration.
++- Advanced Chapter 1 from `Planned` to `Researching` after the Task 4 research checkpoint; recorded evidence synthesis, drafting, review, verification, and publication work as still pending.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/scripts/test_validate_handbook.sh mlops/architect-handbook/scripts/test_validate_handbook.sh
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/scripts/test_validate_handbook.sh	2026-08-23 13:55:41
++++ mlops/architect-handbook/scripts/test_validate_handbook.sh	2026-08-23 14:27:15
+@@ -238,6 +238,24 @@
+ assert_fail_contains "unqualified superlative fails" "unsupported superlative" \
+   "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
+ 
++fixture="$TEST_TMP/url-only-latest"
++make_valid_fixture "$fixture"
++printf '\n<https://docs.example/latest/page>\n' >> "$fixture/README.md"
++assert_pass "latest inside an autolink destination passes" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/prose-latest"
++make_valid_fixture "$fixture"
++printf '\nThe latest release is documented at <https://docs.example/latest/page>.\n' >> "$fixture/README.md"
++assert_fail_contains "latest in ordinary prose fails" "unsupported superlative" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/inline-code-prose-latest"
++make_valid_fixture "$fixture"
++printf '\nThe `latest` release is undocumented.\n' >> "$fixture/README.md"
++assert_fail_contains "latest in non-URL inline code fails" "unsupported superlative" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
+ fixture="$TEST_TMP/unbalanced-tilde-fence"
+ make_valid_fixture "$fixture"
+ printf '\n~~~markdown\nunclosed example\n' >> "$fixture/README.md"
+@@ -276,4 +294,4 @@
+   exit 1
+ fi
+ 
+-printf 'PASS: all 24 validator tests passed\n'
++printf 'PASS: all 27 validator tests passed\n'
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/scripts/validate_handbook.sh mlops/architect-handbook/scripts/validate_handbook.sh
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/scripts/validate_handbook.sh	2026-08-23 13:55:41
++++ mlops/architect-handbook/scripts/validate_handbook.sh	2026-08-23 14:29:08
+@@ -485,6 +485,9 @@
+           source_line = substr($0, separator + 1)
+           lower = tolower(source_line)
+           scan = lower
++          gsub(/`\/[^`]*\/`/, "", scan)
++          gsub(/<https?:\/\/[^>]*>/, "", scan)
++          gsub(/https?:\/\/[^[:space:]>)]+/, "", scan)
+           gsub(/best-effort/, "", scan)
+           gsub(/always-on/, "", scan)
+           has_superlative = scan ~ /(^|[^[:alnum:]_])(best|always|never|guaranteed|latest|currently)([^[:alnum:]_]|$)/
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/sources/research/chapter-01-foundations.md mlops/architect-handbook/sources/research/chapter-01-foundations.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/sources/research/chapter-01-foundations.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/sources/research/chapter-01-foundations.md	2026-08-23 14:02:27
+@@ -0,0 +1,142 @@
++# Chapter 1 Foundations: Research Report
++
++**Research date:** 2026-08-23  
++**Accessed date for every web source:** 2026-08-23  
++**Scope:** Why production machine learning (ML) is a systems discipline; ML-specific technical debt; production-readiness testing; lifecycle and feedback-loop foundations; and bounded control-plane, workload, tracking, artifact, and registry concepts.  
++**Confidence:** High for statements directly supported by the canonical papers and first-party documentation; medium for the architectural synthesis, which must be validated against the handbook's governance, reliability, and platform-strategy research.
++
++## Methodology
++
++The research answered five questions: (1) what makes production ML a systems problem, (2) which ML-specific dependencies create hidden debt, (3) what production readiness requires beyond offline model evaluation, (4) which feedback loops shape the lifecycle, and (5) which control and record boundaries are directly supported by Kubernetes and MLflow documentation.
++
++Searches targeted canonical titles and official domains. Eight authoritative sources were read in full or, for documentation sites, across the complete substantive page content. Search snippets were discovery aids only. Claims below use one of two labels:
++
++- **Sourced fact:** a close paraphrase entailed by the linked source.
++- **Handbook synthesis:** an architectural inference assembled from cited facts and explicit assumptions; it is not an externally verified industry rule.
++
++No production metric, benchmark, adoption rate, or cost estimate was inferred. Quantities appear only when the source itself defines them, such as the 28 checks in the ML Test Score paper.
++
++## Findings
++
++### Production ML is a systems discipline
++
++**Sourced fact:** Sculley et al. argue that an ML system inherits conventional software maintenance concerns and adds system-level risks because data influences behavior. The paper identifies entanglement, unstable and underused data dependencies, hidden consumers, feedback loops, configuration debt, pipeline jungles, reproducibility debt, process debt, and changes in the external world. Its central boundary is the production system, not the model file. [Sculley et al., 2015](https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf)
++
++**Sourced fact:** Breck et al. make the same boundary operational: training can be viewed as a compilation process whose inputs include code and training data, while the resulting model needs debugging, rollback, monitoring, and release controls comparable to those applied to a software binary. They also state that ordinary software-engineering controls remain necessary alongside ML-specific tests. [Breck et al., 2017](https://research.google.com/pubs/archive/aad9f93b86b7addfea4c419b9100c6cdd26cacea.pdf)
++
++**Handbook synthesis:** A Chapter 1 architecture should therefore treat model quality as one signal inside a larger production contract. The contract spans input semantics, feature computation, training code, configuration, artifacts, validation gates, deployment state, runtime behavior, consumers, and feedback data. A model can meet an offline threshold while the production system remains unready because one of those interfaces is unowned, unversioned, untested, or unobservable.
++
++### Hidden technical debt is mostly boundary debt
++
++**Sourced fact:** Model inputs are entangled: changing one feature, its distribution, a hyperparameter, a sampling choice, or another learning input can alter the influence of other inputs. Sculley et al. call this the CACE principle, meaning that an apparently local change can have non-local behavioral effects. The same paper warns that undeclared consumers and correction cascades silently couple otherwise separate systems. [Sculley et al., 2015](https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf)
++
++**Sourced fact:** Data dependencies can be harder to discover than code dependencies. The paper recommends annotations, resolved dependency trees, access restrictions, interface agreements, and versioned copies of unstable signals as possible controls, while acknowledging that versioning introduces staleness and maintenance costs. [Sculley et al., 2015](https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf)
++
++**Sourced fact:** The external world changes, so unit and end-to-end tests cannot by themselves demonstrate continuing fitness. Sculley et al. call for live monitoring and discuss prediction bias, action limits, upstream producer objectives, alert propagation, and automated response as starting points rather than a universal checklist. [Sculley et al., 2015](https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf)
++
++**Handbook synthesis:** The useful architectural unit is a dependency edge with an owner and a change contract. For each edge, Chapter 1 should ask: Who produces it? Who consumes it? Which semantic invariant is promised? Which version or time boundary identifies it? How is incompatible change detected? Which fallback or rollback exists? Where does failure evidence appear?
++
++### Production readiness needs balanced, automated evidence
++
++**Sourced fact:** The ML Test Score paper proposes 28 checks divided across four areas: features and data, model development, ML infrastructure, and monitoring. Its score gives partial credit for documented manual execution, full credit for repeated automation, and takes the minimum of the four area totals so strength in one area does not mask weakness in another. [Breck et al., 2017](https://research.google.com/pubs/archive/aad9f93b86b7addfea4c419b9100c6cdd26cacea.pdf)
++
++**Sourced fact:** The paper's infrastructure checks include reproducibility, unit-tested model specifications, full-pipeline integration tests, pre-serving model validation, debuggability, canarying, and safe rollback. Its monitoring checks cover dependency changes, data invariants, training-serving skew, model staleness, numerical stability, compute regressions, and served prediction quality. [Breck et al., 2017](https://research.google.com/pubs/archive/aad9f93b86b7addfea4c419b9100c6cdd26cacea.pdf)
++
++**Sourced fact:** The rubric was derived from Google experience and structured interviews with maintainers of 36 systems. The authors state that their dominant context was supervised learning with repeated training and low-latency serving, while noting that many checks also apply to other deployment patterns. They also report lower perceived applicability of some data tests for image and audio teams and gaps where labels are absent or expensive. [Breck et al., 2017](https://research.google.com/pubs/archive/aad9f93b86b7addfea4c419b9100c6cdd26cacea.pdf)
++
++**Handbook synthesis:** Use the paper as a diagnostic taxonomy, not as a universal compliance score. A production-readiness gate should preserve its balanced coverage while weighting local safety, regulatory, business, latency, and recovery risks. The evidence should record the test, scope, automation level, result, owner, freshness, and response rather than merely copying a numeric score.
++
++### The lifecycle is iterative and observable
++
++**Sourced fact:** Google's Rules of ML defines a pipeline as infrastructure that gathers data, creates training data, trains models, and exports them to production. It advises teams to establish metrics, build a solid end-to-end pipeline, begin with a simple model, test infrastructure independently, check models before export, watch for silent failures, and assign feature ownership and documentation. [Google, Rules of ML](https://developers.google.com/machine-learning/guides/rules-of-ml)
++
++**Sourced fact:** The guide treats deployment as iterative rather than terminal. It recommends designing for repeated launches, measuring model deltas, reusing feature logic where practical, monitoring training-serving skew, evaluating on data later than the training window, and accounting for feedback caused by ranking and presentation choices. [Google, Rules of ML](https://developers.google.com/machine-learning/guides/rules-of-ml)
++
++**Sourced fact:** Sculley et al. distinguish direct feedback, where model decisions affect future training-data selection, from hidden feedback, where separate systems influence each other indirectly through the world. [Sculley et al., 2015](https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf)
++
++**Handbook synthesis:** A foundational lifecycle should be drawn as a loop, not a one-way train-and-deploy sequence:
++
++`product event -> captured data -> validated dataset -> training run -> evaluated artifact -> approved reference -> deployed workload -> predictions/actions -> outcomes and telemetry -> product event`
++
++The architecture must preserve both lineage direction and influence direction. Outcomes can become labels, model actions can change which outcomes are observed, and platform telemetry can trigger retraining, rollback, or human review. The synthesis does not imply that every system should retrain automatically.
++
++### Control-plane and workload concepts
++
++**Sourced fact:** Kubernetes separates a control plane from worker nodes. The API server exposes the cluster API; etcd stores API data; the scheduler binds unscheduled Pods to nodes; controllers implement API behavior; and node components maintain running Pods and container execution. [Kubernetes Components, modified 2026-05-30](https://kubernetes.io/docs/concepts/overview/components/)
++
++**Sourced fact:** Kubernetes controllers observe resource state and act to move current state toward the desired state represented in resource specifications. Controllers report state through the API server, and Kubernetes favors multiple focused controllers over a single monolithic loop. [Kubernetes Controllers, modified 2024-09-01](https://kubernetes.io/docs/concepts/architecture/controller/)
++
++**Sourced fact:** Kubernetes defines a workload as an application running in Pods and provides higher-level workload resources whose controllers maintain the specified set of Pods. Jobs and CronJobs cover run-to-completion tasks, while Deployments and StatefulSets cover other execution semantics. [Kubernetes Workloads, modified 2026-04-27](https://kubernetes.io/docs/concepts/workloads/)
++
++**Handbook synthesis:** The transferable control-plane pattern is `declared intent -> authoritative state -> reconciliation -> observed status -> corrective action`. Applied to ML, this pattern can inform training jobs, validation gates, deployment references, and rollback workflows. Kubernetes documentation supports the orchestration analogy; it does not establish Kubernetes as the owner of data semantics, experiment lineage, model approval, or business risk.
++
++### Metadata, artifacts, and model references
++
++**Sourced fact:** In MLflow 3 tracking, a run records metadata such as parameters, metrics, and timing plus output artifacts. Experiments group runs and models; dataset metadata can be associated with training events; a backend store persists run metadata; and an artifact store persists large outputs such as model weights and data files. [MLflow 3.15.1 Tracking](https://mlflow.org/docs/latest/ml/tracking/)
++
++**Sourced fact:** MLflow's Model Registry workflow supports registered models, versions, aliases, tags, descriptions, source-run information, and creation timestamps. Aliases are mutable named references to model versions. Fixed model stages were deprecated as of MLflow 2.9.0 in favor of tags, aliases, and separated environments. [MLflow 3.15.1 Model Registry Workflow](https://mlflow.org/docs/latest/ml/model-registry/workflow/)
++
++**Handbook synthesis:** Tracking metadata, artifact storage, model registration, and deployment state are different record classes even when one product exposes them together. A sound architecture identifies the authority for each class and records immutable identities beneath mutable convenience references. A mutable alias can simplify promotion, but an audit or rollback decision should resolve the alias to the exact model version and deployment revision observed at decision time.
++
++## Architecture implications for Chapter 1
++
++| Boundary | Evidence-backed concern | Chapter treatment |
++| --- | --- | --- |
++| Data producer -> feature pipeline | Silent semantic change, staleness, privacy, hidden consumers | Define owner, schema/invariant, version or event-time boundary, notification path, and deletion behavior. |
++| Feature pipeline -> training | Training-serving skew and untested feature logic | Require parity evidence, sampled comparison, or a documented alternative appropriate to the serving pattern. |
++| Training -> model artifact | Non-determinism, unaudited configuration, weak reproducibility | Record code/configuration identity, data reference, environment, run metadata, and reproducibility tolerance. |
++| Model artifact -> approval | Offline quality can mask slice, compatibility, or policy failures | Use multiple gates: data, model, infrastructure, safety/governance, and operational recovery. |
++| Approved reference -> serving workload | Mutable reference, incompatible runtime, unsafe rollout | Resolve immutable version, test load/serve compatibility, canary where suitable, and retain rollback evidence. |
++| Serving -> observed outcomes | Delayed labels, feedback loops, silent degradation | Separate service telemetry, data-quality signals, model behavior, product outcomes, and intervention triggers. |
++
++Every row is **Handbook synthesis** based on the cited findings above. The controls are questions for architecture review, not claims that one implementation fits every workload.
++
++## Applicability limits
++
++- The Sculley paper is canonical practitioner literature from Google in 2015. Its debt taxonomy remains useful, but its examples and tool context predate contemporary managed platforms, foundation models, and agentic systems.
++- The ML Test Score reflects Google production experience reported in 2017, centered on supervised, repeatedly trained systems. It is not a formal standard, regulatory framework, or proof of safety.
++- Rules of ML is first-party practitioner guidance, last updated 2025-08-25. Product examples illustrate Google experience and should not be converted into universal frequency, scale, or benefit claims.
++- Kubernetes documents cluster orchestration. The control-loop pattern transfers conceptually, but ML approval, lineage, fairness, privacy, and business objectives require additional authorities.
++- MLflow documentation supports claims about MLflow 3.15.1 behavior as accessed on 2026-08-23. The `/latest/` documentation URLs are volatile; later synthesis should version-pin snapshots or review these claims before publication.
++- Exact reproducibility may be infeasible for some parallel or non-convex training. Architecture should specify a bounded reproducibility target and evidence sufficient for diagnosis, audit, and rollback.
++
++## Conflicts and unresolved questions
++
++1. **Exact reproducibility versus operational repeatability.** Breck et al. describe identical retraining as an ideal; Sculley et al. emphasize sources of unavoidable non-determinism. Resolution: distinguish bitwise/model identity from bounded metric, prediction, lineage, and environment reproducibility. The acceptable tolerance remains workload-specific.
++2. **Equal-weight rubric versus risk-based gates.** The ML Test Score intentionally gives checks equal value and uses the weakest area. Enterprise architecture may need non-equal blocking controls for safety or regulation. This report retains the rubric as a coverage model and leaves gate weighting to governance research.
++3. **Mutable aliases versus immutable audit evidence.** MLflow documents aliases as reassignable references. It does not state that alias history alone is sufficient for audit or rollback. The immutable-resolution requirement above is handbook synthesis and needs implementation-specific validation.
++4. **Control-plane analogy versus product boundary.** Kubernetes reconciles cluster resource state; MLflow records experiments and model lifecycle metadata. Neither source defines a complete enterprise ML control plane. Chapter 1 must state which authority owns code, data, artifacts, approvals, deployment, telemetry, and policy.
++5. **Feedback response policy.** The papers support monitoring and identify feedback risks, but they do not establish a universal trigger for retraining, rollback, shutdown, or human review. Those thresholds remain explicit architecture decisions.
++
++## Source decisions
++
++### Accepted and fully read
++
++| Key | Source and exact URL | Publication or update date | Why accepted |
++| --- | --- | --- | --- |
++| SCULLEY-2015 | [Hidden Technical Debt in Machine Learning Systems](https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf) | NeurIPS 2015 | Canonical peer-reviewed systems-debt taxonomy; direct PDF read across all nine pages. |
++| BRECK-2017 | [The ML Test Score](https://research.google.com/pubs/archive/aad9f93b86b7addfea4c419b9100c6cdd26cacea.pdf) | IEEE Big Data 2017 | Primary paper defining the 28-check rubric, scoring method, context, and limitations; direct PDF read across all ten pages. |
++| GOOGLE-RULES-ML | [Rules of Machine Learning](https://developers.google.com/machine-learning/guides/rules-of-ml) | Last updated 2025-08-25 UTC | First-party lifecycle and ML engineering guidance; all 43 rules and page notes reviewed. |
++| K8S-COMPONENTS | [Kubernetes Components](https://kubernetes.io/docs/concepts/overview/components/) | Last modified 2026-05-30 | First-party definition of control-plane and node-component responsibilities. |
++| K8S-CONTROLLERS | [Kubernetes Controllers](https://kubernetes.io/docs/concepts/architecture/controller/) | Last modified 2024-09-01 | First-party description of desired state, current state, and reconciliation loops. |
++| K8S-WORKLOADS | [Kubernetes Workloads](https://kubernetes.io/docs/concepts/workloads/) | Last modified 2026-04-27 | First-party workload and controller semantics, including run-to-completion tasks. |
++| MLFLOW-TRACKING | [MLflow Tracking](https://mlflow.org/docs/latest/ml/tracking/) and [MLflow 3.15.1 release](https://mlflow.org/releases/3.15.1/) | Version 3.15.1 released 2026-08-02; page update date unavailable | First-party definitions of runs, experiments, metadata, artifacts, datasets, and storage boundaries. |
++| MLFLOW-REGISTRY | [MLflow Model Registry Workflow](https://mlflow.org/docs/latest/ml/model-registry/workflow/) | Version 3.15.1 context; page update date unavailable | First-party registry, version, tag, alias, environment, and stage-deprecation behavior. |
++
++### Rejected or deferred candidates
++
++| Candidate | Decision | Reason |
++| --- | --- | --- |
++| [NeurIPS abstract page for Sculley et al.](https://papers.nips.cc/paper/2015/hash/86df7dcfd896fcaf2674f757a2463eba-Abstract.html) | Rejected as claim evidence | Authoritative but too thin for debt mechanisms and limitations; the proceedings PDF supersedes it for this report. |
++| [Google Research publication page for Breck et al.](https://research.google/pubs/the-ml-test-score-a-rubric-for-ml-production-readiness-and-technical-debt-reduction/) | Rejected as claim evidence | Useful metadata and abstract, but it omits the tests, scoring mechanics, study context, and caveats available in the direct paper. |
++| Third-party summaries, blogs, forum posts, and Wikipedia results | Rejected | They add no authority over the canonical papers or first-party documentation and create paraphrase drift. |
++| NIST AI RMF, cloud-provider MLOps architecture guides, well-architected ML guidance, and platform-engineering sources | Deferred to sibling reports | Authoritative and relevant to governance, reliability, and platform strategy, but outside this foundations agent's assigned boundary. Their absence here is not a rejection of their handbook value. |
++| MLflow stage-based examples without deprecation context | Rejected for forward guidance | Official documentation states that fixed stages were deprecated as of MLflow 2.9.0; tags, aliases, and separated environments are the supported direction in the reviewed workflow. |
++
++## Changelog
++
++### 2026-08-23
++
++- Created the Chapter 1 foundations research report from eight accepted authoritative sources.
++- Documented source methodology, fact-versus-synthesis labels, applicability limits, unresolved conflicts, and source acceptance decisions.
++- Added bounded Kubernetes control-loop and MLflow record-boundary concepts without treating either product as a complete MLOps control plane.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/sources/research/chapter-01-governance-reliability.md mlops/architect-handbook/sources/research/chapter-01-governance-reliability.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/sources/research/chapter-01-governance-reliability.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/sources/research/chapter-01-governance-reliability.md	2026-08-23 14:36:53
+@@ -0,0 +1,175 @@
++# Chapter 1 Governance and Reliability Research
++
++**Research date:** 2026-08-23  
++**Accessed date for every web source:** 2026-08-23  
++**Audience:** Senior, Staff, and Principal MLOps / ML Platform Architects  
++**Scope:** AI risk governance, operational accountability, lifecycle monitoring, service-level reliability, system-of-record integrity, and directly relevant artifact supply-chain controls.
++
++## Executive finding
++
++A production ML platform needs two linked but non-substitutable control systems. The reliability system measures user-visible service outcomes and drives operational decisions through service-level indicators (SLIs), service-level objectives (SLOs), and error-budget policy. The AI-risk system governs intended use, accountable decision makers, test and evaluation evidence, residual risk, post-deployment monitoring, incident response, change control, and retirement. A healthy latency SLO cannot establish that a model is safe, valid, fair, or being used within its approved context; a completed risk assessment cannot establish that an endpoint is available or a feature pipeline is fresh. This separation is a **handbook synthesis** of the [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1) and Google’s [Implementing SLOs](https://sre.google/workbook/implementing-slos/).
++
++## Methodology
++
++- Searched the live web with official-domain queries for NIST AI RMF 1.0, the NIST AI RMF Playbook, Google SRE SLO guidance, Google Cloud MLOps lifecycle guidance, and SLSA provenance requirements.
++- Prioritized standards, government publications, official specifications, and first-party engineering documentation. Search snippets were discovery aids only; no claim below depends on a search-result excerpt.
++- Read five authoritative source sets in full: the 48-page AI RMF 1.0 PDF; the 147-page Playbook PDF, including every Govern, Map, Measure, and Manage subcategory; the complete Google SRE Workbook chapter on implementing SLOs; the complete Google Cloud MLOps automation article; and the complete SLSA v1.2 overview plus Build requirements page.
++- Cross-checked the Playbook PDF against its landing page and audit log, and checked the NIST AI RMF landing page for revision status as of the access date.
++- Paraphrased source claims. Every conclusion is labeled **Sourced fact** or **Handbook synthesis**. No production metric, SLO target, incident rate, or economic benefit was inferred or invented.
++
++## Source register
++
++| Key | Source and exact direct URL | Publication or update date | Review status | Use in this report |
++| --- | --- | --- | --- | --- |
++| `NIST-AI-RMF-2023` | *Artificial Intelligence Risk Management Framework (AI RMF 1.0)* — <https://doi.org/10.6028/NIST.AI.100-1> (direct PDF: <https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf>) | Published 2023-01-26 | Read in full; accepted | Core governance outcomes, lifecycle accountability, monitoring, third-party risk, retirement, and limits of the framework |
++| `NIST-AI-RMF-STATUS-2026` | NIST AI RMF program page — <https://www.nist.gov/itl/ai-risk-management-framework> | Page states AI RMF 1.0 is under revision as of access; no page-level update date shown | Read in full; accepted for status only | Establishes that 1.0 remains published but is being revised; prevents presenting 1.0 as temporally final |
++| `NIST-AI-RMF-PLAYBOOK` | NIST AI RMF Playbook — <https://airc.nist.gov/airmf-resources/playbook/> (direct PDF: <https://airc.nist.gov/docs/AI_RMF_Playbook.pdf>) | Initial Measure/Manage release 2023-01; audit-log changes 2023-03; PDF added 2023-08. No document revision identifier is exposed | PDF read in full; landing page and audit log read in full; accepted with volatility warning | Optional implementation actions and evidence artifacts, not mandatory controls |
++| `NIST-PLAYBOOK-AUDIT` | Playbook Audit Log — <https://airc.nist.gov/airmf-resources/playbook/audit-log/> | Last listed entry 2023-08 | Read in full; accepted for provenance only | Dates the visible Playbook change history and exposes its revision-identification limitation |
++| `GOOGLE-SRE-SLO-2018` | *Implementing SLOs*, Google SRE Workbook — <https://sre.google/workbook/implementing-slos/> | Workbook copyright 2018; chapter page has no revision date | Read in full; accepted | User-centric SLIs, error-budget policy, SLO ownership, dependency boundaries, and review practices |
++| `GOOGLE-CLOUD-MLOPS-2024` | *MLOps: Continuous delivery and automation pipelines in machine learning* — <https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning> | Last reviewed and updated 2024-08-28 UTC | Read in full; accepted within stated scope | Predictive-ML CI/CD/continuous-training controls, metadata, validation, monitoring, and rollback context |
++| `SLSA-1.2` | SLSA v1.2 specification — <https://slsa.dev/spec/v1.2/> and Build requirements — <https://slsa.dev/spec/v1.2/build-requirements> | Version 1.2; pages do not state a publication date; official pages show 2026 copyright | Both pages read in full; accepted within artifact-build scope | Build provenance, digest binding, authenticity, control-plane generation, and build isolation |
++
++## Governance and operational accountability
++
++### Governance is a continuous organizational function
++
++- **Sourced fact:** AI RMF 1.0 is voluntary, rights-preserving, non-sector-specific, and use-case agnostic. It organizes outcomes into Govern, Map, Measure, and Manage; Govern is cross-cutting, and risk management is intended to be continuous across the AI lifecycle. The functions and categories are not a checklist or a required execution order. [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1)
++- **Sourced fact:** The framework calls for documented roles and communication lines, executive responsibility for development and deployment risk decisions, an AI-system inventory, periodic review, third-party risk policies, incident practices, and safe decommissioning. [NIST AI RMF 1.0, Govern 1, 2, 4, and 6](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf)
++- **Sourced fact:** NIST distinguishes the actors who build or use models from actors who verify and validate them as a sound lifecycle arrangement; test, evaluation, verification, and validation (TEVV) continue into operations through monitoring, incident/error tracking, periodic updates, and recalibration. [NIST AI RMF 1.0, Figure 3 and Appendix A](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf)
++- **Handbook synthesis:** A platform should expose governance as an operable control plane, not a policy portal. Its minimum decision artifacts are an inventory entry, intended-use and prohibited-use record, risk owner, technical owner, evidence bundle, approval decision, residual-risk acceptance, deployment identity, monitoring plan, incident record, change history, and retirement decision. NIST supports the need for these outcomes but does not prescribe the database schema or tooling.
++
++### Risk tier determines control depth, not whether controls exist
++
++- **Sourced fact:** NIST treats risk tolerance as contextual and changeable. Higher-impact risks call for more urgent and thorough treatment; systems with unacceptable risk should cease development or deployment safely until risk can be managed. Residual risk should be documented for downstream users. [NIST AI RMF 1.0, Sections 1.2.2–1.2.4](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf)
++- **Sourced fact:** The Playbook suggests assigning systems to consistent organizational risk scales, allocating oversight according to risk, defining approval/conditional-approval/disapproval paths, and authorizing responsible actors to modify, limit, bypass, or stop a system. These are optional suggestions, not NIST mandates. [NIST AI RMF Playbook](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
++- **Handbook synthesis:** A risk tier should select evidence depth, reviewer independence, approval authority, monitoring cadence, rollback/bypass readiness, and retention rules. It should not become a waiver for inventory, ownership, version identity, or incident traceability.
++
++### Accountability must attach to decisions and transitions
++
++- **Sourced fact:** The AI RMF assigns executive leadership responsibility for AI development and deployment risk decisions and expects roles, responsibilities, and communication paths to be documented. Manage includes decisions on whether development or deployment should proceed, prioritized responses, assigned deactivation responsibility, post-deployment monitoring, incident response, recovery, change management, and decommissioning. [NIST AI RMF 1.0, Govern 2.1/2.3 and Manage 1/2/4](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf)
++- **Handbook synthesis:** “The ML team owns the model” is too coarse to operate. Each transition needs a named decision owner: accept use case, admit data, approve model evidence, authorize deployment, consume risk, invoke rollback or bypass, communicate an incident, and retire the system. One person may hold several roles in a small organization, but the decisions remain distinguishable and auditable.
++
++## Monitoring and lifecycle controls
++
++### Monitoring covers system behavior, model behavior, context, and impact
++
++- **Sourced fact:** NIST calls for pre-deployment and regular in-operation testing, production monitoring of system behavior and components, tracking of known and emergent risks, feedback and appeal mechanisms, safety/security evaluation, and documented post-deployment response and recovery. [NIST AI RMF 1.0, Measure 1–4 and Manage 4](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf)
++- **Sourced fact:** The Playbook suggests comparing pre-deployment and production metrics, watching input/output distribution differences and anomalies, collecting ground truth when available, defining post-alert action, logging out-of-bound use, monitoring third-party and pretrained components, and retaining error, near-miss, change, and version histories. [NIST AI RMF Playbook, Measure 2.4 and Manage 3–4](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
++- **Sourced fact:** Google Cloud’s predictive-ML guidance adds data/schema validation, model-versus-baseline and segment evaluation, infrastructure/API compatibility testing, canary or A/B validation, pipeline metadata, pointers to prior models, and monitoring that can trigger investigation or retraining. [Google Cloud MLOps guidance](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++- **Handbook synthesis:** Monitoring should preserve four separate signal families: service health, pipeline/data health, model behavior, and governance/impact signals. Combining them into one “model health” score hides ownership and response boundaries.
++
++### Retraining is not deployment authorization
++
++- **Sourced fact:** Google Cloud describes triggers for training, automated data and model validation, model registry publication, and progressive environment promotion. Its example includes reviewer approval before pre-production and a manual production promotion after successful pre-production runs. [Google Cloud MLOps guidance, levels 1 and 2](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++- **Sourced fact:** NIST Manage 1.1 requires a determination about whether intended purposes and objectives are met and whether development or deployment should proceed. [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1)
++- **Handbook synthesis:** A continuous-training trigger may create a candidate. Promotion remains a separate, policy-governed decision. Automation may execute that policy, but it must not silently collapse training success, validation success, risk acceptance, and deployment approval into one event.
++
++### Retirement is part of reliability and governance
++
++- **Sourced fact:** NIST includes safe decommissioning, procedures to supersede/disengage/deactivate systems that violate intended use, post-deployment monitoring, incident response, recovery, and change management. The Playbook further suggests dependency analysis, retention for forensic/legal review, redeployment criteria, and tracking downstream effects. [NIST AI RMF 1.0, Govern 1.7 and Manage 2.4/4.1](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf) and [Playbook](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
++- **Handbook synthesis:** An architecture is incomplete if it can deploy but cannot identify dependents, bypass or roll back safely, preserve decision evidence, and retire the model, endpoint, features, and scheduled training jobs coherently.
++
++## Reliability and SLO boundaries
++
++### Begin at the user journey, then allocate component objectives
++
++- **Sourced fact:** Google defines an SLI as a service-level measurement and an SLO as a target reliability level. Its implementation guidance prioritizes user-centric whole-stack outcomes and identifies availability, latency, quality, pipeline freshness, pipeline correctness, pipeline coverage, and storage durability as candidate SLI types. [Google SRE, Implementing SLOs](https://sre.google/workbook/implementing-slos/)
++- **Sourced fact:** Google recommends a small set of critical SLI types, documents the measurement implementation and its blind spots, and warns that dependency calculations can be misleading when components share control planes or failure domains. Critical dependencies need owned objectives compatible with the dependent user journey. [Google SRE, worked example and dependency modeling](https://sre.google/workbook/implementing-slos/)
++- **Handbook synthesis:** For online inference, a user-journey SLO may depend on endpoint availability/latency plus outcome quality. For batch or streaming ML, freshness, coverage, and correctness can be closer to user impact than job success. Component objectives are diagnostic and contractual boundaries; they do not replace the end-to-end objective.
++
++### Error budgets are decision policy, not dashboard decoration
++
++- **Sourced fact:** Google’s approach requires stakeholder-approved SLOs, an owner empowered to trade feature velocity against reliability, a written error-budget policy, and a refinement process. A policy may prioritize reliability work or freeze changes when the budget is exhausted; the document should record authors, reviewers, approvers, review date, measurement method, rationale, response actions, and escalation path. [Google SRE, Getting Started and Establishing an Error Budget Policy](https://sre.google/workbook/implementing-slos/)
++- **Handbook synthesis:** An ML platform should connect budget consumption to deploy controls through an explicit policy. Whether model-quality or risk signals participate in that policy depends on the use case; the SRE source does not prescribe AI-specific error budgets.
++
++### Reliability, model quality, and trustworthiness remain distinct
++
++- **Sourced fact:** NIST treats validity/reliability, safety, security/resilience, accountability/transparency, explainability/interpretability, privacy, and fairness as interacting trustworthiness characteristics. It warns that addressing one characteristic does not establish the others. [NIST AI RMF 1.0, Section 3](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf)
++- **Handbook synthesis:** Keep three decision layers visible: service SLOs answer whether the delivery system met a user-facing reliability promise; model acceptance criteria answer whether a candidate met bounded technical and product requirements; risk controls answer whether the system may operate in the intended context. A single green dashboard cannot entail all three.
++
++## System-of-record integrity and supply-chain controls
++
++### Canonical records need linked identities
++
++- **Sourced fact:** Google Cloud’s MLOps metadata example records pipeline/component versions, execution times and actor, parameters, produced artifacts, prior-model pointers, and evaluation metrics to support lineage, reproducibility, comparison, debugging, and rollback. [Google Cloud MLOps guidance, Metadata management](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++- **Sourced fact:** NIST’s transparency and accountability treatment spans design decisions, training data, model training, intended use, deployment, post-deployment decisions, and the actors who made them. The Playbook suggests inventories, audit logs, data provenance, deployment/change histories, and secure repositories for evidence. [NIST AI RMF 1.0, Section 3.4](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf) and [Playbook](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
++- **Handbook synthesis:** Each fact class should have one canonical system of record and stable identifiers, while dashboards and catalogs remain derived views. A deployment record should link immutable or versioned identities for source, training/evaluation data references, feature definitions, pipeline, environment, model artifact, evaluation bundle, risk decision, approver, runtime configuration, and rollback target. The sources support traceability outcomes but do not mandate this exact schema.
++
++### Build provenance secures a narrower boundary than ML lineage
++
++- **Sourced fact:** SLSA v1.2 Build requires provenance that identifies an output package by cryptographic digest and describes how it was produced. Higher levels add verifiable authenticity, control-plane-generated provenance resistant to tenant tampering, hosted builds, and build isolation. [SLSA v1.2 Build requirements](https://slsa.dev/spec/v1.2/build-requirements)
++- **Sourced fact:** SLSA explicitly scopes the Build track to software package production and separates producer responsibilities from build-platform responsibilities. It also allows resolved-dependency provenance to be incomplete. [SLSA v1.2](https://slsa.dev/spec/v1.2/) and [Build requirements](https://slsa.dev/spec/v1.2/build-requirements)
++- **Handbook synthesis:** Apply SLSA directly to pipeline packages, serving binaries, containers, and packaged model artifacts when they fit the specification’s artifact model. Do not claim that a SLSA level proves dataset suitability, model validity, approval legitimacy, or complete ML lineage. Those require linked data/model/governance records and independent controls.
++
++### Third-party ML components need both provenance and operational contingency
++
++- **Sourced fact:** NIST Govern 6 and Manage 3 call for policies, monitoring, controls, and contingency processes for third-party data, software, AI systems, and pretrained models. [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1)
++- **Handbook synthesis:** Procurement evidence, license/usage constraints, vulnerability and change notification, version pinning, integrity verification, evaluation in the local context, fallback behavior, and exit/decommission plans belong to one third-party control chain. Provenance answers where an artifact came from; it does not answer whether the organization should use it.
++
++## Control model for Chapter 1 synthesis
++
++| Decision boundary | Minimum evidence | Named decision | Runtime consequence |
++| --- | --- | --- | --- |
++| Use-case intake | Intended context, affected parties, non-AI alternative, risk tolerance | Proceed, narrow, or reject | Inventory entry and control tier |
++| Candidate admission | Versioned lineage references, validation results, known limits | Accept for evaluation or reject | Candidate becomes eligible for promotion only |
++| Production promotion | Service tests, model acceptance evidence, risk decision, rollback target | Approve, conditionally approve, or reject | Deployment identity and monitoring plan activated |
++| In-operation review | SLO state, pipeline/data signals, model/impact signals, incidents, feedback | Continue, constrain, retrain, rollback, bypass, or stop | Change record and accountable action |
++| Retirement | Dependents, retention duties, replacement/fallback, residual risk | Retire or extend under conditions | Endpoint, pipeline, features, and schedules deactivated coherently |
++
++**Handbook synthesis:** The table is an original architecture pattern derived from the cited NIST, Google, and SLSA controls. It is not a quoted standard, and the evidence depth and approval authority must be calibrated to the deployment context and applicable law.
++
++## Applicability limits
++
++- AI RMF 1.0 and the Playbook are voluntary and outcome-focused. They do not substitute for sector law, regulation, contractual duties, or domain safety standards. [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1)
++- The NIST landing page says AI RMF 1.0 is being revised, and the Playbook says it will be updated after that revision. Chapter 1 should version-pin claims to 1.0 and repeat the source review before publication and when NIST announces a revision. [NIST status page](https://www.nist.gov/itl/ai-risk-management-framework) and [Playbook landing page](https://airc.nist.gov/airmf-resources/playbook/)
++- Google’s SLO guidance is practitioner guidance from Google, not a regulatory standard. Its example thresholds and review cadences are examples, not universal targets. [Google SRE](https://sre.google/workbook/implementing-slos/)
++- Google Cloud’s MLOps article states that it applies primarily to predictive AI systems. Generative and agentic systems require additional evaluation, safety, and interaction controls not established by that source. [Google Cloud MLOps guidance](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++- SLSA v1.2 Build addresses artifact-production integrity. It does not certify model behavior, data rights, data representativeness, or AI risk acceptance. [SLSA v1.2 Build requirements](https://slsa.dev/spec/v1.2/build-requirements)
++- NIST does not prescribe a specific model registry, metadata database, approval engine, SLO product, or ownership matrix. Concrete tool choices in Chapter 1 must be labeled architecture examples or later-chapter decisions.
++
++## Source candidates accepted and rejected
++
++### Accepted
++
++- **NIST AI RMF 1.0:** accepted as the primary cross-sector governance framework because it directly defines lifecycle risk outcomes, accountability, monitoring, third-party risk, and decommissioning. Version-pin to 1.0 because revision is in progress.
++- **Current NIST AI RMF Playbook:** accepted for concrete implementation options and evidence questions. Treat every action as voluntary and selectable; do not convert the Playbook into a compliance checklist.
++- **Google SRE Workbook, Implementing SLOs:** accepted for reliability practice, user-centric SLI design, ownership, error-budget decisions, and dependency reasoning. Do not generalize its examples into required targets.
++- **Google Cloud MLOps continuous-delivery article:** accepted for predictive-ML lifecycle and metadata examples. Constrain claims to its stated predictive-AI scope and to Google’s documented pattern.
++- **SLSA v1.2 Build requirements:** accepted for software/artifact supply-chain integrity. Constrain its role to build provenance and isolation; connect rather than equate it with ML lineage.
++
++### Rejected or deferred
++
++- **SLSA v1.1:** rejected because v1.2 is the approved version exposed by the official specification site on the access date.
++- **NIST SP 800-218 SSDF 1.1:** reviewed as an official candidate at <https://csrc.nist.gov/pubs/sp/800/218/final> and deferred from central Chapter 1 claims. It is broad secure-software-development guidance, while SLSA v1.2 more directly supports the narrow artifact-provenance boundary needed here. SSDF remains suitable for a later secure-development chapter.
++- **NIST AI RMF Generative AI Profile (NIST AI 600-1):** deferred because Chapter 1 establishes cross-cutting architecture foundations; the profile’s generative-AI-specific risks belong in a dedicated GenAI/LLMOps treatment. The official NIST program page records its 2024-07-26 release: <https://www.nist.gov/itl/ai-risk-management-framework>.
++- **Vendor claims that a registry, monitoring product, or managed AI service creates “governance” by itself:** rejected as unable to support a system-level accountability claim. Product documentation can establish product behavior only and must be version-pinned in later tool-selection work.
++- **Unattributed blogs and search summaries:** rejected because they cannot carry normative, security, safety, or version-sensitive Chapter 1 claims.
++
++## Unresolved conflicts and research gaps
++
++- **Revision conflict:** AI RMF 1.0 is the published framework, but NIST states it is under revision. The current Playbook is aligned to 1.0 and will be updated afterward. Resolution: cite 1.0 explicitly, record the access date, and keep Chapter 1 below `Verified` until a pre-publication freshness review confirms whether the revision has landed. [NIST status page](https://www.nist.gov/itl/ai-risk-management-framework)
++- **Playbook version ambiguity:** the audit log’s last visible entry is August 2023, while the Playbook is described as living and the download lacks a visible revision identifier. Resolution: cite both the stable landing page and direct PDF, record access date, and treat action-level content as volatile. [Playbook audit log](https://airc.nist.gov/airmf-resources/playbook/audit-log/)
++- **SLO-to-risk coupling:** neither NIST nor Google defines a universal formula for translating AI harm, quality degradation, or drift into an error budget. Resolution: present any coupling as a use-case-specific architecture decision, not a sourced standard.
++- **Delayed ground truth:** the sources recognize ongoing measurement but do not supply one architecture for labels that arrive late, are sparse, or do not arrive. Chapter 1 should state the gap and avoid presenting proxy drift metrics as proof of outcome quality.
++- **Shared system-of-record schema:** the sources require or recommend traceability outcomes but do not define a common enterprise schema spanning data, model, deployment, risk, and incident records. The proposed linked-identity pattern is synthesis and needs technical review.
++- **Legal applicability:** this report does not determine which laws or sector rules apply to a deployment. That analysis requires jurisdiction, domain, affected parties, data categories, and intended use.
++
++## Chapter 1 claims ready for synthesis
++
++1. **Sourced fact:** AI governance is continuous and cross-cutting across the lifecycle; it includes explicit roles, inventories, measurement, response, third-party controls, and retirement. [`NIST-AI-RMF-2023`](https://doi.org/10.6028/NIST.AI.100-1)
++2. **Handbook synthesis:** Reliability and AI risk are coupled control systems with separate evidence and decision semantics; neither substitutes for the other.
++3. **Sourced fact:** User-centric SLOs and a stakeholder-approved error-budget policy turn reliability measurements into prioritization and change decisions. [`GOOGLE-SRE-SLO-2018`](https://sre.google/workbook/implementing-slos/)
++4. **Handbook synthesis:** Continuous training produces a candidate; a separate policy-governed promotion decision authorizes production use.
++5. **Sourced fact:** Predictive-ML operations require validation and monitoring of code, data, models, pipelines, serving behavior, metadata, and production performance. [`GOOGLE-CLOUD-MLOPS-2024`](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++6. **Handbook synthesis:** One canonical record per fact class, joined by immutable/versioned identities, is the practical boundary for auditability and recovery.
++7. **Sourced fact:** SLSA Build provenance can bind a software artifact digest to how it was produced and, at higher levels, to authenticated and isolated build infrastructure. [`SLSA-1.2`](https://slsa.dev/spec/v1.2/build-requirements)
++8. **Handbook synthesis:** Build provenance is one link in ML supply-chain integrity; it does not establish data fitness, model quality, or deployment approval.
++
++## Changelog
++
++### 2026-08-23
++
++- Normalized first-use SLI and SLO expansions to the controlled glossary spellings after Task 4 review.
++- Created the Chapter 1 governance and reliability research report.
++- Fully reviewed the AI RMF 1.0, current Playbook, Google SRE SLO chapter, Google Cloud predictive-MLOps article, and SLSA v1.2 overview and Build requirements.
++- Added fact-versus-synthesis labels, exact URLs and dates, source acceptance decisions, applicability limits, revision conflicts, and unresolved evidence gaps.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/sources/research/chapter-01-platform-strategy.md mlops/architect-handbook/sources/research/chapter-01-platform-strategy.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-4-before/handbook/sources/research/chapter-01-platform-strategy.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/sources/research/chapter-01-platform-strategy.md	2026-08-23 14:37:10
+@@ -0,0 +1,224 @@
++# Chapter 1 Platform Strategy Research
++
++**Research date:** 2026-08-23  
++**Accessed date for every web source:** 2026-08-23  
++**Scope:** Platform and product-team ownership, automation maturity, build-versus-buy, managed-versus-self-hosted choices, and Senior/Staff/Principal decision scope  
++**Evidence posture:** Primary or authoritative sources for factual claims; cross-source architectural judgments labeled as handbook synthesis
++
++## Table of contents
++
++1. [Methodology](#methodology)
++2. [Source register](#source-register)
++3. [Evidence findings](#evidence-findings)
++4. [Platform and product-team responsibility model](#platform-and-product-team-responsibility-model)
++5. [Build, buy, managed-service, and self-hosted decisions](#build-buy-managed-service-and-self-hosted-decisions)
++6. [Senior, Staff, and Principal decision scope](#senior-staff-and-principal-decision-scope)
++7. [Applicability limits](#applicability-limits)
++8. [Unresolved conflicts and bounded resolutions](#unresolved-conflicts-and-bounded-resolutions)
++9. [Accepted and rejected source candidates](#accepted-and-rejected-source-candidates)
++10. [Chapter 1 drafting guidance](#chapter-1-drafting-guidance)
++11. [Changelog](#changelog)
++
++## Methodology
++
++The research answered four questions:
++
++1. Which system capabilities distinguish manual ML delivery from pipeline and continuous integration/continuous delivery (CI/CD) automation?
++2. Which responsibilities belong with a reusable platform, a workload or product team, and an underlying capability provider?
++3. Which constraints should govern build, buy, managed-service, and self-hosted decisions?
++4. How should the decision scope change from Senior to Staff to Principal without implying unsupported organizational scale?
++
++Searches were restricted to first-party cloud architecture documentation, Cloud Native Computing Foundation (CNCF) working-group material, and the Team Topologies authors' site. Nine key pages were read in full. Search snippets were discovery aids only; no claim below relies on a snippet. Vendor guidance is treated as authoritative for the vendor's stated design model, not as neutral proof that its service is cheaper or more reliable in every workload.
++
++Each finding carries one of these labels:
++
++- **Sourced fact:** A close paraphrase entailed by the linked source.
++- **Handbook synthesis:** A decision rule derived from multiple cited sources and explicit assumptions.
++- **Source-position claim:** What a vendor or organization recommends; it is not asserted as a universal outcome.
++
++No quantitative performance, cost, productivity, or adoption claim was accepted. The report records source dates where the publisher exposes them and records `date not stated` where it does not.
++
++## Source register
++
++| Key | Source and exact direct URL | Publisher | Publication or update date | Read status | Primary use and limit |
++| --- | --- | --- | --- | --- | --- |
++| `PS-GCP-MLOPS-2024` | *MLOps: Continuous delivery and automation pipelines in machine learning* — <https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning> | Google Cloud Architecture Center | Last reviewed and updated 2024-08-28 | Read in full | Defines predictive-ML automation levels and required pipeline capabilities. Google explicitly scopes the document primarily to predictive AI. |
++| `PS-AWS-ML-LENS-2025` | *Machine Learning Lens* — <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/machine-learning-lens.html> | Amazon Web Services | Publication date 2025-11-19 | Read in full | Establishes the lens audience, scope, and distinction from the Generative AI Lens. AWS-specific implementation advice is not vendor-neutral evidence. |
++| `PS-AWS-DESIGN-2025` | *Well-Architected machine learning design principles* — <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/design-principles.html> | Amazon Web Services | Part of the 2025-11-19 Machine Learning Lens; page-specific date not stated | Read in full | Supports ownership, protection, resiliency, reusability, reproducibility, automation, resource analysis, and continuous improvement. |
++| `PS-AWS-BUILD-BUY-2025` | *MLCOST02-BP02 Perform a tradeoff analysis between custom and pre-trained models* — <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/mlcost02-bp02.html> | Amazon Web Services | Part of the 2025-11-19 Machine Learning Lens; page-specific date not stated | Read in full | Supplies a requirements and total-cost comparison frame. Product recommendations apply to AWS and require independent workload validation. |
++| `PS-AWS-MANAGED-2025` | *MLCOST01-BP02 Use managed services to reduce total cost of ownership (TCO)* — <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/mlcost01-bp02.html> | Amazon Web Services | Part of the 2025-11-19 Machine Learning Lens; page-specific date not stated | Read in full | Identifies infrastructure, personnel, maintenance, scaling, upgrades, utilization, and pricing model as cost inputs. Its comparative cost conclusion is not adopted without a disclosed workload model. |
++| `PS-AZURE-AI-2026` | *AI workloads on Azure* — <https://learn.microsoft.com/en-us/azure/well-architected/ai/get-started> | Microsoft | Last updated 2026-05-07 | Read in full | Frames SaaS, platform as a service (PaaS), and custom choices using data control, customization, upkeep, performance, expertise, security, and compliance. Excludes low-code/no-code and high-performance-computing workloads. |
++| `PS-AZURE-WORKLOADS-2025` | *Azure Well-Architected Framework workloads* — <https://learn.microsoft.com/en-us/azure/well-architected/workloads> | Microsoft | Last updated 2025-08-12 | Read in full | Defines workload-team and centralized-team responsibilities, shared obligations, constraints, service expectations, budget, and change communication. Azure implementation examples are optional, not required for the responsibility model. |
++| `PS-CNCF-PLATFORMS-2023` | *CNCF Platforms White Paper* — <https://tag-app-delivery.cncf.io/whitepapers/platforms/>; version record — <https://github.com/cncf/tag-app-delivery/blob/main/platforms-whitepaper/README.md> | CNCF TAG App Delivery Platforms Working Group | Version 1 completed March 2023; web edition is maintained | Read in full | Supports platform-as-product, self-service, optional and composable capabilities, user research, capability-provider boundaries, and a thin integration layer. Written for cloud-native application delivery, so ML-specific extensions are synthesis. |
++| `PS-TT-TVP` | *What is a Thinnest Viable Platform (TVP)?* — <https://teamtopologies.com/key-concepts-content/what-is-a-thinnest-viable-platform-tvp> | Team Topologies authors | Page shows 7 November; year not stated | Read in full | First-party explanation of the thinnest viable platform, developer experience, and platform-as-product. It is practitioner guidance rather than a standard. |
++
++## Evidence findings
++
++### Automation maturity describes delivery capability, not organizational prestige
++
++**Sourced fact:** Google separates manual ML delivery, automated ML pipelines, and automated CI/CD for pipeline changes. Pipeline automation adds validation, triggers, metadata, reusable components, and recurrent execution; CI/CD automation adds build, test, deployment, registry, orchestration, and monitoring stages. The same source states that a manual process can be sufficient where models change or retrain infrequently and recommends gradual adoption rather than an immediate jump between levels. [Google Cloud automation guidance](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++
++**Sourced fact:** In Google's model, ML continuous integration tests more than source code: it also validates data, schemas, models, component outputs, and pipeline integration. Continuous delivery concerns both pipeline implementations and the prediction service they produce, while continuous training covers retraining and serving. [Google Cloud automation guidance](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning)
++
++**Sourced fact:** AWS's design principles join ownership and automation with protection, recoverability, reusability, reproducibility, resource trade-off analysis, cost awareness, and continuous improvement. [AWS ML design principles](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/design-principles.html)
++
++**Handbook synthesis:** Automation is one capability in a workload design; it does not by itself establish governance or reliability. **Assumption:** An automated pipeline can exist without documented accountability, risk decisions, user-journey service objectives, incident and recovery ownership, or retirement controls described in the sibling [Chapter 1 governance and reliability research](chapter-01-governance-reliability.md). This inference therefore treats automation evidence and governance or reliability evidence as separate.
++
++**Handbook synthesis:** Chapter 1 should use the Google levels as an automation-capability diagnostic. It should not turn them into a universal enterprise-maturity score. The decision question is: which manual transition creates unacceptable release, traceability, recovery, or operational risk for this workload's change frequency and criticality?
++
++### A platform is a product interface over reusable capabilities
++
++**Sourced fact:** The CNCF paper defines a cloud-native platform as an integrated collection of capabilities presented around user needs. It emphasizes consistent interfaces, self-service, documentation and onboarding, optional composition, secure defaults, and reduced cognitive load. It also says the capability implementation may belong to a managed provider or another internal team while the platform team owns the interface and experience. [CNCF Platforms White Paper](https://tag-app-delivery.cncf.io/whitepapers/platforms/)
++
++**Sourced fact:** CNCF assigns the platform team responsibility for user research, roadmap planning, and interfaces such as portals, application programming interfaces (APIs), documentation, templates, and command-line tools. It recommends focusing platform investment on common requirements and relying on external or internal capability providers where appropriate. [CNCF Platforms White Paper](https://tag-app-delivery.cncf.io/whitepapers/platforms/)
++
++**Sourced fact:** Team Topologies describes a thinnest viable platform as the smallest set of APIs, documentation, and tools needed to accelerate consuming teams; in a constrained environment it can be as small as guidance naming approved provider services. The authors pair thinness with platform-as-product and consuming teams as internal customers. [Team Topologies TVP explanation](https://teamtopologies.com/key-concepts-content/what-is-a-thinnest-viable-platform-tvp)
++
++**Handbook synthesis:** An ML platform should begin as a contract, not a tool catalog. The contract names supported journeys, interfaces, service expectations, guardrails, telemetry, escalation paths, and the boundary between platform operation and workload operation. Implementation can combine managed services, open-source components, and custom adapters without exposing every provider detail to users.
++
++### Workload outcome ownership remains with the product team
++
++**Sourced fact:** Microsoft defines a workload as application resources, custom code, AI models, data, and supporting infrastructure that achieve a business outcome. The workload team focuses on that outcome; centralized teams provide shared services, guidance, and guardrails across workloads. [Azure workload guidance](https://learn.microsoft.com/en-us/azure/well-architected/workloads)
++
++**Sourced fact:** Microsoft says the direct workload team handles most requirements, some responsibilities are joint, and some implementation choices can be exclusively centralized. It requires organizations to map responsibilities based on topology, workload type, and criticality rather than assuming the guidance assigns each action to a named job title. [Azure workload guidance](https://learn.microsoft.com/en-us/azure/well-architected/workloads)
++
++**Sourced fact:** Shared-responsibility conversations should make constraints and service expectations explicit, including compliance, networking, observability, performance, service objectives, technical support, budgets, and change control. Outsourcing a component does not remove the workload team's obligation to deliver its outcome. [Azure workload guidance](https://learn.microsoft.com/en-us/azure/well-architected/workloads)
++
++**Handbook synthesis:** A central platform can own a safe delivery path without owning the product's prediction policy, business acceptance criteria, or user harm. Product teams consume platform guarantees and retain accountability for the workload behavior they release.
++
++## Platform and product-team responsibility model
++
++The following is **handbook synthesis** from the [CNCF Platforms White Paper](https://tag-app-delivery.cncf.io/whitepapers/platforms/), [Azure workload guidance](https://learn.microsoft.com/en-us/azure/well-architected/workloads), [Google Cloud automation guidance](https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning), and [AWS ML design principles](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/design-principles.html). It is a starting point for a responsibility assignment matrix, not a universal organization chart.
++
++| Boundary | Platform team accountable for | Product or workload team accountable for | Shared decision or required handshake |
++| --- | --- | --- | --- |
++| User journey | Supported golden paths, interfaces, documentation, onboarding, deprecation policy, and feedback loop | Selecting an appropriate supported path or documenting an exception | Adoption criteria, exception duration, and migration plan |
++| Infrastructure and runtime | Reusable provisioning contract, provider integration, default isolation, baseline telemetry, and platform service objectives | Workload sizing inputs, runtime-specific configuration, load profile, and application failure behavior | Capacity limits, cost allocation, region constraints, and support hours |
++| ML pipeline | Reusable orchestration, artifact interfaces, validation hooks, execution metadata, and deployment mechanisms | Feature logic, training code, evaluation policy, candidate selection, and workload-specific release thresholds | Required gates, override authority, rollback trigger, and evidence retained |
++| Security and governance | Organization guardrails, identity integration, policy enforcement points, audit export, and approved capability catalog | Data classification, lawful-use inputs, model and dependency risk assessment, and adherence within the workload | Control ownership, exception approval, incident coordination, and audit evidence |
++| Reliability and operations | Platform telemetry, dependency status, platform runbooks, recovery objectives, and breaking-change communication | End-to-end workload service objectives, application telemetry, workload runbooks, and user-impact response | Alert routing, incident command, dependency failure behavior, and recovery testing |
++| Product outcome | Platform adoption and capability health signals | Business objective, user experience, model behavior, acceptance criteria, and outcome measurement | Whether a platform limitation changes or blocks the workload requirement |
++
++**Failure boundary:** If the model endpoint is healthy but predictions violate the product's acceptance policy, the product team owns the decision to stop or roll back the workload. If the shared deployment API violates its published contract, the platform team owns restoration of that capability. If a managed provider is causal, the internal owners still coordinate impact, workaround, escalation, and user communication according to the mapped obligations.
++
++## Build, buy, managed-service, and self-hosted decisions
++
++### What the official sources support
++
++**Source-position claim:** Microsoft advises evaluating fully managed software as a service (SaaS), PaaS, and custom solutions using business needs, data control, customization, upkeep, performance, expertise, security, and compliance. Its AI workload overview says prebuilt options can fit generic tasks, while business-specific data or compliance constraints can push toward custom work. [Azure AI workload guidance](https://learn.microsoft.com/en-us/azure/well-architected/ai/get-started)
++
++**Source-position claim:** AWS recommends comparing custom and pre-trained models using data availability, task specificity, performance requirements, expertise, development time, infrastructure, security, and long-term maintenance. It also identifies fine-tuning or transfer learning as intermediate choices rather than forcing a binary decision. [AWS custom-versus-pre-trained guidance](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/mlcost02-bp02.html)
++
++**Source-position claim:** AWS favors managed services and asks architects to include infrastructure, operational personnel, maintenance, scaling, upgrades, workload utilization, and pricing commitments in total cost of ownership. The page's claim that AWS managed ML has lower total cost than self-managed AWS options is vendor guidance; the page does not expose a reproducible workload model, so this report does not generalize that conclusion. [AWS managed-service cost guidance](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/mlcost01-bp02.html)
++
++**Sourced fact:** CNCF recommends a thin platform layer over internal or external capability providers, while keeping platform offerings optional and composable so teams can operate a missing specialized capability themselves. It prioritizes common, undifferentiated capabilities over one-team features. [CNCF Platforms White Paper](https://tag-app-delivery.cncf.io/whitepapers/platforms/)
++
++### Decision sequence
++
++The following sequence is **handbook synthesis**. Apply it per capability, not once for the entire platform.
++
++1. **State the outcome and acceptance envelope.** Record functional need, data sensitivity, regulatory and residency constraints, latency and throughput profile, availability and recovery objectives, integration surfaces, and evidence required for release.
++2. **Classify differentiation.** Treat an ordinary capability such as artifact storage or job scheduling differently from proprietary decision logic or a workload-specific control boundary. A capability can be common in one organization and differentiating in another.
++3. **Evaluate four implementation modes.** Compare external SaaS/API, managed cloud service, self-hosted third-party software, and custom implementation. Hybrid composition is valid.
++4. **Model full lifecycle burden.** Include acquisition, integration, identity and network controls, migration, upgrades, patching, on-call, incident handling, capacity engineering, observability, audit evidence, data movement, support, training, and retirement.
++5. **Test control and exit.** Document data ownership, artifact and metadata export, interface portability, retraining or replay feasibility, contractual support, failure isolation, and a credible replacement path.
++6. **Prototype the riskiest assumption.** Use representative data and operational constraints to test the requirement that most affects the decision. Avoid using a feature checklist as proof of workload fitness.
++7. **Record the decision.** An architecture decision record should name the owner, assumptions, accepted trade-offs, rejected options, evidence, review trigger, and sunset or reconsideration condition.
++
++### Mode comparison
++
++| Mode | Select when evidence shows | Costs and risks to expose | Required exit evidence |
++| --- | --- | --- | --- |
++| External SaaS or model API | The capability is not differentiating, service behavior fits the workload, and contractual controls satisfy the risk envelope | Provider concentration, opaque implementation, data handling, unit economics, quotas, regional availability, and provider change | Exportable data and logs, substitutable interface, fallback behavior, and contract termination plan |
++| Managed cloud service | The service removes operational work while meeting integration, reliability, governance, and cost requirements | Cloud coupling, service limits, shared-responsibility gaps, pricing model, region constraints, and constrained customization | Artifact and metadata export, infrastructure replacement path, dependency inventory, and tested restore or redeploy procedure |
++| Self-hosted third-party software | Control, portability, extension, or deployment constraints justify owning operations | Upgrade and patch burden, specialized staffing, scaling, security response, compatibility, and on-call load | Reproducible deployment, versioned configuration, backup and restore, upgrade path, and support contingency |
++| Custom implementation | The capability is materially differentiating or no available option meets a documented hard requirement | Product roadmap burden, reliability engineering, security ownership, opportunity cost, adoption, and long-term maintenance | Stable interface, component boundaries, maintained documentation, succession plan, and retirement strategy |
++
++**Decision:** Prefer the thinnest composition that satisfies measured workload requirements and preserves accountable ownership.
++
++**Assumptions:** The organization has identified the workload outcome, control requirements, owners, and lifecycle cost categories. The decision is reviewed when those assumptions change.
++
++**Trade-off:** A thinner managed composition can reduce internal operations but increase provider dependency; a thicker self-hosted or custom composition can increase control but transfers lifecycle and incident obligations to internal teams.
++
++## Senior, Staff, and Principal decision scope
++
++This section is **handbook synthesis**. The levels describe decision horizon and organizational reach, not team size or title equivalence across employers.
++
++| Scope | Decision focus | Evidence expected | Failure to avoid |
++| --- | --- | --- | --- |
++| Senior | One workload or platform capability: interface, pipeline gate, rollout, runbook, service objective, and operational readiness | Representative tests, dependency contract, cost inputs, security review, rollback proof, and an architecture decision record | Shipping a locally functional component that has no support boundary, telemetry, or recovery path |
++| Staff | A cross-team platform journey or capability portfolio: reusable contract, exception model, provider comparison, migration, deprecation, and shared operations | Multiple workload requirements, adoption and support evidence, cross-team responsibility map, reliability and cost trade-offs, and provider exit analysis | Standardizing a local preference that shifts cognitive or operational burden onto many teams |
++| Principal | Enterprise platform boundaries and multi-year evolution: investment allocation, operating model, systemic risk, vendor concentration, governance interfaces, and portfolio retirement | Strategic constraints, scenario analysis, organization-wide dependency and risk view, funding and capability model, transition states, and decision-review cadence | Optimizing one platform layer while creating enterprise lock-in, fragmented accountability, or an unfunded operating obligation |
++
++## Applicability limits
++
++- Google labels its automation article as primarily applicable to predictive AI. Its level model does not fully cover foundation-model evaluation, prompt and retrieval changes, agent tool permissions, or provider model-version changes.
++- AWS states that its Machine Learning Lens covers broad ML workloads and distinguishes those from its Generative AI Lens. Generative AI design should therefore consult the separate lens before reusing predictive-ML controls unchanged.
++- Azure's AI overview excludes low-code/no-code and high-performance-computing workloads. Its build-versus-buy examples concern models and AI services, so this report extends the factors to platform capabilities only as synthesis.
++- CNCF's paper addresses cloud-native application delivery. Applying its platform interfaces to feature stores, registries, training pipelines, and inference services requires ML-specific control and lifecycle design.
++- Team Topologies material is an organizational design heuristic, not a compliance, reliability, or cost standard.
++- A managed service changes the operating boundary; it does not remove internal responsibility for workload outcomes, integration, monitoring, security configuration, incident coordination, or exit planning.
++- No source establishes a universally optimal team topology or implementation mode. Workload criticality, regulation, data location, existing skills, provider contracts, and portfolio economics can reverse a local decision.
++
++## Unresolved conflicts and bounded resolutions
++
++### Managed-service cost claims
++
++**Conflict:** AWS presents managed ML services as lowering total cost compared with self-managed AWS options, while the page does not provide a reproducible workload profile or cost calculation. CNCF recommends relying on providers where appropriate but also requires optionality and composability. Azure frames the choice as requirement-dependent.
++
++**Bounded resolution:** Retain AWS's list of cost inputs and operational burdens, but reject the comparative result as a general claim. Chapter 1 should require a workload-specific total-cost model and sensitivity analysis rather than state that one mode costs less.
++
++### Platform operation versus end-to-end product ownership
++
++**Conflict:** CNCF says platform users should not operate services offered by the platform. Microsoft says workload teams remain responsible for workload delivery even when components are outsourced.
++
++**Bounded resolution:** Separate the platform capability from the product workload. The platform or capability provider operates the offered service to its contract; the product team operates the end-to-end workload behavior and coordinates dependency failures. A responsibility map must name incident command, communications, and recovery authority.
++
++### Automation level as a target
++
++**Conflict:** Google's higher levels add automation needed for frequent pipeline changes, yet the same source permits a manual process for infrequently changed models and supports gradual adoption.
++
++**Bounded resolution:** Treat automation as a response to change rate and risk. The target is an acceptable control and recovery posture, not the highest numbered level.
++
++### Custom work for compliance
++
++**Conflict:** Azure suggests business-specific data or compliance requirements can favor custom models, while managed services may also provide relevant controls. The source does not establish that custom implementation is inherently compliant.
++
++**Bounded resolution:** Treat compliance as a set of testable requirements. Choose the mode whose control evidence, contractual terms, data paths, and operating model satisfy those requirements; do not use `custom` or `managed` as a proxy for compliance.
++
++## Accepted and rejected source candidates
++
++| Candidate | Decision | Reason |
++| --- | --- | --- |
++| Google Cloud MLOps automation guidance | ✅ Accepted | Official architecture guidance directly supports automation-capability and incremental-adoption claims; predictive-AI scope is explicit. |
++| AWS Well-Architected Machine Learning Lens | ✅ Accepted with vendor boundary | Official framework supports ownership, automation, lifecycle trade-offs, and evaluation criteria. AWS service outcomes are not generalized. |
++| Microsoft Azure Well-Architected AI and workload guidance | ✅ Accepted with scope limits | Official framework directly addresses AI implementation modes and centralized/workload shared responsibility. Azure examples are separated from the cloud-agnostic synthesis. |
++| CNCF Platforms White Paper | ✅ Accepted | Working-group publication directly supports platform-as-product, thin integration, self-service, composability, and capability-provider boundaries. Version provenance is available. |
++| Team Topologies thinnest viable platform page | ✅ Accepted as practitioner authority | It is a first-party explanation from the framework's authors and directly supports the TVP concept; it is not treated as a standard. |
++| AWS three-year lower-TCO comparison for SageMaker AI | ❌ Rejected as a quantitative conclusion | The documentation page exposes no reproducible workload assumptions, cost inputs, or calculation. Only the qualitative cost categories are retained. |
++| Kubernetes control-plane documentation | ❌ Rejected for this report | It is authoritative for Kubernetes component behavior but does not support organizational ownership or ML platform sourcing decisions. It belongs in architecture-plane research. |
++| MLflow tracking and model-registry documentation | ❌ Rejected for this report | It is suitable for product-behavior claims but does not provide a neutral platform/product ownership or build-versus-buy framework. It belongs in system-of-record research. |
++| CNCF guest blogs and vendor-sponsored AI platform posts | ❌ Rejected | They are weaker than the CNCF working-group white paper for the claims in scope and can blend community education with vendor positioning. |
++| Generic Linux Foundation platform-engineering articles | ❌ Rejected after comparison | No candidate found was more direct for the planned claims than the CNCF Platforms Working Group publication under the Linux Foundation umbrella. |
++| Google-linked press article about production model failure | ❌ Rejected | The planned automation claims are supported by Google's own architecture documentation, so a non-primary press source is unnecessary. |
++
++## Chapter 1 drafting guidance
++
++Use these as synthesis inputs, not copy-ready claims without labels:
++
++1. Open the ownership section with a failed handoff: a product team assumes the platform owns prediction quality while the platform team assumes it owns only endpoint health.
++2. Define three layers in the responsibility diagram: product workload, platform experience and contracts, and internal or external capability providers.
++3. Show that a golden path includes controls, evidence, telemetry, support, and rollback—not only templates.
++4. Present automation maturity beside workload change rate and criticality so readers do not equate a numbered level with organizational status.
++5. Make the build-versus-buy exercise compare four modes and require a full-lifecycle burden plus exit evidence.
++6. State role scope through decision horizon, cross-team reach, and reversibility rather than unsupported scale.
++7. Defer product-specific serving, registry, feature-store, and orchestration implementations to later chapters.
++
++## Changelog
++
++### 2026-08-23
++
++- Created the Chapter 1 platform-strategy research report from nine fully read official or authoritative pages.
++- Added claim-level fact and synthesis labels, exact source URLs, dates, applicability limits, unresolved conflicts, and source-candidate decisions.
++- Derived a bounded platform/product responsibility model, four-mode sourcing framework, and Senior/Staff/Principal decision-scope matrix without quantitative outcome claims.
++- Split the AWS-supported design-principles list from the architectural inference that automation alone does not evidence governance or reliability controls, and documented that inference's assumption.

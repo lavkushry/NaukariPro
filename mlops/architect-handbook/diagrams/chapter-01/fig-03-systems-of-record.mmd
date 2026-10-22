@@ -1,0 +1,95 @@
+flowchart LR
+  DataProducers["Data producers"]
+  WorkloadDataStore["Dataset and workload-data store<br/>versioned or immutable data boundary"]
+  RuntimeWorkload["Runtime workload"]
+  DeploymentController["Deployment controller"]
+  IncidentSignal["Incident signal"]
+
+  subgraph authorities["Named decision authority"]
+    ReleaseAuthority["Release authority"]
+    RiskAuthority["Risk authority"]
+    IncidentAuthority["Incident command authority"]
+    RetirementAuthority["Retirement authority"]
+  end
+
+  subgraph engineering["Engineering record authority"]
+    SourceConfiguration["Source and configuration record"]
+    DataFeature["Data and feature record"]
+    RunRecord["Run record"]
+    ArtifactRecord["Artifact record<br/>immutable digest"]
+    ModelRecord["Model record<br/>version identity"]
+  end
+
+  subgraph decisions["Canonical decision records"]
+    RiskRecord["Risk record"]
+    ApprovalRecord["Approval record<br/>resolved evidence and approver"]
+  end
+
+  subgraph operations["Operations record authority"]
+    DeploymentRuntime["Deployment and runtime record<br/>desired and observed state"]
+    IncidentRecord["Incident record"]
+    RetirementRecord["Retirement record"]
+  end
+
+  DerivedViews["Catalogs and dashboards<br/>derived views, not authoritative records"]
+
+  DataProducers --> WorkloadDataStore
+  WorkloadDataStore ==>|"identity, boundary and contract metadata"| DataFeature
+
+  SourceConfiguration ==> RunRecord
+  DataFeature ==> RunRecord
+  RunRecord ==> ArtifactRecord
+  RunRecord ==> ModelRecord
+  ArtifactRecord ==> ModelRecord
+  ModelRecord ==> ReleaseAuthority
+  RiskAuthority ==> RiskRecord
+  RiskRecord ==> ReleaseAuthority
+  ReleaseAuthority ==> ApprovalRecord
+  ApprovalRecord ==>|"approved immutable desired reference"| DeploymentRuntime
+  IncidentSignal ==> IncidentAuthority
+  RiskRecord ==> IncidentAuthority
+  IncidentAuthority ==> IncidentRecord
+  IncidentRecord ==> RetirementAuthority
+  RiskRecord ==> RetirementAuthority
+  RetirementAuthority ==> RetirementRecord
+  IncidentRecord ==>|"containment or rollback desired state"| DeploymentRuntime
+  RetirementRecord ==>|"deactivation desired state"| DeploymentRuntime
+  IncidentRecord ==> RetirementRecord
+  DeploymentRuntime ==>|"controller watches desired state"| DeploymentController
+  DeploymentController ==>|"records reconciliation status"| DeploymentRuntime
+  DeploymentController -.-> RuntimeWorkload
+  SourceConfiguration ==> DerivedViews
+  DataFeature ==> DerivedViews
+  RunRecord ==> DerivedViews
+  ArtifactRecord ==> DerivedViews
+  ModelRecord ==> DerivedViews
+  RiskRecord ==> DerivedViews
+  ApprovalRecord ==> DerivedViews
+  DeploymentRuntime ==> DerivedViews
+  IncidentRecord ==> DerivedViews
+  RetirementRecord ==> DerivedViews
+
+  RuntimeWorkload --o DeploymentRuntime
+  DeploymentRuntime --o IncidentSignal
+
+  subgraph legend["Explicit flow legend"]
+    LegendDataA["Source"] --> LegendDataB["Data flow"]
+    LegendControlA["Source"] -.-> LegendControlB["Control or decision flow"]
+    LegendArtifactA["Source"] ==> LegendArtifactB["Artifact or metadata flow"]
+    LegendTelemetryA["Source"] --o LegendTelemetryB["Telemetry or feedback flow"]
+  end
+
+  classDef engineeringNode fill:#e8f1fb,stroke:#245a8d,color:#111111
+  classDef decisionNode fill:#fff3df,stroke:#9a5a00,color:#111111
+  classDef operationsNode fill:#eef8ee,stroke:#2f6b3a,color:#111111
+  classDef authorityNode fill:#f0ecff,stroke:#6b46a3,color:#111111
+  classDef controllerNode fill:#ffe8cc,stroke:#a04a00,color:#111111
+  classDef workloadNode fill:#f7fbff,stroke:#245a8d,color:#111111
+  classDef derivedNode fill:#f3f4f6,stroke:#6b7280,color:#111111,stroke-dasharray:5 3
+  class SourceConfiguration,DataFeature,RunRecord,ArtifactRecord,ModelRecord engineeringNode
+  class RiskRecord,ApprovalRecord decisionNode
+  class DeploymentRuntime,IncidentRecord,RetirementRecord operationsNode
+  class ReleaseAuthority,RiskAuthority,IncidentAuthority,RetirementAuthority authorityNode
+  class DeploymentController controllerNode
+  class WorkloadDataStore,RuntimeWorkload workloadNode
+  class DerivedViews derivedNode

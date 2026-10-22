@@ -1,0 +1,60 @@
+flowchart LR
+  subgraph product["Product-team responsibility"]
+    ProductEvent["Product event"]
+    PredictionAction["Prediction or action"]
+    ProductOutcome["Product outcome"]
+    ReviewDecision["Review decision"]
+  end
+
+  subgraph platform["Platform capability boundary"]
+    CapturedData["Captured data"]
+    ValidatedDataReference["Validated data reference"]
+    TrainingRun["Training run"]
+    EvaluatedCandidate["Evaluated candidate"]
+    ServingWorkload["Serving workload"]
+    RuntimeTelemetry["Runtime telemetry"]
+  end
+
+  subgraph authority["Release and risk authority"]
+    DeclaredIntent["Declared intent and training request"]
+    ApprovalDecision["Approval decision"]
+    ImmutableDeploymentReference["Immutable deployment reference"]
+    RollbackReference["Prior immutable rollback reference"]
+    RetirementRecord["Retirement decision and record"]
+  end
+
+  ProductEvent --> CapturedData
+  CapturedData --> ValidatedDataReference
+  ServingWorkload --> PredictionAction
+  PredictionAction --> ProductOutcome
+
+  DeclaredIntent -.-> TrainingRun
+  ApprovalDecision -.-> ImmutableDeploymentReference
+  ReviewDecision -.-> TrainingRun
+  ReviewDecision -.-> RollbackReference
+  ReviewDecision -.-> RetirementRecord
+
+  ValidatedDataReference ==> TrainingRun
+  TrainingRun ==> EvaluatedCandidate
+  EvaluatedCandidate ==> ApprovalDecision
+  ImmutableDeploymentReference ==> ServingWorkload
+  RollbackReference ==> ServingWorkload
+
+  ServingWorkload --o RuntimeTelemetry
+  ProductOutcome --o ReviewDecision
+  RuntimeTelemetry --o ReviewDecision
+  PredictionAction --o CapturedData
+
+  subgraph legend["Explicit flow legend"]
+    LegendDataA["Source"] --> LegendDataB["Data flow"]
+    LegendControlA["Source"] -.-> LegendControlB["Control or decision flow"]
+    LegendArtifactA["Source"] ==> LegendArtifactB["Artifact or metadata flow"]
+    LegendTelemetryA["Source"] --o LegendTelemetryB["Telemetry or feedback flow"]
+  end
+
+  classDef productNode fill:#e8f1fb,stroke:#245a8d,color:#111111
+  classDef platformNode fill:#eef8ee,stroke:#2f6b3a,color:#111111
+  classDef authorityNode fill:#fff3df,stroke:#9a5a00,color:#111111
+  class ProductEvent,PredictionAction,ProductOutcome,ReviewDecision productNode
+  class CapturedData,ValidatedDataReference,TrainingRun,EvaluatedCandidate,ServingWorkload,RuntimeTelemetry platformNode
+  class DeclaredIntent,ApprovalDecision,ImmutableDeploymentReference,RollbackReference,RetirementRecord authorityNode

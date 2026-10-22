@@ -1,0 +1,410 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-5-before/handbook/GLOSSARY.md mlops/architect-handbook/GLOSSARY.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-5-before/handbook/GLOSSARY.md	2026-08-23 14:45:37
++++ mlops/architect-handbook/GLOSSARY.md	2026-08-23 15:48:34
+@@ -2,31 +2,33 @@
+ 
+ ## Controlled terms
+ 
+-The rows below seed the Chapter 1 vocabulary. `Definition pending` means the term has not received an authoritative definition or source key. A row cannot be marked `Verified` without a source key in the bibliography.
++The rows below define the Chapter 1 vocabulary. An external source key means the cited source entails the wording within the stated scope. `Handbook synthesis` marks a local architectural definition rather than an externally standardized term.
+ 
+ | Term | Definition | Aliases | Source key | Verification state | Notes |
+ | --- | --- | --- | --- | --- | --- |
+-| MLOps | Definition pending | Machine learning operations | - | Definition pending | Expand at first use. |
+-| ML system | Definition pending | Machine learning system | - | Definition pending | Expand ML at first use. |
+-| Control plane | Definition pending | - | - | Definition pending | Architectural plane term. |
+-| Data plane | Definition pending | - | - | Definition pending | Architectural plane term. |
+-| Training plane | Definition pending | - | - | Definition pending | Architectural plane term. |
+-| Serving plane | Definition pending | Inference plane | - | Definition pending | Architectural plane term. |
+-| Model registry | Definition pending | - | - | Definition pending | System-of-record candidate. |
+-| Artifact store | Definition pending | Artifact repository | - | Definition pending | System-of-record candidate. |
+-| Lineage | Definition pending | Provenance | - | Definition pending | Requires scope in Chapter 1. |
+-| Reproducibility | Definition pending | Reproducible workflow | - | Definition pending | Requires evidence boundary. |
+-| Continuous training | Definition pending | CT | - | Definition pending | Expand CT at first use if used. |
+-| Service-level indicator | Definition pending | SLI | - | Definition pending | Expand SLI at first use. |
+-| Service-level objective | Definition pending | SLO | - | Definition pending | Expand SLO at first use. |
+-| Architecture decision record | Definition pending | ADR | - | Definition pending | Expand ADR at first use. |
++| Machine learning operations (MLOps) | An engineering practice that applies automation and monitoring across machine learning system construction; integration; testing; release; deployment; and infrastructure management. | ML operations | `GOOGLECLOUD-MLOPS-2024` | Verified | Google Cloud's definition is scoped primarily to predictive artificial intelligence systems. Expand MLOps at first use in each chapter. |
++| Machine learning (ML) system | A production system whose behavior depends on learned models plus data; code; configuration; pipelines; infrastructure; consumers; and feedback. | ML system | `SCULLEY-TECHDEBT-2015` | Verified | The definition follows the paper's system boundary rather than treating the model file as the whole system. Expand ML at first use in each chapter. |
++| Control plane | The Kubernetes components that expose the cluster application programming interface; store API data; schedule workloads; and run controller processes. | - | `KUBERNETES-COMPONENTS-2026` | Verified | This sourced definition is Kubernetes-specific. Any extension to an enterprise ML control plane must be labeled handbook synthesis. |
++| Data plane | The runtime path that executes workload operations and carries workload data under control-plane intent. | Workload plane | Handbook synthesis | Handbook synthesis | Chapter 1 uses this bounded architectural term; Kubernetes documentation does not define a complete enterprise ML data plane. |
++| Training plane | The execution boundary that transforms versioned code; configuration; and data references into candidate model artifacts plus training evidence. | - | Handbook synthesis | Handbook synthesis | This is a Chapter 1 decomposition for responsibility analysis rather than an industry-standard plane. |
++| Serving plane | The execution boundary that loads an approved model artifact and returns batch; streaming; or online inference outputs with runtime telemetry. | Inference plane | Handbook synthesis | Handbook synthesis | This is a Chapter 1 decomposition. Workload-specific serving implementations are deferred to later chapters. |
++| Model registry | A repository workflow for registered models and model versions with metadata such as aliases; tags; descriptions; source-run information; and creation timestamps. | - | `MLFLOW-REGISTRY-2026` | Verified | The feature set was rechecked against the pinned MLflow 3.15.1 registry workflow. A registry product is not by itself the full governance system of record. |
++| Artifact store | Storage for large run outputs such as model weights and data files while run metadata remains in a backend store. | Artifact repository | `MLFLOW-TRACKING-2026` | Verified | The backend-store separation was rechecked against the pinned MLflow 3.15.1 tracking page. Other products may draw the boundary differently. |
++| Lineage | Linked metadata that identifies pipeline and component versions; execution context; parameters; produced artifacts; model ancestry; and evaluation results across an ML lifecycle. | Provenance | `GOOGLECLOUD-MLOPS-2024` | Verified | The definition follows Google's predictive-ML metadata example. Build provenance is a narrower supply-chain record. |
++| Reproducibility | The ability to recreate an ML artifact or result from recorded code; data references; configuration; dependencies; environment; and execution metadata within an explicitly stated tolerance. | Reproducible workflow | Handbook synthesis | Handbook synthesis | Exact identity may be infeasible for some training workloads; Chapter 1 must state the required tolerance and evidence boundary. |
++| Continuous training (CT) | Automated retraining of a model in production pipelines in response to triggers with validation before a candidate proceeds toward serving. | CT | `GOOGLECLOUD-MLOPS-2024` | Verified | Continuous training creates and validates candidates within Google's predictive-ML pattern; it does not itself authorize production promotion. Expand CT at first use if used. |
++| Service-level indicator (SLI) | A measurement of the level of service provided to users. | SLI | `GOOGLE-SRESLO-2018` | Verified | Record the measurement implementation and blind spots. Expand SLI at first use in each chapter. |
++| Service-level objective (SLO) | A target level of service reliability measured by one or more service-level indicators. | SLO | `GOOGLE-SRESLO-2018` | Verified | A workload-specific objective requires stakeholder agreement and an owner. Expand SLO at first use in each chapter. |
++| Architecture decision record (ADR) | A maintained record of an architecture decision; its context and assumptions; considered options; accepted trade-offs; evidence; owner; and review triggers. | ADR | Handbook synthesis | Handbook synthesis | This handbook-specific contract supports the Chapter 1 exercise. Expand ADR at first use in each chapter. |
+ 
+ ## Entry contract
+ 
+-Each controlled row records a term, concise definition, aliases, source key, verification state, and scope note. The source key must resolve to [the bibliography](sources/references.md). `Verified` is reserved for a definition whose cited source supports the exact wording; a handbook-specific definition is labeled `Handbook synthesis` and carries its assumptions in the notes.
++Each controlled row records a term; concise definition; aliases; source key; verification state; and scope note. Every external source key resolves to [the bibliography](sources/references.md). `Verified` is reserved for wording entailed by the cited source. `Handbook synthesis` identifies a local definition with its boundary stated in the notes.
+ 
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Added the foundational Chapter 1 vocabulary as definition-pending rows and defined the source-key verification gate.
++- Rechecked the Model registry and Artifact store definitions against pinned MLflow 3.15.1 documentation and recorded that evidence boundary in their notes.
++- Replaced all 14 pending definitions with source-entailing definitions or explicit handbook synthesis.
++- Added stable bibliography keys; version and applicability boundaries; and acronym first-use instructions.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-5-before/handbook/sources/claim-ledger.csv mlops/architect-handbook/sources/claim-ledger.csv
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-5-before/handbook/sources/claim-ledger.csv	2026-08-23 14:45:37
++++ mlops/architect-handbook/sources/claim-ledger.csv	2026-08-23 15:48:33
+@@ -1 +1,66 @@
+ claim_id,chapter,section,claim_text,claim_type,risk_level,source_keys,source_version,source_date,accessed_date,status,review_by,notes
++CH01-C001,1,Why production ML is a systems problem,Production ML systems inherit conventional software concerns and add system-level risks because data influences system behavior,scientific or algorithmic,P1,SCULLEY-TECHDEBT-2015,NeurIPS 2015,2015,2026-08-23,verified,2027-08-23,Scope follows the paper's production-system boundary
++CH01-C002,1,Why production ML is a systems problem,ML training can be viewed as compilation from code and training data while the resulting model still needs debugging rollback monitoring and release controls,scientific or algorithmic,P1,BRECK-MLTESTSCORE-2017,IEEE Big Data 2017,2017,2026-08-23,verified,2027-08-23,Close paraphrase of the paper's operational framing
++CH01-C003,1,Why production ML is a systems problem,Model inputs can be entangled so a local change can alter the influence of other inputs,scientific or algorithmic,P1,SCULLEY-TECHDEBT-2015,NeurIPS 2015,2015,2026-08-23,verified,2027-08-23,Bounded to the CACE mechanism described by the paper
++CH01-C004,1,Why production ML is a systems problem,Data dependencies can be harder to discover than code dependencies and may create hidden consumers or unstable signals,scientific or algorithmic,P1,SCULLEY-TECHDEBT-2015,NeurIPS 2015,2015,2026-08-23,verified,2027-08-23,Does not claim that every data dependency is hidden
++CH01-C005,1,Why production ML is a systems problem,Changes in the external world require live monitoring because unit and end-to-end tests do not establish continuing fitness,scientific or algorithmic,P1,SCULLEY-TECHDEBT-2015,NeurIPS 2015,2015,2026-08-23,verified,2027-08-23,Uses the paper's stated monitoring boundary
++CH01-C006,1,MLOps capability and maturity model,The ML Test Score proposes 28 checks across features and data model development ML infrastructure and monitoring,quantitative,P1,BRECK-MLTESTSCORE-2017,IEEE Big Data 2017,2017,2026-08-23,verified,2027-08-23,The count and four categories are source-defined
++CH01-C007,1,MLOps capability and maturity model,The ML Test Score gives partial credit for documented manual execution and full credit for repeated automated execution,quantitative,P1,BRECK-MLTESTSCORE-2017,IEEE Big Data 2017,2017,2026-08-23,verified,2027-08-23,Exact scoring distinction from the paper
++CH01-C008,1,MLOps capability and maturity model,The ML Test Score uses the minimum of its four area totals so strength in one area does not mask weakness in another,quantitative,P1,BRECK-MLTESTSCORE-2017,IEEE Big Data 2017,2017,2026-08-23,verified,2027-08-23,Exact scoring mechanic from the paper
++CH01-C009,1,MLOps capability and maturity model,The ML Test Score rubric was based on decades of Google production-ML engineering and was applied through structured interviews with 36 Google teams,quantitative,P1,BRECK-MLTESTSCORE-2017,IEEE Big Data 2017,2017,2026-08-23,verified,2027-08-23,The paper separates Google engineering provenance from later application of the defined rubric to 36 teams
++CH01-C010,1,MLOps capability and maturity model,The dominant ML Test Score context was supervised learning with repeated training and low-latency serving,scientific or algorithmic,P1,BRECK-MLTESTSCORE-2017,IEEE Big Data 2017,2017,2026-08-23,verified,2027-08-23,Prevents treating the rubric as a universal standard
++CH01-C011,1,ML lifecycle and operational feedback loops,Google defines an ML pipeline as infrastructure that gathers data creates training data trains models and exports models to production,opinion or heuristic,P2,GOOGLE-RULESML-2025,Page updated 2025-08-25,2025-08-25,2026-08-23,verified,2027-08-23,Attributed to Google's practitioner guidance
++CH01-C012,1,ML lifecycle and operational feedback loops,Google's guidance treats deployment as iterative and recommends repeated launches plus model-delta measurement and training-serving skew monitoring,opinion or heuristic,P2,GOOGLE-RULESML-2025,Page updated 2025-08-25,2025-08-25,2026-08-23,verified,2027-08-23,Guidance is not converted into a universal mandate
++CH01-C013,1,ML lifecycle and operational feedback loops,Direct feedback occurs when model decisions affect future training-data selection while hidden feedback occurs through indirect interaction between systems and the world,scientific or algorithmic,P1,SCULLEY-TECHDEBT-2015,NeurIPS 2015,2015,2026-08-23,verified,2027-08-23,Uses the paper's two feedback categories
++CH01-C014,1,Architecture planes,Kubernetes separates a control plane from worker nodes,product or version behavior,P1,KUBERNETES-COMPONENTS-2026,Page modified 2026-05-30,2026-05-30,2026-08-23,verified,2026-11-21,Version-scoped Kubernetes behavior
++CH01-C015,1,Architecture planes,In the documented Kubernetes architecture the API server exposes the cluster API and etcd stores API data while the scheduler and controllers perform control-plane functions,product or version behavior,P1,KUBERNETES-COMPONENTS-2026,Page modified 2026-05-30,2026-05-30,2026-08-23,verified,2026-11-21,Version-scoped component responsibilities
++CH01-C016,1,Architecture planes,Kubernetes controllers observe resource state and act to move current state toward declared desired state,product or version behavior,P1,KUBERNETES-CONTROLLERS-2024,Page modified 2024-09-01,2024-09-01,2026-08-23,verified,2026-11-21,Supports the reconciliation pattern only
++CH01-C017,1,Architecture planes,Kubernetes workloads run in Pods and higher-level workload resources use controllers to maintain specified Pods,product or version behavior,P1,KUBERNETES-WORKLOADS-2026,Page modified 2026-04-27,2026-04-27,2026-08-23,verified,2026-11-21,Version-scoped Kubernetes workload behavior
++CH01-C018,1,System-of-record boundaries,In MLflow 3.15.1 a run records metadata such as parameters metrics and timing plus output artifacts,product or version behavior,P1,MLFLOW-TRACKING-2026,MLflow 3.15.1,2026-08-02,2026-08-23,verified,2026-11-21,Confirmed against the versioned MLflow 3.15.1 tracking page
++CH01-C019,1,System-of-record boundaries,In MLflow 3.15.1 a backend store persists run metadata while an artifact store persists large outputs such as model weights and data files,product or version behavior,P1,MLFLOW-TRACKING-2026,MLflow 3.15.1,2026-08-02,2026-08-23,verified,2026-11-21,Confirmed against the versioned MLflow 3.15.1 tracking page
++CH01-C020,1,System-of-record boundaries,In MLflow 3.15.1 the registry workflow supports registered models versions aliases tags descriptions source-run information and creation timestamps,product or version behavior,P1,MLFLOW-REGISTRY-2026,MLflow 3.15.1,2026-08-02,2026-08-23,verified,2026-11-21,Confirmed against the versioned MLflow 3.15.1 registry workflow page
++CH01-C021,1,System-of-record boundaries,MLflow aliases are mutable named references to model versions and fixed model stages were deprecated as of MLflow 2.9.0,product or version behavior,P1,MLFLOW-REGISTRY-2026,MLflow 3.15.1 with deprecation since 2.9.0,2026-08-02,2026-08-23,verified,2026-11-21,Versioned 3.15.1 documentation supports alias reassignment and the 2.9.0 stage-deprecation boundary
++CH01-C022,1,MLOps capability and maturity model,AI RMF 1.0 is voluntary rights-preserving non-sector-specific and use-case agnostic,normative or regulatory,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-08-23,Do not present the framework as law or mandatory compliance
++CH01-C023,1,MLOps capability and maturity model,AI RMF 1.0 organizes outcomes into Govern Map Measure and Manage with Govern cross-cutting across the other functions,normative or regulatory,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-08-23,Review on NIST revision release if earlier
++CH01-C024,1,MLOps capability and maturity model,AI RMF 1.0 states that its functions and categories are not a checklist or a required execution order,normative or regulatory,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-08-23,Preserves the framework's outcome-focused scope
++CH01-C025,1,Platform and product-team responsibilities,AI RMF 1.0 calls for documented roles and communication lines plus executive responsibility for development and deployment risk decisions,normative or regulatory,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-08-23,Framework outcome rather than a prescribed organization chart
++CH01-C026,1,System-of-record boundaries,AI RMF 1.0 calls for an AI-system inventory periodic review third-party risk policies incident practices and safe decommissioning,normative or regulatory,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-08-23,Review on NIST revision release if earlier
++CH01-C027,1,ML lifecycle and operational feedback loops,AI RMF 1.0 treats test evaluation verification and validation as continuing into operations through monitoring incident tracking updates and recalibration,normative or regulatory,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-08-23,Uses the framework's lifecycle scope
++CH01-C028,1,Production failure case study,AI RMF 1.0 says systems with unacceptable risk should cease development or deployment safely until risk can be managed,security or safety,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-02-19,Security and safety guidance receives a 180-day review
++CH01-C029,1,Production failure case study,AI RMF 1.0 calls for pre-deployment and in-operation testing plus production monitoring and documented response and recovery,security or safety,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-02-19,Security and safety guidance receives a 180-day review
++CH01-C030,1,MLOps capability and maturity model,The AI RMF Playbook suggests risk scales oversight tiers and approval or conditional-approval or disapproval paths as optional implementation actions,normative or regulatory,P1,NIST-AIRMFPLAYBOOK-2023,Living Playbook aligned to AI RMF 1.0,2023-08,2026-08-23,verified,2027-08-23,Do not convert optional suggestions into NIST mandates
++CH01-C031,1,ML lifecycle and operational feedback loops,Google Cloud's predictive-ML guidance includes data and schema validation model-versus-baseline evaluation segment evaluation compatibility testing pipeline metadata and production monitoring,product or version behavior,P1,GOOGLECLOUD-MLOPS-2024,Page updated 2024-08-28,2024-08-28,2026-08-23,verified,2026-11-21,Scope the claim to Google's predictive-ML pattern
++CH01-C032,1,Platform and product-team responsibilities,Google Cloud's predictive-ML example separates training triggers and validation from reviewer approval before pre-production and manual promotion to production,product or version behavior,P1,GOOGLECLOUD-MLOPS-2024,Page updated 2024-08-28,2024-08-28,2026-08-23,verified,2026-11-21,Describes the example rather than a universal release mandate
++CH01-C033,1,Production failure case study,AI RMF 1.0 includes safe decommissioning plus procedures to supersede disengage or deactivate systems that violate intended use,security or safety,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-02-19,Security and safety guidance receives a 180-day review
++CH01-C034,1,Reference architecture and lifecycle flows,Google defines a service-level indicator as a measurement of service provided to users and a service-level objective as a target reliability level,opinion or heuristic,P2,GOOGLE-SRESLO-2018,SRE Workbook chapter,2018,2026-08-23,verified,2027-08-23,Definitions are attributed to Google SRE guidance
++CH01-C035,1,Reference architecture and lifecycle flows,Google identifies availability latency quality pipeline freshness pipeline correctness pipeline coverage and storage durability as candidate service-level indicator types,opinion or heuristic,P2,GOOGLE-SRESLO-2018,SRE Workbook chapter,2018,2026-08-23,verified,2027-08-23,Examples are candidates rather than required indicators
++CH01-C036,1,Platform and product-team responsibilities,Google's SLO approach calls for stakeholder-approved objectives an empowered owner a written error-budget policy and a refinement process,opinion or heuristic,P2,GOOGLE-SRESLO-2018,SRE Workbook chapter,2018,2026-08-23,verified,2027-08-23,Attributed practitioner guidance rather than a standard
++CH01-C037,1,Production failure case study,AI RMF 1.0 treats validity and reliability safety security and resilience accountability and transparency explainability and interpretability privacy and fairness as interacting trustworthiness characteristics,security or safety,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-02-19,The source states that one characteristic does not establish the others
++CH01-C038,1,System-of-record boundaries,Google Cloud's metadata example records pipeline and component versions execution context parameters artifacts prior-model pointers and evaluation metrics,product or version behavior,P1,GOOGLECLOUD-MLOPS-2024,Page updated 2024-08-28,2024-08-28,2026-08-23,verified,2026-11-21,Scope the metadata fields to Google's example
++CH01-C039,1,System-of-record boundaries,SLSA v1.2 Build provenance identifies an output package by cryptographic digest and describes how it was produced,security or safety,P0,SLSA-BUILD-2026,SLSA v1.2,date not stated,2026-08-23,verified,2027-02-19,Applies only to artifacts within the SLSA Build track
++CH01-C040,1,System-of-record boundaries,Higher SLSA v1.2 Build levels add authenticity control-plane-generated provenance hosted builds and build isolation requirements,security or safety,P0,SLSA-BUILD-2026,SLSA v1.2,date not stated,2026-08-23,verified,2027-02-19,Does not imply that SLSA establishes ML risk acceptance
++CH01-C041,1,System-of-record boundaries,SLSA v1.2 scopes its Build track to software package production and permits resolved-dependency provenance to be incomplete,security or safety,P0,SLSA-BUILD-2026,SLSA v1.2,date not stated,2026-08-23,verified,2027-02-19,Preserves the specification's explicit boundary
++CH01-C042,1,Platform and product-team responsibilities,AI RMF 1.0 calls for policies monitoring controls and contingency processes for third-party data software AI systems and pretrained models,security or safety,P0,NIST-AIRMF-2023,NIST AI 100-1,2023-01-26,2026-08-23,verified,2027-02-19,Review on NIST revision release if earlier
++CH01-C043,1,MLOps capability and maturity model,Google separates manual ML delivery automated ML pipelines and automated CI/CD for ML pipeline changes,product or version behavior,P1,GOOGLECLOUD-MLOPS-2024,Page updated 2024-08-28,2024-08-28,2026-08-23,verified,2026-11-21,Use as Google's automation-capability model
++CH01-C044,1,MLOps capability and maturity model,Google states that manual ML delivery can be sufficient when models change infrequently and recommends gradual automation adoption,opinion or heuristic,P2,GOOGLECLOUD-MLOPS-2024,Page updated 2024-08-28,2024-08-28,2026-08-23,verified,2027-08-23,Attributed guidance with its workload condition
++CH01-C045,1,MLOps capability and maturity model,AWS ML design principles include ownership protection resiliency reusability reproducibility automation resource trade-off analysis cost awareness and continuous improvement,opinion or heuristic,P2,AWS-MLDESIGN-2025,AWS ML Lens 2025-11-19,2025-11-19,2026-08-23,verified,2027-08-23,Attributed to AWS and not treated as a standard
++CH01-C046,1,Platform and product-team responsibilities,CNCF defines a cloud-native platform as an integrated collection of capabilities presented around user needs,opinion or heuristic,P2,CNCF-PLATFORMS-2023,Version 1,2023-03,2026-08-23,verified,2027-08-23,Cloud-native application-delivery scope must remain explicit
++CH01-C047,1,Platform and product-team responsibilities,CNCF assigns platform teams user research roadmap planning and interfaces while capability implementation may belong to another internal team or managed provider,opinion or heuristic,P2,CNCF-PLATFORMS-2023,Version 1,2023-03,2026-08-23,verified,2027-08-23,Does not prescribe an ML organization chart
++CH01-C048,1,Platform and product-team responsibilities,Team Topologies advises keeping a thinnest viable platform no thicker than necessary and says it can be a wiki page naming an approved cloud provider and services plus usage guidance,opinion or heuristic,P2,TEAMTOPOLOGIES-TVP-2019,Page modified 2024-06-01,2024-06-01,2026-08-23,verified,2027-08-23,Attributed practitioner guidance with stream-aligned teams as customers and developer experience as the boundary
++CH01-C049,1,Platform and product-team responsibilities,Microsoft defines a workload as application resources custom code AI models data and supporting infrastructure that achieve a business outcome,product or version behavior,P1,MICROSOFT-WORKLOADS-2025,Page updated 2025-08-12,2025-08-12,2026-08-23,verified,2026-11-21,Attributed to Microsoft's workload model
++CH01-C050,1,Platform and product-team responsibilities,Microsoft states that workload teams focus on workload outcomes while centralized teams provide shared services guidance and guardrails,product or version behavior,P1,MICROSOFT-WORKLOADS-2025,Page updated 2025-08-12,2025-08-12,2026-08-23,verified,2026-11-21,Responsibility mapping remains organization-specific
++CH01-C051,1,Platform and product-team responsibilities,Microsoft says shared-responsibility discussions should make constraints and service expectations explicit including compliance observability performance support budgets and change control,opinion or heuristic,P2,MICROSOFT-WORKLOADS-2025,Page updated 2025-08-12,2025-08-12,2026-08-23,verified,2027-08-23,Attributed to Microsoft guidance
++CH01-C052,1,Build buy and managed-service decisions,Microsoft frames SaaS platform-as-a-service and custom AI choices using data control customization upkeep performance expertise security and compliance,product or version behavior,P1,MICROSOFT-AIWORKLOADS-2026,Page updated 2026-05-07,2026-05-07,2026-08-23,verified,2026-11-21,Vendor guidance does not establish a universal choice
++CH01-C053,1,Build buy and managed-service decisions,AWS recommends comparing custom and pre-trained models using data task specificity performance expertise development time infrastructure security and long-term maintenance,opinion or heuristic,P2,AWS-BUILDBUY-2025,AWS ML Lens 2025-11-19,2025-11-19,2026-08-23,verified,2027-08-23,Attributed vendor comparison factors only
++CH01-C054,1,Build buy and managed-service decisions,AWS identifies infrastructure personnel maintenance scaling upgrades utilization and pricing model as managed-service cost inputs,opinion or heuristic,P2,AWS-MANAGEDSERVICES-2025,AWS ML Lens 2025-11-19,2025-11-19,2026-08-23,verified,2027-08-23,No comparative cost outcome is admitted
++CH01-C055,1,Build buy and managed-service decisions,CNCF recommends a thin platform layer over capability providers with optional and composable offerings,opinion or heuristic,P2,CNCF-PLATFORMS-2023,Version 1,2023-03,2026-08-23,verified,2027-08-23,Cloud-native scope must remain explicit
++CH01-C056,1,Architecture planes,The transferable ML control-loop pattern is declared intent to authoritative state to reconciliation to observed status to corrective action,architectural synthesis,P2,KUBERNETES-CONTROLLERS-2024,Handbook synthesis,2024-09-01,2026-08-23,qualified,2027-08-23,Kubernetes supports the analogy but not a complete enterprise ML control plane
++CH01-C057,1,System-of-record boundaries,Tracking metadata artifact storage model registration and deployment state are separate record classes even when one product exposes them together,architectural synthesis,P2,MLFLOW-TRACKING-2026;MLFLOW-REGISTRY-2026,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Architecture judgment for authority and audit-boundary analysis
++CH01-C058,1,Reference architecture and lifecycle flows,Reliability controls and AI-risk controls use linked but non-substitutable evidence and decision semantics,architectural synthesis,P2,NIST-AIRMF-2023;GOOGLE-SRESLO-2018,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Neither source alone states this combined architecture rule
++CH01-C059,1,Platform and product-team responsibilities,A continuous-training trigger may create a candidate while production promotion remains a separate policy-governed decision,architectural synthesis,P2,GOOGLECLOUD-MLOPS-2024;NIST-AIRMF-2023,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Final prose must identify the workload-specific approval policy
++CH01-C060,1,System-of-record boundaries,Each fact class should have a canonical record linked through immutable or versioned identities while catalogs and dashboards remain derived views,architectural synthesis,P2,NIST-AIRMF-2023;GOOGLECLOUD-MLOPS-2024,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Sources support traceability outcomes but do not prescribe this schema
++CH01-C061,1,System-of-record boundaries,SLSA Build provenance is one artifact-integrity record and does not establish dataset fitness model validity or deployment approval,architectural synthesis,P2,SLSA-BUILD-2026;NIST-AIRMF-2023,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Final prose must preserve the SLSA Build scope
++CH01-C062,1,Platform and product-team responsibilities,A platform can own a reusable delivery contract while product teams retain accountability for workload behavior and product acceptance criteria,architectural synthesis,P2,CNCF-PLATFORMS-2023;MICROSOFT-WORKLOADS-2025,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Starting responsibility pattern rather than a universal organization chart
++CH01-C063,1,Build buy and managed-service decisions,Implementation modes should be compared using workload requirements lifecycle burden operating ownership and exit evidence,architectural synthesis,P2,AWS-BUILDBUY-2025;AWS-MANAGEDSERVICES-2025;MICROSOFT-AIWORKLOADS-2026;CNCF-PLATFORMS-2023,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Decision rule requires local workload evidence
++CH01-C064,1,Senior Staff and Principal decision scope,Senior Staff and Principal scope should be distinguished by decision horizon cross-team reach organizational constraints and platform evolution rather than unsupported scale,architectural synthesis,P2,CNCF-PLATFORMS-2023;MICROSOFT-WORKLOADS-2025,Handbook synthesis,multiple,2026-08-23,qualified,2027-08-23,Handbook role model requires editorial and technical review
++CH01-C065,1,Glossary additions and authoritative references,As observed on 2026-08-23 the NIST program page stated that AI RMF 1.0 was under revision,product or version behavior,P1,NIST-AIRMFSTATUS-2026,Status snapshot 2026-08-23,date not stated,2026-08-23,verified,2026-11-21,Retain the as-of date and recheck on NIST revision release
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-5-before/handbook/sources/references.md mlops/architect-handbook/sources/references.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-5-before/handbook/sources/references.md	2026-08-23 14:45:37
++++ mlops/architect-handbook/sources/references.md	2026-08-23 15:48:33
+@@ -2,14 +2,279 @@
+ 
+ ## Bibliography status
+ 
+-No source has been admitted to the maintained bibliography at scaffold stage. Future entries must include a stable authoritative link, publication or version information when applicable, and an access date.
++This bibliography admits the authoritative sources reviewed for Chapter 1. A source key identifies the cited publication or version snapshot; it does not broaden the supported scope stated for that entry.
+ 
+ ## Source-key convention
+ 
+-Use stable source keys in the form `ORG-TOPIC-YEAR` and reference them from `claim-ledger.csv`.
++Keys use uppercase `ORG-SHORTTITLE-YEAR` form. The year identifies the publication or reviewed snapshot. Chapter prose and `claim-ledger.csv` must use these keys exactly.
+ 
++## Authoritative bibliography
++
++### `SCULLEY-TECHDEBT-2015`
++
++- **Title:** *Hidden Technical Debt in Machine Learning Systems*
++- **Author or organization:** D. Sculley; Gary Holt; Daniel Golovin; Eugene Davydov; Todd Phillips; Dietmar Ebner; Vinay Chaudhary; Michael Young; Jean-Francois Crespo; Dan Dennison
++- **Publication or update date:** 2015
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://papers.nips.cc/paper/2015/file/86df7dcfd896fcaf2674f757a2463eba-Paper.pdf>
++- **Version:** NeurIPS 2015 proceedings paper
++- **Source class:** Peer-reviewed canonical technical literature
++- **Supported scope:** Supports the production-system boundary; ML-specific technical-debt mechanisms; data dependencies; feedback loops; monitoring need; and stated limits on reproducibility.
++
++### `BRECK-MLTESTSCORE-2017`
++
++- **Title:** *The ML Test Score: A Rubric for ML Production Readiness and Technical Debt Reduction*
++- **Author or organization:** Eric Breck; Shanqing Cai; Eric Nielsen; Michael Salib; D. Sculley
++- **Publication or update date:** 2017
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://research.google.com/pubs/archive/aad9f93b86b7addfea4c419b9100c6cdd26cacea.pdf>
++- **Version:** IEEE Big Data 2017 paper
++- **Source class:** Peer-reviewed canonical technical literature
++- **Supported scope:** Supports the 28-check production-readiness rubric; its four areas; scoring mechanics; operational test categories; study context; and stated applicability limits.
++
++### `GOOGLE-RULESML-2025`
++
++- **Title:** *Rules of Machine Learning*
++- **Author or organization:** Google for Developers
++- **Publication or update date:** 2025-08-25
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://developers.google.com/machine-learning/guides/rules-of-ml>
++- **Version:** Page updated 2025-08-25 UTC
++- **Source class:** First-party practitioner guidance
++- **Supported scope:** Supports Google's pipeline definition and guidance on metrics; end-to-end infrastructure; independent infrastructure tests; pre-export checks; repeated launches; skew monitoring; and feedback effects.
++
++### `KUBERNETES-COMPONENTS-2026`
++
++- **Title:** *Kubernetes Components*
++- **Author or organization:** The Kubernetes Authors
++- **Publication or update date:** 2026-05-30
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://kubernetes.io/docs/concepts/overview/components/>
++- **Version:** Page modified 2026-05-30
++- **Source class:** First-party product documentation
++- **Supported scope:** Supports the Kubernetes control-plane and worker-node separation plus the documented responsibilities of the API server; etcd; scheduler; controllers; and node components.
++
++### `KUBERNETES-CONTROLLERS-2024`
++
++- **Title:** *Controllers*
++- **Author or organization:** The Kubernetes Authors
++- **Publication or update date:** 2024-09-01
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://kubernetes.io/docs/concepts/architecture/controller/>
++- **Version:** Page modified 2024-09-01
++- **Source class:** First-party product documentation
++- **Supported scope:** Supports the Kubernetes reconciliation model in which controllers observe resource state and act toward desired state through focused control loops.
++
++### `KUBERNETES-WORKLOADS-2026`
++
++- **Title:** *Workloads*
++- **Author or organization:** The Kubernetes Authors
++- **Publication or update date:** 2026-04-27
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://kubernetes.io/docs/concepts/workloads/>
++- **Version:** Page modified 2026-04-27
++- **Source class:** First-party product documentation
++- **Supported scope:** Supports the Kubernetes workload definition and the documented execution semantics of Pods; Jobs; CronJobs; Deployments; and StatefulSets.
++
++### `MLFLOW-TRACKING-2026`
++
++- **Title:** *MLflow Tracking*
++- **Author or organization:** MLflow Project
++- **Publication or update date:** 2026-08-02 release context; page date not stated
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://mlflow.org/docs/3.15.1/ml/tracking/>; release record <https://mlflow.org/releases/3.15.1/>
++- **Version:** MLflow 3.15.1
++- **Source class:** First-party product documentation and release record
++- **Supported scope:** Supports MLflow 3.15.1 run; experiment; dataset-metadata; backend-store; artifact-store; and tracking-boundary behavior.
++
++### `MLFLOW-REGISTRY-2026`
++
++- **Title:** *Model Registry Workflows*
++- **Author or organization:** MLflow Project
++- **Publication or update date:** 2026-08-02 release context; page date not stated
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://mlflow.org/docs/3.15.1/ml/model-registry/workflow/>; release record <https://mlflow.org/releases/3.15.1/>
++- **Version:** MLflow 3.15.1
++- **Source class:** First-party product documentation and release record
++- **Supported scope:** Supports MLflow 3.15.1 registered-model; version; alias; tag; description; source-run; timestamp; and fixed-stage deprecation behavior.
++
++### `NIST-AIRMF-2023`
++
++- **Title:** *Artificial Intelligence Risk Management Framework (AI RMF 1.0)*
++- **Author or organization:** National Institute of Standards and Technology
++- **Publication or update date:** 2023-01-26
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://doi.org/10.6028/NIST.AI.100-1>; direct PDF <https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf>
++- **Version:** NIST AI 100-1; AI RMF 1.0
++- **Source class:** Government framework
++- **Supported scope:** Supports voluntary and outcome-focused AI-risk governance; lifecycle accountability; inventories; testing and evaluation; monitoring; third-party risk; incident response; residual risk; and retirement.
++
++### `NIST-AIRMFSTATUS-2026`
++
++- **Title:** *AI Risk Management Framework Program Page*
++- **Author or organization:** National Institute of Standards and Technology
++- **Publication or update date:** Page date not stated; status observed 2026-08-23
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://www.nist.gov/itl/ai-risk-management-framework>
++- **Version:** Status snapshot accessed 2026-08-23
++- **Source class:** First-party government status page
++- **Supported scope:** Supports only the observed revision status of AI RMF 1.0 and related NIST publication records on the access date.
++
++### `NIST-AIRMFPLAYBOOK-2023`
++
++- **Title:** *NIST AI RMF Playbook*
++- **Author or organization:** National Institute of Standards and Technology
++- **Publication or update date:** Initial release 2023-01; PDF added 2023-08
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://airc.nist.gov/airmf-resources/playbook/>; direct PDF <https://airc.nist.gov/docs/AI_RMF_Playbook.pdf>
++- **Version:** Living Playbook aligned to AI RMF 1.0; no document revision identifier exposed
++- **Source class:** First-party government implementation guidance
++- **Supported scope:** Supports optional implementation actions for risk tiers; approval paths; monitoring; evidence retention; third-party components; response; recovery; and decommissioning.
++
++### `NIST-PLAYBOOKAUDIT-2023`
++
++- **Title:** *Playbook Audit Log*
++- **Author or organization:** National Institute of Standards and Technology
++- **Publication or update date:** Last listed entry 2023-08
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://airc.nist.gov/airmf-resources/playbook/audit-log/>
++- **Version:** Visible audit-log snapshot accessed 2026-08-23
++- **Source class:** First-party government provenance record
++- **Supported scope:** Supports only the visible dates and change-history provenance for the NIST AI RMF Playbook.
++
++### `GOOGLE-SRESLO-2018`
++
++- **Title:** *Implementing SLOs*
++- **Author or organization:** Google Site Reliability Engineering
++- **Publication or update date:** 2018 copyright; chapter revision date not stated
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://sre.google/workbook/implementing-slos/>
++- **Version:** Site Reliability Workbook chapter
++- **Source class:** First-party practitioner guidance
++- **Supported scope:** Supports service-level indicator and service-level objective definitions; user-centric measurements; dependency boundaries; ownership; written error-budget policy; response actions; and review practice.
++
++### `GOOGLECLOUD-MLOPS-2024`
++
++- **Title:** *MLOps: Continuous Delivery and Automation Pipelines in Machine Learning*
++- **Author or organization:** Google Cloud Architecture Center
++- **Publication or update date:** 2024-08-28
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://docs.cloud.google.com/architecture/mlops-continuous-delivery-and-automation-pipelines-in-machine-learning>
++- **Version:** Page reviewed and updated 2024-08-28 UTC
++- **Source class:** First-party cloud architecture guidance
++- **Supported scope:** Supports Google's predictive-ML automation levels; CI/CD and continuous-training boundaries; validation; promotion; metadata; monitoring; lineage; reproducibility; and rollback context.
++
++### `SLSA-BUILD-2026`
++
++- **Title:** *SLSA v1.2 Specification and Build Requirements*
++- **Author or organization:** Supply-chain Levels for Software Artifacts project under OpenSSF
++- **Publication or update date:** Publication date not stated; specification accessed 2026-08-23
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://slsa.dev/spec/v1.2/>; build requirements <https://slsa.dev/spec/v1.2/build-requirements>
++- **Version:** SLSA v1.2
++- **Source class:** Official supply-chain security specification
++- **Supported scope:** Supports build-provenance digest binding; authenticity; control-plane generation; hosted-build and isolation requirements; producer versus platform responsibilities; and the Build track's artifact scope.
++
++### `AWS-MLLENS-2025`
++
++- **Title:** *Machine Learning Lens*
++- **Author or organization:** Amazon Web Services
++- **Publication or update date:** 2025-11-19
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/machine-learning-lens.html>
++- **Version:** AWS Well-Architected Machine Learning Lens published 2025-11-19
++- **Source class:** First-party vendor architecture guidance
++- **Supported scope:** Supports the lens audience; predictive-ML scope; and its separation from AWS generative-AI guidance only.
++
++### `AWS-MLDESIGN-2025`
++
++- **Title:** *Well-Architected Machine Learning Design Principles*
++- **Author or organization:** Amazon Web Services
++- **Publication or update date:** 2025-11-19 lens context; page date not stated
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/design-principles.html>
++- **Version:** AWS Well-Architected Machine Learning Lens published 2025-11-19
++- **Source class:** First-party vendor architecture guidance
++- **Supported scope:** Supports AWS guidance on ownership; protection; resiliency; reusability; reproducibility; automation; resource trade-offs; cost awareness; and continuous improvement.
++
++### `AWS-BUILDBUY-2025`
++
++- **Title:** *MLCOST02-BP02 Perform a Tradeoff Analysis Between Custom and Pre-trained Models*
++- **Author or organization:** Amazon Web Services
++- **Publication or update date:** 2025-11-19 lens context; page date not stated
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/mlcost02-bp02.html>
++- **Version:** AWS Well-Architected Machine Learning Lens published 2025-11-19
++- **Source class:** First-party vendor architecture guidance
++- **Supported scope:** Supports AWS's stated comparison factors for custom; pre-trained; transfer-learning; and fine-tuning options without supporting a universal selection outcome.
++
++### `AWS-MANAGEDSERVICES-2025`
++
++- **Title:** *MLCOST01-BP02 Use Managed Services to Reduce Total Cost of Ownership (TCO)*
++- **Author or organization:** Amazon Web Services
++- **Publication or update date:** 2025-11-19 lens context; page date not stated
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/mlcost01-bp02.html>
++- **Version:** AWS Well-Architected Machine Learning Lens published 2025-11-19
++- **Source class:** First-party vendor architecture guidance
++- **Supported scope:** Supports AWS's stated lifecycle-cost inputs and managed-service position; it does not support a workload-neutral comparative cost conclusion.
++
++### `MICROSOFT-AIWORKLOADS-2026`
++
++- **Title:** *AI Workloads on Azure*
++- **Author or organization:** Microsoft
++- **Publication or update date:** 2026-05-07
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://learn.microsoft.com/en-us/azure/well-architected/ai/get-started>
++- **Version:** Page updated 2026-05-07
++- **Source class:** First-party vendor architecture guidance
++- **Supported scope:** Supports Microsoft's stated SaaS; platform-as-a-service; and custom evaluation factors plus the page's declared workload exclusions.
++
++### `MICROSOFT-WORKLOADS-2025`
++
++- **Title:** *Azure Well-Architected Framework Workloads*
++- **Author or organization:** Microsoft
++- **Publication or update date:** 2025-08-12
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://learn.microsoft.com/en-us/azure/well-architected/workloads>
++- **Version:** Page updated 2025-08-12
++- **Source class:** First-party vendor architecture guidance
++- **Supported scope:** Supports Microsoft's workload definition; workload-team and centralized-team responsibilities; shared obligations; constraints; service expectations; budgets; and change communication.
++
++### `CNCF-PLATFORMS-2023`
++
++- **Title:** *CNCF Platforms White Paper*
++- **Author or organization:** CNCF TAG App Delivery Platforms Working Group
++- **Publication or update date:** Version 1 completed 2023-03; web edition maintained
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://tag-app-delivery.cncf.io/whitepapers/platforms/>; version record <https://github.com/cncf/tag-app-delivery/blob/main/platforms-whitepaper/README.md>
++- **Version:** Version 1 completed March 2023
++- **Source class:** Authoritative industry working-group publication
++- **Supported scope:** Supports platform-as-product; self-service; user research; optional and composable capabilities; capability-provider boundaries; and a thin integration layer for cloud-native delivery.
++
++### `TEAMTOPOLOGIES-TVP-2019`
++
++- **Title:** *What Is a Thinnest Viable Platform (TVP)?*
++- **Author or organization:** Team Topologies authors
++- **Publication or update date:** Published 2019-11-07; modified 2024-06-01
++- **Accessed date:** 2026-08-23
++- **Stable URL or DOI:** <https://teamtopologies.com/key-concepts-content/what-is-a-thinnest-viable-platform-tvp>
++- **Version:** Page modified 2024-06-01
++- **Source class:** First-party practitioner guidance
++- **Supported scope:** Supports guidance to keep a thinnest viable platform no thicker than necessary; the example of a wiki page naming an approved cloud provider and services plus usage guidance; and attention to developer experience with stream-aligned teams as customers.
++
++## Scope exclusions
++
++- Vendor sources establish that vendor's documented model or position. They do not establish cross-vendor cost; reliability; security; or product superiority.
++- `NIST-AIRMFSTATUS-2026` and `NIST-PLAYBOOKAUDIT-2023` support status and provenance only.
++- `SLSA-BUILD-2026` supports artifact-build integrity. It does not establish dataset suitability; model validity; or deployment approval.
++- Product documentation is version-scoped and must be reviewed by the claim-ledger deadline before publication use.
++
+ ## Changelog
+ 
+ ### 2026-08-23
+ 
+-- Initialized the authoritative-reference bibliography contract.
++- Pinned both MLflow records to versioned 3.15.1 documentation URLs.
++- Corrected the Team Topologies key to its 2019 publication year; added the 2024 modification date; and narrowed the supported scope to the page's stated guidance.
++- Replaced the empty scaffold with 23 reviewed authoritative entries and stable uppercase source keys.
++- Added complete bibliographic metadata; source classes; supported-scope statements; volatility boundaries; and vendor applicability limits.

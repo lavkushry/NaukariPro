@@ -1,0 +1,193 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/CHANGELOG.md mlops/architect-handbook/CHANGELOG.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/CHANGELOG.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/CHANGELOG.md	2026-08-23 12:51:00
+@@ -0,0 +1,7 @@
++# Handbook Changelog
++
++## Changelog
++
++### 2026-08-23
++
++- Created the handbook directory contract, status records, editorial guide, glossary, source records, diagram area, and validation-script location.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/EDITORIAL_STATUS.md mlops/architect-handbook/EDITORIAL_STATUS.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/EDITORIAL_STATUS.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/EDITORIAL_STATUS.md	2026-08-23 12:51:15
+@@ -0,0 +1,36 @@
++# Editorial Status
++
++## Handbook state
++
++- Publication state: Scaffold
++- Audience: Senior, Staff, and Principal MLOps / ML Platform Architects
++- Chapter 1 state: Planned
++- Evidence state: Not started
++- Review state: Not started
++
++## Chapter lifecycle
++
++`Planned -> Researching -> Draft -> Technical Review -> Editorial Review -> Verified -> Publication Ready`
++
++## Raw source observations
++
++`mlops/vol1.md` is append-only raw source material. The observations below are read-only checkpoints; no operation in this milestone changes that file.
++
++| Event | SHA-256 | Lines | Bytes | Modification time |
++| --- | --- | ---: | ---: | --- |
++| Milestone start | ad726d53f325797e92e87e40ca966d349da6d586d71d0de3e256141e75262cde | 173052 | 2039271 | 2026-08-23T12:49:21+0530 |
++| Milestone end | ad726d53f325797e92e87e40ca966d349da6d586d71d0de3e256141e75262cde | 173052 | 2039271 | 2026-08-23T12:49:21+0530 |
++
++## Review gates
++
++- Structural validation: Pending
++- High-risk claim review: Pending
++- Diagram semantic review: Pending
++- Independent technical review: Pending
++- Independent editorial review: Pending
++
++## Changelog
++
++### 2026-08-23
++
++- Recorded matching milestone-start and milestone-end raw source observations and initialized the editorial lifecycle.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/GLOSSARY.md mlops/architect-handbook/GLOSSARY.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/GLOSSARY.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/GLOSSARY.md	2026-08-23 12:52:07
+@@ -0,0 +1,11 @@
++# Glossary
++
++## Controlled terms
++
++The scaffold does not yet admit controlled terms. Research work will add each term with its definition, aliases, and authoritative source before Chapter 1 enters review.
++
++## Changelog
++
++### 2026-08-23
++
++- Initialized controlled terms for the handbook scaffold.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/README.md mlops/architect-handbook/README.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/README.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/README.md	2026-08-23 12:51:00
+@@ -0,0 +1,34 @@
++# MLOps Architect Handbook
++
++## Purpose
++
++This maintained handbook provides research-backed architecture guidance for Senior, Staff, and Principal MLOps and ML Platform Architects.
++
++## Scope and reading guidance
++
++The initial milestone establishes the publishing framework and reserves Chapter 1 for **MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy**. Raw source material in [`../vol1.md`](../vol1.md) remains append-only and outside this handbook's editing scope.
++
++## Publication status
++
++- Handbook state: Scaffold
++- Chapter 1 state: Planned
++- Publication state: Not publication ready
++
++## Handbook map
++
++- [Editorial status](EDITORIAL_STATUS.md)
++- [Style guide](STYLE_GUIDE.md)
++- [Glossary](GLOSSARY.md)
++- [References](sources/references.md)
++- [Claim ledger](sources/claim-ledger.csv)
++- [Chapter 1 diagrams](diagrams/chapter-01/README.md)
++
++## Contribution workflow
++
++Work from a frozen, recorded source observation when extraction is required. Add claim-level evidence before advancing a chapter, maintain editable text diagrams, run local validation, and obtain independent technical and editorial review before publication-ready status.
++
++## Changelog
++
++### 2026-08-23
++
++- Created the handbook scaffold and documented its publication contract.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/STYLE_GUIDE.md mlops/architect-handbook/STYLE_GUIDE.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/STYLE_GUIDE.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/STYLE_GUIDE.md	2026-08-23 12:51:00
+@@ -0,0 +1,23 @@
++# Handbook Style Guide
++
++## Voice and audience
++
++Write for Senior, Staff, and Principal MLOps / ML Platform Architects in a direct engineering voice. Lead with a system, artifact, incident, diagram, or decision; explain the reasoning after the concrete context.
++
++## Structure
++
++Use ATX headings and this hierarchy: one chapter `#` title, `##` major sections, `###` subsections, and `####` only for necessary detail. Expand acronyms at first use and keep each section focused on one purpose.
++
++## Evidence and claims
++
++Record claims in the claim ledger. Label architectural judgment as synthesis, distinguish scenarios from observed facts, version-pin volatile product behavior, and avoid unsupported superlatives.
++
++## Diagrams and examples
++
++Keep diagrams text-based and editable. Every diagram requires an identifier, caption, purpose, assumptions, provenance, text alternative, and a semantic review of directionality and responsibility boundaries.
++
++## Changelog
++
++### 2026-08-23
++
++- Created the initial editorial rules for the handbook scaffold.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/chapters/.gitkeep mlops/architect-handbook/chapters/.gitkeep
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/chapters/.gitkeep	1970-01-01 05:30:00
++++ mlops/architect-handbook/chapters/.gitkeep	2026-08-23 12:51:00
+@@ -0,0 +1 @@
++
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/diagrams/chapter-01/README.md mlops/architect-handbook/diagrams/chapter-01/README.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/diagrams/chapter-01/README.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/diagrams/chapter-01/README.md	2026-08-23 12:51:01
+@@ -0,0 +1,19 @@
++# Chapter 1 Diagrams
++
++## Purpose
++
++This directory will contain editable, text-based diagrams for Chapter 1: ML lifecycle, architecture planes, system-of-record relationships, and a production failure flow.
++
++## Diagram requirements
++
++Each diagram must include a figure identifier, caption, purpose, assumptions, legend when needed, provenance, text alternative, and semantic review of directionality and responsibility boundaries.
++
++## Status
++
++No diagrams exist at scaffold stage. Chapter 1 remains Planned.
++
++## Changelog
++
++### 2026-08-23
++
++- Created the Chapter 1 diagram contract and reserved the diagram directory.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/scripts/.gitkeep mlops/architect-handbook/scripts/.gitkeep
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/scripts/.gitkeep	1970-01-01 05:30:00
++++ mlops/architect-handbook/scripts/.gitkeep	2026-08-23 12:51:01
+@@ -0,0 +1 @@
++
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/sources/claim-ledger.csv mlops/architect-handbook/sources/claim-ledger.csv
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/sources/claim-ledger.csv	1970-01-01 05:30:00
++++ mlops/architect-handbook/sources/claim-ledger.csv	2026-08-23 12:51:01
+@@ -0,0 +1 @@
++claim_id,chapter,section,claim_text,claim_type,risk_level,source_keys,source_version,source_date,accessed_date,status,review_by,notes
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/sources/references.md mlops/architect-handbook/sources/references.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/sources/references.md	1970-01-01 05:30:00
++++ mlops/architect-handbook/sources/references.md	2026-08-23 12:51:01
+@@ -0,0 +1,15 @@
++# References
++
++## Bibliography status
++
++No source has been admitted to the maintained bibliography at scaffold stage. Future entries must include a stable authoritative link, publication or version information when applicable, and an access date.
++
++## Source-key convention
++
++Use stable source keys in the form `ORG-TOPIC-YEAR` and reference them from `claim-ledger.csv`.
++
++## Changelog
++
++### 2026-08-23
++
++- Initialized the authoritative-reference bibliography contract.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/sources/research/.gitkeep mlops/architect-handbook/sources/research/.gitkeep
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-1-before/handbook/sources/research/.gitkeep	1970-01-01 05:30:00
++++ mlops/architect-handbook/sources/research/.gitkeep	2026-08-23 12:51:01
+@@ -0,0 +1 @@
++

@@ -1,0 +1,74 @@
+flowchart LR
+  subgraph product["Product workload accountability"]
+    ProductEvent["Product event"]
+    WorkloadIntent["Workload intent, acceptance criteria<br/>and serving objectives"]
+    PredictionAction["Prediction or action"]
+    ProductOutcome["Product outcome"]
+    ReviewRequest["Product review request<br/>retrain, roll back or retire"]
+  end
+
+  subgraph platform["Platform execution mechanisms<br/>not owner of workload behavior or outcomes"]
+    CapturedData["Data-capture mechanism"]
+    ValidatedDataReference["Validated data reference"]
+    TrainingRun["Training execution mechanism<br/>creates a candidate"]
+    EvaluatedCandidate["Evaluated candidate"]
+    DesiredDeploymentRecord["Passive desired deployment record<br/>approved, rollback or deactivation state"]
+    DeploymentController["Deployment controller"]
+    ServingWorkload["Serving execution mechanism"]
+    RuntimeTelemetry["Runtime telemetry"]
+    ObservedDeploymentState["Observed deployment state<br/>controller status plus workload telemetry"]
+  end
+
+  subgraph authority["Release and risk authority"]
+    DeclaredIntent["Declared intent record"]
+    ReleaseRiskDecision["Authorized decision<br/>train, roll back or retire"]
+    ApprovalDecision["Candidate approval decision"]
+    ImmutableDeploymentReference["Approved immutable deployment reference"]
+    RollbackReference["Prior immutable rollback reference"]
+    RetirementRecord["Retirement decision record"]
+  end
+
+  ProductEvent --> CapturedData
+  CapturedData --> ValidatedDataReference
+  ServingWorkload --> PredictionAction
+  PredictionAction --> ProductOutcome
+
+  WorkloadIntent ==> DeclaredIntent
+  ReviewRequest -.-> DeclaredIntent
+  DeclaredIntent -.-> ReleaseRiskDecision
+  ReleaseRiskDecision -.-> TrainingRun
+  ReleaseRiskDecision ==> RollbackReference
+  ReleaseRiskDecision ==> RetirementRecord
+  ReleaseRiskDecision -.->|"authorize rollback or deactivation write"| DesiredDeploymentRecord
+  ApprovalDecision ==> ImmutableDeploymentReference
+  ApprovalDecision -.->|"authorize approved-state write"| DesiredDeploymentRecord
+
+  ValidatedDataReference ==> TrainingRun
+  TrainingRun ==> EvaluatedCandidate
+  EvaluatedCandidate ==> ApprovalDecision
+  ImmutableDeploymentReference ==> DesiredDeploymentRecord
+  RollbackReference ==> DesiredDeploymentRecord
+  RetirementRecord ==>|"deactivation desired state"| DesiredDeploymentRecord
+  DesiredDeploymentRecord ==>|"controller watches desired state"| DeploymentController
+  DeploymentController -.-> ServingWorkload
+  DeploymentController ==>|"reconciliation status"| ObservedDeploymentState
+
+  ServingWorkload --o RuntimeTelemetry
+  RuntimeTelemetry --o ObservedDeploymentState
+  ObservedDeploymentState --o ReviewRequest
+  ProductOutcome --o ReviewRequest
+  PredictionAction --o CapturedData
+
+  subgraph legend["Explicit flow legend"]
+    LegendDataA["Source"] --> LegendDataB["Data flow"]
+    LegendControlA["Source"] -.-> LegendControlB["Control or decision flow"]
+    LegendArtifactA["Source"] ==> LegendArtifactB["Artifact or metadata flow"]
+    LegendTelemetryA["Source"] --o LegendTelemetryB["Telemetry or feedback flow"]
+  end
+
+  classDef productNode fill:#e8f1fb,stroke:#245a8d,color:#111111
+  classDef platformNode fill:#eef8ee,stroke:#2f6b3a,color:#111111
+  classDef authorityNode fill:#fff3df,stroke:#9a5a00,color:#111111
+  class ProductEvent,WorkloadIntent,PredictionAction,ProductOutcome,ReviewRequest productNode
+  class CapturedData,ValidatedDataReference,TrainingRun,EvaluatedCandidate,DesiredDeploymentRecord,DeploymentController,ServingWorkload,RuntimeTelemetry,ObservedDeploymentState platformNode
+  class DeclaredIntent,ReleaseRiskDecision,ApprovalDecision,ImmutableDeploymentReference,RollbackReference,RetirementRecord authorityNode

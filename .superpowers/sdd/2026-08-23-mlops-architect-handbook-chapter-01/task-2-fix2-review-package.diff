@@ -1,0 +1,436 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix2-before/handbook/scripts/test_validate_handbook.sh mlops/architect-handbook/scripts/test_validate_handbook.sh
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix2-before/handbook/scripts/test_validate_handbook.sh	2026-08-23 13:31:00
++++ mlops/architect-handbook/scripts/test_validate_handbook.sh	2026-08-23 13:33:45
+@@ -58,17 +58,18 @@
+ 
+   {
+     printf '# Chapter 1 Diagrams\n\n'
+-    printf -- '- [ML lifecycle](ml-lifecycle.mmd)\n'
+-    printf -- '- [Architecture planes](architecture-planes.mmd)\n'
+-    printf -- '- [System of record](system-of-record.mmd)\n'
+-    printf -- '- [Failure flow](failure-flow.mmd)\n\n'
++    printf -- '- [ML lifecycle](fig-01-ml-lifecycle.mmd)\n'
++    printf -- '- [Architecture planes](fig-02-architecture-planes.mmd)\n'
++    printf -- '- [System of record](fig-03-systems-of-record.mmd)\n'
++    printf -- '- [Failure flow](fig-04-failure-propagation.mmd)\n'
++    printf -- '- [Architecture section](../../chapters/01-mlops-architecture-foundations.md#architecture-planes)\n\n'
+     printf '## Changelog\n\n### 2026-08-23\n\n- Created registry.\n'
+   } > "$fixture_root/diagrams/chapter-01/README.md"
+ 
+-  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/ml-lifecycle.mmd"
+-  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/architecture-planes.mmd"
+-  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/system-of-record.mmd"
+-  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/failure-flow.mmd"
++  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/fig-01-ml-lifecycle.mmd"
++  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/fig-02-architecture-planes.mmd"
++  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/fig-03-systems-of-record.mmd"
++  printf 'flowchart LR\n  A --> B\n' > "$fixture_root/diagrams/chapter-01/fig-04-failure-propagation.mmd"
+ 
+   {
+     printf '# MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy\n\n'
+@@ -174,10 +175,10 @@
+ make_valid_fixture "$fixture"
+ {
+   printf '# Chapter 1 Diagrams\n\n'
+-  printf -- '- [ML lifecycle 1](ml-lifecycle.mmd)\n'
+-  printf -- '- [ML lifecycle 2](ml-lifecycle.mmd)\n'
+-  printf -- '- [ML lifecycle 3](ml-lifecycle.mmd)\n'
+-  printf -- '- [ML lifecycle 4](ml-lifecycle.mmd)\n\n'
++  printf -- '- [ML lifecycle 1](fig-01-ml-lifecycle.mmd)\n'
++  printf -- '- [ML lifecycle 2](fig-01-ml-lifecycle.mmd)\n'
++  printf -- '- [ML lifecycle 3](fig-01-ml-lifecycle.mmd)\n'
++  printf -- '- [ML lifecycle 4](fig-01-ml-lifecycle.mmd)\n\n'
+   printf '## Changelog\n\n### 2026-08-23\n\n- Created duplicate registry.\n'
+ } > "$fixture/diagrams/chapter-01/README.md"
+ assert_fail_contains "duplicate diagram targets fail release" "duplicate diagram target" \
+@@ -221,7 +222,7 @@
+ 
+ fixture="$TEST_TMP/placeholder-phrase"
+ make_valid_fixture "$fixture"
+-printf '\nLorem ipsum content remains unresolved.\n' >> "$fixture/README.md"
++printf '\n[PLACEHOLDER]\n' >> "$fixture/README.md"
+ assert_fail_contains "placeholder phrase fails" "placeholder text" \
+   "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
+ 
+@@ -237,9 +238,42 @@
+ assert_fail_contains "unqualified superlative fails" "unsupported superlative" \
+   "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
+ 
++fixture="$TEST_TMP/unbalanced-tilde-fence"
++make_valid_fixture "$fixture"
++printf '\n~~~markdown\nunclosed example\n' >> "$fixture/README.md"
++assert_fail_contains "unbalanced tilde fence names affected file" "README.md" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/fenced-reference-definition"
++make_valid_fixture "$fixture"
++printf '\n%s\n%s\n%s\n' '````markdown' '[guide]: missing-backtick.md' '````' >> "$fixture/README.md"
++printf '\n~~~markdown\n[guide]: missing-tilde.md\n~~~\n' >> "$fixture/README.md"
++assert_pass "reference definitions inside fences are ignored" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/fenced-only-heading"
++make_valid_fixture "$fixture"
++printf '\n~~~~markdown\n## Fenced only heading\n~~~~\n' >> "$fixture/GLOSSARY.md"
++printf '\n[Fenced heading](GLOSSARY.md#fenced-only-heading)\n' >> "$fixture/README.md"
++assert_fail_contains "ATX heading inside fence does not create anchor" "missing ATX-heading anchor" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/fenced-duplicate-heading"
++make_valid_fixture "$fixture"
++printf '\n## Repeated fenced heading\n\n~~~markdown\n## Repeated fenced heading\n~~~\n\n## Repeated fenced heading\n' >> "$fixture/GLOSSARY.md"
++printf '\n[False suffix](GLOSSARY.md#repeated-fenced-heading-2)\n' >> "$fixture/README.md"
++assert_fail_contains "fenced ATX heading does not shift duplicate suffixes" "missing ATX-heading anchor" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
++fixture="$TEST_TMP/placeholder-policy"
++make_valid_fixture "$fixture"
++printf '\nPlaceholder text is forbidden in publication content.\n' >> "$fixture/README.md"
++assert_pass "placeholder policy prose passes" \
++  "$VALIDATOR" --profile structure "$fixture" || test_failures=$((test_failures + 1))
++
+ if [ "$test_failures" -ne 0 ]; then
+   printf 'FAIL: %s validator test(s) failed\n' "$test_failures"
+   exit 1
+ fi
+ 
+-printf 'PASS: all 19 validator tests passed\n'
++printf 'PASS: all 24 validator tests passed\n'
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix2-before/handbook/scripts/validate_handbook.sh mlops/architect-handbook/scripts/validate_handbook.sh
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-2-fix2-before/handbook/scripts/validate_handbook.sh	2026-08-23 13:31:00
++++ mlops/architect-handbook/scripts/validate_handbook.sh	2026-08-23 13:37:30
+@@ -5,10 +5,10 @@
+ 
+ FAILURES=0
+ EXPECTED_LEDGER_HEADER='claim_id,chapter,section,claim_text,claim_type,risk_level,source_keys,source_version,source_date,accessed_date,status,review_by,notes'
+-APPROVED_DIAGRAM_FILES='ml-lifecycle.mmd
+-architecture-planes.mmd
+-system-of-record.mmd
+-failure-flow.mmd'
++APPROVED_DIAGRAM_FILES='fig-01-ml-lifecycle.mmd
++fig-02-architecture-planes.mmd
++fig-03-systems-of-record.mmd
++fig-04-failure-propagation.mmd'
+ PROFILE='release'
+ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+ HANDBOOK_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
+@@ -51,8 +51,43 @@
+   find "$HANDBOOK_ROOT" -type f -name '*.md' ! -path "$HANDBOOK_ROOT/scripts/*" -print | LC_ALL=C sort
+ }
+ 
+-extract_markdown_targets() {
++markdown_outside_fences() {
+   awk '
++    function detect_fence(line,    index_at, character, run_length) {
++      index_at = 1
++      while (index_at <= 3 && substr(line, index_at, 1) == " ") index_at++
++      if (substr(line, index_at, 1) == " ") return 0
++      character = substr(line, index_at, 1)
++      if (character != "`" && character != "~") return 0
++      run_length = 0
++      while (substr(line, index_at + run_length, 1) == character) run_length++
++      if (run_length < 3) return 0
++      detected_character = character
++      detected_length = run_length
++      detected_rest = substr(line, index_at + run_length)
++      return 1
++    }
++    {
++      is_fence = detect_fence($0)
++      if (!in_fence && is_fence) {
++        in_fence = 1
++        fence_character = detected_character
++        fence_length = detected_length
++        next
++      }
++      if (in_fence && is_fence && detected_character == fence_character &&
++          detected_length >= fence_length && detected_rest ~ /^[[:space:]]*$/) {
++        in_fence = 0
++        next
++      }
++      if (!in_fence) printf "%d\t%s\n", FNR, $0
++    }
++    END { exit(in_fence ? 1 : 0) }
++  ' "$1"
++}
++
++extract_markdown_targets() {
++  markdown_outside_fences "$1" | awk '
+     function destination(raw) {
+       sub(/^[[:space:]]+/, "", raw)
+       if (raw ~ /^</) {
+@@ -64,31 +99,34 @@
+       return raw
+     }
+     {
+-      definition = $0
++      separator = index($0, "\t")
++      line_number = substr($0, 1, separator - 1)
++      source_line = substr($0, separator + 1)
++      definition = source_line
+       if (definition ~ /^[[:space:]]*\[[^]]+\]:[[:space:]]*/) {
+         sub(/^[[:space:]]*\[[^]]+\]:[[:space:]]*/, "", definition)
+         target = destination(definition)
+         if (target != "") {
+-          printf "%d\t%s\n", FNR, target
++          printf "%s\t%s\n", line_number, target
+         }
+       }
+ 
+-      remainder = $0
++      remainder = source_line
+       while (match(remainder, /\]\([^)]*\)/)) {
+         target = destination(substr(remainder, RSTART + 2, RLENGTH - 3))
+         if (target != "") {
+-          printf "%d\t%s\n", FNR, target
++          printf "%s\t%s\n", line_number, target
+         }
+         remainder = substr(remainder, RSTART + RLENGTH)
+       }
+     }
+-  ' "$1"
++  '
+ }
+ 
+ heading_anchor_exists() {
+   anchor_file="$1"
+   wanted_anchor="$2"
+-  awk -v wanted="$wanted_anchor" '
++  markdown_outside_fences "$anchor_file" | awk -v wanted="$wanted_anchor" '
+     function anchor(text) {
+       sub(/^#+[[:space:]]+/, "", text)
+       sub(/[[:space:]]+#+[[:space:]]*$/, "", text)
+@@ -98,8 +136,12 @@
+       gsub(/-+/, "-", text)
+       return text
+     }
+-    /^#+[[:space:]]+/ {
+-      base = anchor($0)
++    {
++      separator = index($0, "\t")
++      source_line = substr($0, separator + 1)
++    }
++    source_line ~ /^#+[[:space:]]+/ {
++      base = anchor(source_line)
+       candidate = base
+       suffix = 1
+       while (used[candidate]) {
+@@ -113,7 +155,7 @@
+       }
+     }
+     END { exit(found ? 0 : 1) }
+-  ' "$anchor_file"
++  '
+ }
+ 
+ is_external_or_same_document_target() {
+@@ -128,10 +170,10 @@
+   [ -f "$registry" ] || return
+ 
+   links=$(extract_markdown_targets "$registry")
+-  ml_lifecycle_count=0
+-  architecture_planes_count=0
+-  system_of_record_count=0
+-  failure_flow_count=0
++  fig_01_count=0
++  fig_02_count=0
++  fig_03_count=0
++  fig_04_count=0
+   if [ -n "$links" ]; then
+     tab=$(printf '\t')
+     while IFS="$tab" read -r link_line link_target; do
+@@ -139,26 +181,27 @@
+       diagram_path=${link_target%%#*}
+       diagram_path=${diagram_path%%\?*}
+       case "$diagram_path" in
+-        ml-lifecycle.mmd)
+-          ml_lifecycle_count=$((ml_lifecycle_count + 1))
+-          occurrence_count=$ml_lifecycle_count
++        fig-01-ml-lifecycle.mmd)
++          fig_01_count=$((fig_01_count + 1))
++          occurrence_count=$fig_01_count
+           ;;
+-        architecture-planes.mmd)
+-          architecture_planes_count=$((architecture_planes_count + 1))
+-          occurrence_count=$architecture_planes_count
++        fig-02-architecture-planes.mmd)
++          fig_02_count=$((fig_02_count + 1))
++          occurrence_count=$fig_02_count
+           ;;
+-        system-of-record.mmd)
+-          system_of_record_count=$((system_of_record_count + 1))
+-          occurrence_count=$system_of_record_count
++        fig-03-systems-of-record.mmd)
++          fig_03_count=$((fig_03_count + 1))
++          occurrence_count=$fig_03_count
+           ;;
+-        failure-flow.mmd)
+-          failure_flow_count=$((failure_flow_count + 1))
+-          occurrence_count=$failure_flow_count
++        fig-04-failure-propagation.mmd)
++          fig_04_count=$((fig_04_count + 1))
++          occurrence_count=$fig_04_count
+           ;;
+-        *)
++        *.mmd)
+           fail "unapproved diagram target in diagrams/chapter-01/README.md:$link_line: $link_target"
+           continue
+           ;;
++        *) continue ;;
+       esac
+       if [ "$occurrence_count" -gt 1 ]; then
+         fail "duplicate diagram target in diagrams/chapter-01/README.md:$link_line: $diagram_path"
+@@ -175,10 +218,10 @@
+   unique_count=0
+   while IFS= read -r approved_diagram; do
+     case "$approved_diagram" in
+-      ml-lifecycle.mmd) occurrence_count=$ml_lifecycle_count ;;
+-      architecture-planes.mmd) occurrence_count=$architecture_planes_count ;;
+-      system-of-record.mmd) occurrence_count=$system_of_record_count ;;
+-      failure-flow.mmd) occurrence_count=$failure_flow_count ;;
++      fig-01-ml-lifecycle.mmd) occurrence_count=$fig_01_count ;;
++      fig-02-architecture-planes.mmd) occurrence_count=$fig_02_count ;;
++      fig-03-systems-of-record.mmd) occurrence_count=$fig_03_count ;;
++      fig-04-failure-propagation.mmd) occurrence_count=$fig_04_count ;;
+     esac
+     if [ "$occurrence_count" -eq 0 ]; then
+       fail "diagram registry missing approved target: $approved_diagram"
+@@ -248,8 +291,7 @@
+   files=$(markdown_files)
+   if [ -n "$files" ]; then
+     while IFS= read -r markdown_file; do
+-      fence_count=$(awk '/^```/ { count++ } END { print count + 0 }' "$markdown_file")
+-      if [ $((fence_count % 2)) -ne 0 ]; then
++      if ! markdown_outside_fences "$markdown_file" >/dev/null; then
+         fail "unbalanced Markdown fence: $(relative_path "$markdown_file")"
+       fi
+     done <<EOF
+@@ -266,10 +308,14 @@
+   files=$(maintained_content_markdown_files)
+   if [ -n "$files" ]; then
+     while IFS= read -r markdown_file; do
+-      matches=$(awk '
+-        /^```/ { in_fence = !in_fence; next }
+-        !in_fence && /^#+[[:space:]]+/ {
+-          match($0, /^#+/)
++      matches=$(markdown_outside_fences "$markdown_file" | awk '
++        {
++          separator = index($0, "\t")
++          line_number = substr($0, 1, separator - 1)
++          source_line = substr($0, separator + 1)
++        }
++        source_line ~ /^#+[[:space:]]+/ {
++          match(source_line, /^#+/)
+           level = RLENGTH
+           reason = ""
+           if (level > 4) {
+@@ -282,13 +328,13 @@
+             reason = "multiple level-1 headings"
+           }
+           if (reason != "") {
+-            printf "%d:%s\n", FNR, reason
++            printf "%s:%s\n", line_number, reason
+           }
+           if (level == 1) h1_count++
+           previous_level = level
+           seen_heading = 1
+         }
+-      ' "$markdown_file")
++      ')
+       if [ -n "$matches" ]; then
+         while IFS= read -r match; do
+           fail "invalid heading hierarchy in $(relative_path "$markdown_file"):$match"
+@@ -354,20 +400,22 @@
+   files=$(maintained_content_markdown_files)
+   if [ -n "$files" ]; then
+     while IFS= read -r markdown_file; do
+-      matches=$(awk '
+-        /^```/ { in_fence = !in_fence; next }
+-        !in_fence {
+-          lower = tolower($0)
++      matches=$(markdown_outside_fences "$markdown_file" | awk '
++        {
++          separator = index($0, "\t")
++          line_number = substr($0, 1, separator - 1)
++          source_line = substr($0, separator + 1)
++          lower = tolower(source_line)
+           if (lower ~ /lorem[[:space:]]+ipsum/ ||
+-              lower ~ /(^|[^[:alnum:]_])(placeholder|tktk)([^[:alnum:]_]|$)/ ||
+-              lower ~ /coming[[:space:]]+soon/ ||
+-              lower ~ /content[[:space:]]+forthcoming/ ||
+-              lower ~ /to[[:space:]]+be[[:space:]]+(completed|written|added)/ ||
+-              lower ~ /insert[[:space:]]+[^.]*[[:space:]]+here/) {
+-            printf "%d:%s\n", FNR, $0
++              lower ~ /\[[[:space:]]*(placeholder|tktk)[[:space:]]*\]/ ||
++              lower ~ /<[[:space:]]*(placeholder|tktk)[[:space:]]*>/ ||
++              lower ~ /__[[:space:]]*(placeholder|tktk)[[:space:]]*__/ ||
++              lower ~ /^[[:space:]>*-]*(coming soon|content forthcoming|to be (completed|written|added))[[:space:].!-]*$/ ||
++              lower ~ /^[[:space:]>*-]*(insert|fill in|replace with)[^.?!]*(here|later)[[:space:].!?-]*$/) {
++            printf "%s:%s\n", line_number, source_line
+           }
+         }
+-      ' "$markdown_file")
++      ')
+       if [ -n "$matches" ]; then
+         while IFS= read -r match; do
+           fail "placeholder text in $(relative_path "$markdown_file"):$match"
+@@ -389,10 +437,12 @@
+   files=$(maintained_content_markdown_files)
+   if [ -n "$files" ]; then
+     while IFS= read -r markdown_file; do
+-      matches=$(awk '
+-        /^```/ { in_fence = !in_fence; next }
+-        !in_fence {
+-          lower = tolower($0)
++      matches=$(markdown_outside_fences "$markdown_file" | awk '
++        {
++          separator = index($0, "\t")
++          line_number = substr($0, 1, separator - 1)
++          source_line = substr($0, separator + 1)
++          lower = tolower(source_line)
+           if (lower ~ /in today.s rapidly evolving landscape/ ||
+               lower ~ /in the ever-evolving (world|landscape)/ ||
+               lower ~ /it is important to note/ ||
+@@ -403,10 +453,10 @@
+               lower ~ /this section will (explore|discuss|cover)/ ||
+               lower ~ /this comprehensive guide/ ||
+               lower ~ /in the realm of/) {
+-            printf "%d:%s\n", FNR, $0
++            printf "%s:%s\n", line_number, source_line
+           }
+         }
+-      ' "$markdown_file")
++      ')
+       if [ -n "$matches" ]; then
+         while IFS= read -r match; do
+           fail "banned generic phrase in $(relative_path "$markdown_file"):$match"
+@@ -428,10 +478,12 @@
+   files=$(maintained_content_markdown_files)
+   if [ -n "$files" ]; then
+     while IFS= read -r markdown_file; do
+-      matches=$(awk '
+-        /^```/ { in_fence = !in_fence; next }
+-        !in_fence {
+-          lower = tolower($0)
++      matches=$(markdown_outside_fences "$markdown_file" | awk '
++        {
++          separator = index($0, "\t")
++          line_number = substr($0, 1, separator - 1)
++          source_line = substr($0, separator + 1)
++          lower = tolower(source_line)
+           scan = lower
+           gsub(/best-effort/, "", scan)
+           gsub(/always-on/, "", scan)
+@@ -443,10 +495,10 @@
+                       lower ~ /in this (handbook|chapter|section|scenario|example)/ ||
+                       lower ~ /(^|[^[:alnum:]_])(when|unless|if)[[:space:]]/
+           if (has_superlative && !qualified) {
+-            printf "%d:%s\n", FNR, $0
++            printf "%s:%s\n", line_number, source_line
+           }
+         }
+-      ' "$markdown_file")
++      ')
+       if [ -n "$matches" ]; then
+         while IFS= read -r match; do
+           fail "unsupported superlative in $(relative_path "$markdown_file"):$match"

@@ -1,0 +1,95 @@
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/CHANGELOG.md mlops/architect-handbook/CHANGELOG.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/CHANGELOG.md	2026-08-23 21:37:55
++++ mlops/architect-handbook/CHANGELOG.md	2026-08-23 21:41:44
+@@ -6,3 +6,4 @@
+ 
+ - Created the handbook directory contract, status records, editorial guide, glossary, source records, diagram area, and validation-script location.
+ - Established the binding editorial and publication contract: canonical Chapter 1 template, lifecycle register, reader navigation, evidence labels, glossary seed, and planned-figure registry.
++- Integrated the Chapter 1 index entry, glossary and cross-reference audit, precise evidence wording, and `Technical Review` lifecycle state while keeping technical approval and editorial review pending.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/EDITORIAL_STATUS.md mlops/architect-handbook/EDITORIAL_STATUS.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/EDITORIAL_STATUS.md	2026-08-23 21:37:55
++++ mlops/architect-handbook/EDITORIAL_STATUS.md	2026-08-23 21:45:15
+@@ -2,8 +2,8 @@
+ 
+ ## Handbook state
+ 
+-- Publication state: Scaffold
+-- Audience: Senior, Staff, and Principal MLOps / ML Platform Architects
++- Publication state: Chapter 1 in Technical Review
++- Audience: Senior, Staff, and Principal machine learning operations (MLOps) / machine learning (ML) Platform Architects
+ - Publication claim: Not publication-ready
+ - Lifecycle rule: A chapter advances one state at a time after its stated gate is satisfied.
+ 
+@@ -17,9 +17,9 @@
+ 
+ | Chapter | Title | Content state | Evidence state | Diagram state | Technical review | Editorial review | Validator status | Last reviewed date |
+ | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| 1 | MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy | Draft | Pre-draft evidence set approved: 56 verified claims and 9 qualified architectural syntheses; chapter mapping pending independent technical review | Technical Review | Not started | Not started | 27/27 validator tests and both structure and release profiles passed; static Mermaid checks passed; independent reviews pending | 2026-08-23 |
++| 1 | MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy | Technical Review | All 42 P0/P1 claims are verified; 14 P2 claims are verified; 9 qualified architectural syntheses await technical review | Technical Review | Pending — not approved | Not started | 27/27 validator tests passed; Task 7 structure and release profiles passed; independent reviews pending | 2026-08-23 |
+ 
+-Chapter 1 is `Draft` after Task 6 created the prose and four registered diagrams and the combined automated draft checks passed. The pre-draft evidence set is approved with 56 verified claims and 9 qualified architectural syntheses; the CH01-C001--CH01-C065 mapping and bounded synthesis remain pending independent technical review. `Technical Review` in the diagram-state column is the registered figure review status; it is not an approval of the chapter's Technical review column. Neither technical nor editorial review, chapter verification, nor publication approval exists.
++Chapter 1 is in `Technical Review` after Task 7 integrated its navigation, terminology, and release-candidate documentation. All 42 P0/P1 claims are verified, 14 P2 claims are verified, and 9 qualified architectural syntheses await technical review. `Technical Review` in the content-state and diagram-state columns opens those review gates; it does not approve the chapter's Technical review column. Technical approval is pending, editorial review is `Not started`, and neither chapter verification nor publication approval exists.
+ 
+ ## Raw source observations
+ 
+@@ -33,7 +33,7 @@
+ ## Review gates
+ 
+ - Structural and release validation: 27/27 validator tests passed; live structure and release profiles completed with zero failures.
+-- High-risk claim review: Pre-draft evidence set approved: 56 verified claims and 9 qualified architectural syntheses; chapter mapping pending independent technical review. All 42 P0/P1 claims are verified.
++- High-risk claim review: All 42 P0/P1 claims are verified; 14 P2 claims are verified; 9 qualified architectural syntheses await technical review.
+ - Diagram semantic review: Registry state is `Technical Review`; static Mermaid checks passed. Render verification is pending because `mmdc` is unavailable.
+ - Independent technical review: Not started.
+ - Independent editorial review: Not started.
+@@ -48,3 +48,5 @@
+ - Updated the evidence state after the approved Task 5 pre-draft claim set; retained `Researching` and all chapter drafting, review, verification, and publication gates as pending.
+ - Advanced Chapter 1 to `Draft` after Task 6 prose, diagram, registry, structure, release, and scan checks passed; retained independent technical and editorial review as `Not started`.
+ - Corrected the Task 6 I3 evidence-state language to distinguish 56 verified claims from 9 qualified architectural syntheses; retained `Draft`, `Technical Review`, and both independent-review columns pending rereview.
++- Advanced the Chapter 1 content state to `Technical Review` after Task 7 navigation, terminology, glossary-anchor, and forward-boundary integration; retained technical approval as pending and editorial review as `Not started`.
++- Clarified the evidence state: all 42 P0/P1 claims and 14 P2 claims are verified, while 9 qualified architectural syntheses await technical review.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/GLOSSARY.md mlops/architect-handbook/GLOSSARY.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/GLOSSARY.md	2026-08-23 21:37:55
++++ mlops/architect-handbook/GLOSSARY.md	2026-08-23 21:41:44
+@@ -32,3 +32,4 @@
+ - Rechecked the Model registry and Artifact store definitions against pinned MLflow 3.15.1 documentation and recorded that evidence boundary in their notes.
+ - Replaced all 14 pending definitions with source-entailing definitions or explicit handbook synthesis.
+ - Added stable bibliography keys; version and applicability boundaries; and acronym first-use instructions.
++- Audited the stable `#controlled-terms` anchor and Chapter 1 first-use expansions during Task 7; no controlled definition or verification state changed.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/README.md mlops/architect-handbook/README.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/README.md	2026-08-23 21:37:55
++++ mlops/architect-handbook/README.md	2026-08-23 21:41:44
+@@ -2,11 +2,11 @@
+ 
+ ## Reader contract
+ 
+-This maintained handbook serves Senior, Staff, and Principal MLOps / ML Platform Architects who make cross-team decisions about machine learning (ML) systems, platform boundaries, operational controls, and long-term architecture. It favors explicit constraints, evidence, trade-offs, failure recovery, security, cost, and operational ownership over product catalogues or unsupported prescriptions.
++This maintained handbook serves Senior, Staff, and Principal machine learning operations (MLOps) / machine learning (ML) Platform Architects who make cross-team decisions about ML systems, platform boundaries, operational controls, and long-term architecture. It favors explicit constraints, evidence, trade-offs, failure recovery, security, cost, and operational ownership over product catalogues or unsupported prescriptions.
+ 
+ ## Chapter 1 milestone
+ 
+-The initial milestone establishes the publication framework and the contract for Chapter 1, **MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy**. Chapter 1 is `Planned`; no chapter is represented as drafted, verified, or publication-ready in this repository state.
++The initial milestone establishes the publication framework and the contract for Chapter 1, **MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy**. Chapter 1 is in `Technical Review`; this lifecycle state opens review but does not imply technical approval, editorial review, verification, or publication readiness.
+ 
+ ## Raw-source preservation
+ 
+@@ -34,6 +34,7 @@
+ 
+ ## Handbook map
+ 
++- [Chapter 1: MLOps Architecture Foundations: From ML Lifecycle to Enterprise Platform Strategy](chapters/01-mlops-architecture-foundations.md): Defines the predictive-ML lifecycle, architecture planes, authority boundaries, operating responsibilities, and decision scope; prerequisites are source control, data pipelines, model training and evaluation, deployment, identity, telemetry, and incident-response fundamentals; state is `Technical Review`, with technical approval pending and editorial review `Not started`.
+ - [Editorial status](EDITORIAL_STATUS.md): lifecycle, chapter register, and raw-source observations.
+ - [Style guide](STYLE_GUIDE.md): binding chapter template and editorial rules.
+ - [Glossary](GLOSSARY.md): controlled architectural vocabulary and verification state.
+@@ -55,3 +56,4 @@
+ ### 2026-08-23
+ 
+ - Expanded the scaffold into the reader contract, navigation map, reading paths, raw-source rule, and evidence-based publication policy.
++- Linked the completed Chapter 1 draft with its purpose, prerequisites, and honest `Technical Review` state; added no links to unwritten chapters.
+diff -ruN .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/chapters/01-mlops-architecture-foundations.md mlops/architect-handbook/chapters/01-mlops-architecture-foundations.md
+--- .superpowers/sdd/2026-08-23-mlops-architect-handbook-chapter-01/task-7-before/handbook/chapters/01-mlops-architecture-foundations.md	2026-08-23 21:37:55
++++ mlops/architect-handbook/chapters/01-mlops-architecture-foundations.md	2026-08-23 21:41:44
+@@ -516,3 +516,4 @@
+ - Added the seven-plane architecture model, capability maturity model, system-of-record classes, responsibility contract, sourcing framework, role-scope model, lifecycle flow, bounded failure case, ADR exercise, interview questions, and observable rubric.
+ - Mapped external factual claims to the verified Chapter 1 evidence set and labeled cross-source architectural judgments as bounded handbook synthesis.
+ - Addressed Task 6 review findings I1, I2, and M1 by labeling repeated qualified syntheses at point of use, reconciling appendix mappings to exact ledger source keys, and adding the role-scope forward boundary.
++- Audited all Chapter 1 Markdown targets and anchors, glossary navigation, acronym first use, and plain-language forward boundaries for Task 7 integration; no technical claim or qualified-synthesis boundary changed.
