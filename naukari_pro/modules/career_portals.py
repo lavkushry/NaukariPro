@@ -98,7 +98,9 @@ class CareerPortalFiller:
 
     def detect_ats(self, url: str) -> str:
         u = url.lower()
-        if "greenhouse.io" in u or "gh_jid" in u:
+        if "linkedin.com" in u:
+            return "LinkedIn"
+        elif "greenhouse.io" in u or "gh_jid" in u:
             return "Greenhouse"
         elif "ashbyhq.com" in u:
             return "Ashby"
@@ -193,7 +195,21 @@ class CareerPortalFiller:
                 }}
             }}
 
-            // 7. Check for resume file input
+            // 7. LinkedIn Easy Apply Modal Handling
+            if (window.location.hostname.includes('linkedin.com')) {{
+                const easyApplyBtn = document.querySelector('.jobs-apply-button, button[aria-label*="Easy Apply"]');
+                const modal = document.querySelector('.jobs-easy-apply-modal, [data-test-modal]');
+                if (easyApplyBtn && !modal) {{
+                    easyApplyBtn.click();
+                    res.filled.push('Easy Apply Triggered');
+                }} else if (modal) {{
+                    const phoneInput = modal.querySelector('input[id*="phoneNumber"], input[autocomplete="tel"], input[type="tel"]');
+                    if (phoneInput && !phoneInput.value) setVal(phoneInput, p.phone, 'LinkedIn Phone');
+                    res.filled.push('LinkedIn Modal Form Step');
+                }}
+            }}
+
+            // 8. Check for resume file input
             const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
             res.hasFileInput = fileInputs.length > 0;
             res.fileInputCount = fileInputs.length;

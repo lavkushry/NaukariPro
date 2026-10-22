@@ -19,6 +19,7 @@ from naukari_pro.modules.hiring_trends import HiringTrendsEngine
 
 from naukari_pro.modules.early_access import EarlyAccessEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
+from naukari_pro.modules.multi_search import UniversalJobSearchEngine
 
 BANNER = r"""
 ========================================================================
@@ -43,6 +44,7 @@ def print_menu():
     print("  [7] In-Demand Skill Insights (Real-time Skill Demand & Trends)")
     print("  [8] Industry Hiring Trends (Salary Benchmarks & Top GCCs)")
     print("  [9] Early Access & NVites (Pre-Market Roles & Recruiter Shortlists)")
+    print("  [S] Multi-Source Job Hunter (Search Naukri + LinkedIn + Hacker News)")
     print("  [C] Career Portal Auto-Filler (Greenhouse / Ashby / Lever / Workday / Portals)")
     print("  [D] Run Complete Daily Autonomous Cycle (Bump + Scan + Apply + Log)")
     print("  [A] Authenticate Session (One-time Chrome Login Setup)")
@@ -142,6 +144,10 @@ def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer",
             filler.fill_in_playwright(page, url, company=company, role=role)
             context.close()
 
+def handle_multi_search():
+    engine = UniversalJobSearchEngine()
+    engine.run_multi_search()
+
 def handle_daily_cycle(headless=False):
     print("\n[*] Launching Complete Autonomous Daily Cycle...")
     # 1. Profile bump
@@ -229,6 +235,8 @@ def interactive_loop():
             handle_hiring_trends()
         elif choice == "9":
             handle_early_access()
+        elif choice.upper() == "S":
+            handle_multi_search()
         elif choice.upper() == "C":
             handle_portal_apply()
         elif choice.upper() == "D":
@@ -256,6 +264,7 @@ def main():
         ("bump", "Bump profile to Today"),
         ("hidden-jobs", "Discover hidden/stealth jobs"),
         ("early-access", "Scan early access roles and NVites"),
+        ("search-all", "Search across Naukri, LinkedIn, and Hacker News Who's Hiring"),
         ("resume-maker", "Generate ATS Resume PDF"),
         ("interview-prep", "Interview prep master bank"),
         ("skill-insights", "In-demand skills intelligence"),
@@ -283,6 +292,8 @@ def main():
         handle_hidden_jobs(headless=args.headless)
     elif args.command == "early-access":
         handle_early_access(headless=args.headless)
+    elif args.command == "search-all":
+        handle_multi_search()
     elif args.command == "resume-maker":
         handle_resume_maker()
     elif args.command == "interview-prep":
