@@ -40,7 +40,7 @@ elif command -v agy &>/dev/null; then
 fi
 
 # 4. Formulate Agentic Execution Prompt for agy
-AGY_PROMPT='You are the autonomous AI career agent running for Lavkush Kumar (Azure Data Engineer, 2.5 YOE, ₹25 LPA target CTC, 30 days notice).
+AGY_PROMPT='You are the autonomous AI career agent running for Lavkush Kumar (Azure Data Engineer, 2.5 YOE, ₹20 LPA target CTC, 30 days notice).
 Execute the complete scheduled career cycle in this workspace:
 1. Run `./naukariPro pro --headless --limit 15` to:
    - Bump and refresh the live Naukri profile to maintain "Active Today" Resdex visibility.
