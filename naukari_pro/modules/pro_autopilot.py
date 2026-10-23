@@ -2,9 +2,9 @@
 naukariPro Flagship: Autonomous Pro Auto-Pilot Engine
 The ultimate autonomous career agent for ₹25 LPA Azure Data Engineer.
 Orchestrates:
-1. Resdex 100/100 Profile Bumper (Active Today)
+1. Server-Side Entitlement & Resdex Recency Verification
 2. Naukri Curated Recommended Jobs Multi-Apply Batch
-3. Naukri Precision Keyword Search (1-Click & Screening Chatbot Solver)
+3. Naukri Precision Keyword Search (1-Click & Verified Chatbot Solver)
 4. External Career Portal Auto-Filler (Greenhouse, Ashby, Lever, Workday, Rippling)
 5. Multi-Platform Intelligence (LinkedIn Easy Apply & Hacker News Ingest)
 6. Live Application Excel Logging & Executive Summary
@@ -21,6 +21,7 @@ from naukari_pro.modules.auto_apply import AutoApplyEngine
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
+from naukari_pro.modules.profile_performance import ProfilePerformanceEngine
 
 class ProAutoPilotEngine:
     def __init__(self, limit=10, headless=False, dry_run=False):
@@ -31,6 +32,7 @@ class ProAutoPilotEngine:
         self.apply_engine = AutoApplyEngine(dry_run=dry_run)
         self.search_engine = UniversalJobSearchEngine()
         self.portal_filler = CareerPortalFiller()
+        self.perf_engine = ProfilePerformanceEngine()
 
     def run_full_pipeline(self):
         start_time = datetime.now()
@@ -43,11 +45,12 @@ class ProAutoPilotEngine:
         print(f"  Active Session: {'macOS Native Chrome Bridge' if sys.platform == 'darwin' else 'Linux Stealth Playwright'}")
         print("=" * 70)
 
-        # ── STAGE 1: Profile Recency & Resdex 100/100 ──
-        print("\n[STAGE 1/5] Optimizing Resdex Recency & Ranking...")
+        # ── STAGE 1: Server Entitlements & Profile Recency ──
+        print("\n[STAGE 1/5] Inspecting Server Entitlements & Profile Strength...")
+        entitlements = self.perf_engine.get_session_entitlements()
+        print(f"  [✓] Server Subscription Tier: {entitlements['tier']}")
         audit = self.profile_engine.audit_profile_strength()
         print(f"  [✓] Profile Resdex Completeness: {audit['score']}/100 ({audit['tier']})")
-        print("  [✓] Recency status: Active Today (Daily bump verified)")
 
         # ── STAGE 2: Autonomous Naukri Auto-Apply Cycle ──
         print(f"\n[STAGE 2/5] Executing Autonomous Apply Cycle (Target: {self.limit} Applications)...")

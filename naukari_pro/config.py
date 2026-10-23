@@ -8,6 +8,7 @@ import json
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKSPACE_DIR = BASE_DIR
 
 # 1. Load .env once right at import
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -21,6 +22,7 @@ COOKIES_SEED_PATH = os.path.join(BASE_DIR, "naukri_system", "cookies_seed.json")
 SESSION_DIR = os.path.expanduser("~/.naukri_system_profile")
 LOG_PATH = os.path.expanduser("~/naukari_pro.log")
 CONFIG_FILE = os.path.join(BASE_DIR, "naukri_system", "config.json")
+CONFIG_PATH = CONFIG_FILE
 
 def load_config():
     """

@@ -1,9 +1,12 @@
 """
 Feature 7: In-Demand Skill Insights
 Market intelligence on keyword frequencies, tech stack demand, and certification ROI.
-Driven directly from unified configuration facts.
+Supports:
+- Ground-truth config baseline benchmarks
+- Live web sampling across active Naukri vacancies
 """
 
+import time
 import logging
 from naukari_pro.config import load_config
 
@@ -39,7 +42,34 @@ class SkillInsightsEngine:
     def get_skill_matrix(self):
         return self.config.get("skill_demand_data", DEFAULT_SKILL_DEMAND)
 
-    def display_insights(self):
+    def sample_live_skill_demand(self, page, sample_size=15):
+        """
+        Samples recent live job postings on Naukri to calculate real-world skill frequencies.
+        """
+        url = "https://www.naukri.com/azure-data-engineer-jobs-in-hyderabad?experience=2&jobAge=1"
+        logger.info("Sampling live skill demand from %s...", url)
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=25000)
+            time.sleep(2)
+            cards = page.locator(".srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple").all()
+            texts = []
+            for c in cards[:sample_size]:
+                texts.append(c.inner_text().lower())
+            
+            if not texts:
+                return {}
+
+            tracked = ["pyspark", "databricks", "delta lake", "sql", "adf", "kafka", "terraform", "fabric"]
+            results = {}
+            for t in tracked:
+                count = sum(1 for body in texts if t in body)
+                results[t] = f"{round((count / len(texts)) * 100)}% ({count}/{len(texts)} postings)"
+            return results
+        except Exception as e:
+            logger.warning("Live skill sampling notice: %s", e)
+            return {}
+
+    def display_insights(self, live_data=None):
         data = self.get_skill_matrix()
         print("\n" + "=" * 75)
         print("  NAUKARIPRO: IN-DEMAND SKILL INTELLIGENCE (AZURE DATA PLATFORMS)")
@@ -51,5 +81,16 @@ class SkillInsightsEngine:
             for s in skills:
                 extra = s.get("priority", s.get("trend", ""))
                 print(f"{s['skill']:<35} | {s['demand']:<16} | {extra}")
+
+        if live_data:
+            print("\n[+] LIVE MARKET SAMPLING (Observed in Fresh Vacancies Today)")
+            print(f"{'Skill Keyword':<25} | {'Observed Frequency in Live SRP'}")
+            print("-" * 55)
+            for sk, freq in live_data.items():
+                print(f"{sk.capitalize():<25} | {freq}")
+        else:
+            print("\n[ℹ️] Baseline derived from analyzed product company & GCC JDs.")
+            print("    Run with active browser to inspect live SRP frequency samples.")
+
         print("\nCandidate Alignment Score: 96% Match with Top 5% Recruiter Searches.")
         print("=" * 75 + "\n")

@@ -1,14 +1,16 @@
 """
-naukariPro CLI & Master Orchestrator
-Integrates all 8 core modules into a unified terminal tool and automated pipeline.
+naukariPro: High-Performance Autonomous CLI Interface
+Targeting ₹25 LPA Azure Data Engineer Opportunities
+Ground-truth metrics, real server entitlement inspection, and robust error handling.
 """
 
-import sys
 import os
+import sys
 import argparse
 from playwright.sync_api import sync_playwright
 
-from naukari_pro.session import get_stealth_context, ensure_authenticated
+from naukari_pro.session import get_stealth_context, ensure_authenticated, save_session_cookies, detect_challenge
+from naukari_pro.config import load_config
 from naukari_pro.modules.auto_apply import AutoApplyEngine
 from naukari_pro.modules.job_alerts import InstantAlertsEngine
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
@@ -17,11 +19,11 @@ from naukari_pro.modules.resume_maker import AIResumeMaker
 from naukari_pro.modules.interview_prep import InterviewPrepEngine
 from naukari_pro.modules.skill_insights import SkillInsightsEngine
 from naukari_pro.modules.hiring_trends import HiringTrendsEngine
-
 from naukari_pro.modules.early_access import EarlyAccessEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
 from naukari_pro.modules.pro_autopilot import ProAutoPilotEngine
+from naukari_pro.modules.profile_performance import ProfilePerformanceEngine
 
 BANNER = r"""
 ========================================================================
@@ -38,26 +40,42 @@ BANNER = r"""
 def print_menu():
     print(BANNER)
     print("  [P] PRO AUTONOMOUS AUTO-PILOT (Complete All-in-One AI Career Engine)")
-    print("  [1] Auto-Apply on Naukri (1-Click & Questionnaire Applications)")
-    print("  [2] Instant Job Alerts (Scan Fresh Openings & Send Desktop Alerts)")
-    print("  [3] AI-Enhanced Profile (Daily Bumper & Resdex 100% Audit)")
-    print("  [4] Hidden Job Opportunities (Recommended Jobs & GCC Openings)")
-    print("  [5] AI Resume Maker (Compile 1-Page ATS PDF)")
+    print("  [E] Server Entitlements & Profile Performance (JWT & Search Stats)")
+    print("  [1] Auto-Apply on Naukri (1-Click & Verified Questionnaire Solver)")
+    print("  [2] Instant Job Alerts (Cross-platform Desktop & In-App Alerts)")
+    print("  [3] AI-Enhanced Profile (Daily Timestamp Touch & Completeness Audit)")
+    print("  [4] Hidden Job Opportunities (Inquiries, Recommended Feed & GCCs)")
+    print("  [5] AI Resume Maker (1-Page ATS PDF & Quality Scorecard)")
     print("  [6] AI Interview Prep Tools (Master Q&A Bank for ₹25 LPA)")
-    print("  [7] In-Demand Skill Insights (Real-time Skill Demand & Trends)")
-    print("  [8] Industry Hiring Trends (Salary Benchmarks & Top GCCs)")
-    print("  [9] Early Access & NVites (Pre-Market Roles & Recruiter Shortlists)")
+    print("  [M] Interactive AI Mock Interview Evaluator (Answer Scoring & Coaching)")
+    print("  [7] In-Demand Skill Insights (Skill Matrix & Live Market Sampling)")
+    print("  [8] Industry Hiring Trends (Salary Benchmarks & GCC Packages)")
+    print("  [9] Early Access & NVites (Scrape Homepage & Inbox NVites)")
     print("  [S] Multi-Source Job Hunter (Search Naukri + LinkedIn + Hacker News)")
-    print("  [C] Career Portal Auto-Filler (Greenhouse / Ashby / Lever / Workday / Portals)")
+    print("  [C] Career Portal Auto-Filler (Greenhouse / Ashby / Lever / Workday)")
     print("  [D] Run Complete Daily Autonomous Cycle (Bump + Scan + Apply + Log)")
     print("  [G] AGY Autonomous Scheduler (Linux systemd & agy CLI schedule)")
-    print("  [A] Authenticate Session (One-time Chrome Login Setup)")
+    print("  [A] Authenticate Session (One-time Login & Cookie Persistence)")
     print("  [0] Exit")
     print("========================================================================")
 
 def handle_pro(limit=10, headless=False, dry_run=False):
     engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run)
     engine.run_full_pipeline()
+
+def handle_performance(headless=False):
+    engine = ProfilePerformanceEngine()
+    if headless:
+        engine.display_report()
+    else:
+        with sync_playwright() as p:
+            context = get_stealth_context(p, headless=headless)
+            page = context.pages[0] if context.pages else context.new_page()
+            if ensure_authenticated(page, headless=headless):
+                engine.display_report(page=page)
+            else:
+                engine.display_report()
+            context.close()
 
 def handle_auto_apply(headless=False, limit=20, dry_run=False):
     print("\n[*] Starting Auto-Apply on Naukri...")
@@ -70,7 +88,7 @@ def handle_alerts(headless=False):
     with sync_playwright() as p:
         context = get_stealth_context(p, headless=headless)
         page = context.pages[0] if context.pages else context.new_page()
-        if ensure_authenticated(page):
+        if ensure_authenticated(page, headless=headless):
             alerts = engine.scan_for_alerts(page)
             print(f"\n[+] Identified {len(alerts)} High-Priority Vacancies:")
             for a in alerts:
@@ -81,25 +99,28 @@ def handle_alerts(headless=False):
 def handle_profile(headless=False):
     print("\n[*] Running AI-Enhanced Profile Module...")
     engine = ProfileEnhancerEngine()
-    audit = engine.audit_profile_strength()
-    print(f"\n[+] Profile Resdex Strength Score: {audit['score']}/100 ({audit['tier']})")
-    for name, desc, pts in audit['checklist']:
-        print(f"  [✓] {name:<26} (+{pts} pts) : {desc}")
-
+    
     with sync_playwright() as p:
         context = get_stealth_context(p, headless=headless)
         page = context.pages[0] if context.pages else context.new_page()
-        if ensure_authenticated(page):
+        
+        audit = engine.audit_profile_strength(page=page if not headless else None)
+        print(f"\n[+] Profile Resdex Strength Score: {audit['score']}/100 ({audit['tier']})")
+        print(f"    Source: {audit.get('source', 'Config Facts')}")
+        for name, desc, pts in audit['checklist']:
+            print(f"  [✓] {name:<26} (+{pts} pts) : {desc}")
+
+        if ensure_authenticated(page, headless=headless):
             engine.bump_profile(page)
         context.close()
 
 def handle_hidden_jobs(headless=False):
-    print("\n[*] Discovering Hidden & Stealth Opportunities...")
+    print("\n[*] Discovering Hidden & Off-Market Opportunities...")
     engine = HiddenJobsEngine()
     with sync_playwright() as p:
         context = get_stealth_context(p, headless=headless)
         page = context.pages[0] if context.pages else context.new_page()
-        if ensure_authenticated(page):
+        if ensure_authenticated(page, headless=headless):
             jobs = engine.discover_hidden_opportunities(page)
             print(f"\n[+] Discovered {len(jobs)} Off-Market Openings:")
             for j in jobs:
@@ -128,17 +149,54 @@ def handle_resume_maker(jd=None):
     out = maker.build_ats_resume_pdf(jd_text=jd_content)
     print(f"\n[✓] ATS Resume generated successfully: {out}")
 
-def handle_interview_prep():
+    # Generate objective Quality Scorecard
+    score = maker.calculate_resume_quality_score(jd_text=jd_content)
+    print("\n" + "=" * 65)
+    print(f"  📋 ATS RESUME QUALITY SCORECARD — {score['overall_score']}/100")
+    print("=" * 65)
+    print(f"  • ATS Layout Compliance:    {score['ats_compliance_score']}")
+    print(f"  • Quantified Metrics Ratio: {score['quantified_metrics_score']}")
+    print(f"  • Target Keyword Coverage:  {score['keyword_alignment_score']}")
+    print(f"  • Key Matched Keywords:     {', '.join(score['matched_keywords'])}")
+    print("  • Evaluator Recommendations:")
+    for rec in score['recommendations']:
+        print(f"    👉 {rec}")
+    print("=" * 65 + "\n")
+
+def handle_interview_prep(mock=False):
     engine = InterviewPrepEngine()
-    engine.display_full_prep_guide()
+    if mock:
+        engine.run_interactive_mock_interview()
+    else:
+        engine.display_full_prep_guide()
 
-def handle_skill_insights():
+def handle_skill_insights(headless=False):
     engine = SkillInsightsEngine()
-    engine.display_insights()
+    live_samples = None
+    if not headless:
+        try:
+            with sync_playwright() as p:
+                context = get_stealth_context(p, headless=True)
+                page = context.pages[0] if context.pages else context.new_page()
+                live_samples = engine.sample_live_skill_demand(page)
+                context.close()
+        except Exception:
+            pass
+    engine.display_insights(live_data=live_samples)
 
-def handle_hiring_trends():
+def handle_hiring_trends(headless=False):
     engine = HiringTrendsEngine()
-    engine.display_market_report()
+    live_samples = None
+    if not headless:
+        try:
+            with sync_playwright() as p:
+                context = get_stealth_context(p, headless=True)
+                page = context.pages[0] if context.pages else context.new_page()
+                live_samples = engine.sample_live_salary_disclosure(page)
+                context.close()
+        except Exception:
+            pass
+    engine.display_market_report(live_data=live_samples)
 
 def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer", headless=False):
     filler = CareerPortalFiller()
@@ -180,7 +238,7 @@ def handle_daily_cycle(headless=False, dry_run=False):
     handle_alerts(headless=headless)
 
 def handle_auth():
-    print("\n[*] Launching Chrome window with your credentials pre-filled...")
+    print("\n[*] Launching browser window for authentic Naukri login...")
     with sync_playwright() as p:
         context = get_stealth_context(p, headless=False)
         page = context.pages[0] if context.pages else context.new_page()
@@ -210,17 +268,21 @@ def handle_auth():
                     login_btn.click()
                     time.sleep(2)
                 elif not password:
-                    print("[!] Notice: NAUKRI_PASSWORD not found in .env. Please type your password in the Chrome window.")
+                    print("[!] Notice: NAUKRI_PASSWORD not found in .env. Please type your password in the browser window.")
+
+            challenge = detect_challenge(page)
+            if challenge:
+                print(f"\n⚠️ {challenge} detected on login page!")
 
             print("\n" + "=" * 65)
             print("  🔑 CREDENTIALS SUBMITTED!")
-            print("  If a quick visual verification (Captcha/OTP) appears in the")
-            print("  opened Chrome window on your screen, please complete it.")
-            print("  Waiting up to 3 minutes for login confirmation...")
+            print("  If a visual challenge (Captcha/OTP) appears in the browser window,")
+            print("  please complete it manually. Waiting up to 3 minutes for confirmation...")
             print("=" * 65 + "\n")
 
             page.wait_for_url("**/mnjuser/**", timeout=180000)
-            print("\n[✓] SUCCESS: Authenticated session verified and permanently saved!")
+            save_session_cookies(context)
+            print("\n[✓] SUCCESS: Authenticated session confirmed and cookies synchronized to disk!")
         except Exception as e:
             print(f"\n[!] Notice during login: {e}")
 
@@ -232,7 +294,7 @@ def handle_early_access(headless=False):
     with sync_playwright() as p:
         context = get_stealth_context(p, headless=headless)
         page = context.pages[0] if context.pages else context.new_page()
-        if ensure_authenticated(page):
+        if ensure_authenticated(page, headless=headless):
             res = engine.scan_early_access(page)
             print(f"\n[+] Profile Status: {res['profile_status']}")
             print(f"[+] Early Access Roles Detected: {res['early_roles_detected']}")
@@ -271,9 +333,11 @@ def handle_agy_schedule(action="status"):
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, P, S, C, D, G, A]: ").strip().upper()
+        choice = input("Select an option [0-9, P, E, M, S, C, D, G, A]: ").strip().upper()
         if choice == "P":
             handle_pro()
+        elif choice == "E":
+            handle_performance()
         elif choice == "G":
             handle_agy_schedule("status")
         elif choice == "1":
@@ -288,19 +352,21 @@ def interactive_loop():
             handle_resume_maker()
         elif choice == "6":
             handle_interview_prep()
+        elif choice == "M":
+            handle_interview_prep(mock=True)
         elif choice == "7":
             handle_skill_insights()
         elif choice == "8":
             handle_hiring_trends()
         elif choice == "9":
             handle_early_access()
-        elif choice.upper() == "S":
+        elif choice == "S":
             handle_multi_search()
-        elif choice.upper() == "C":
+        elif choice == "C":
             handle_portal_apply()
-        elif choice.upper() == "D":
+        elif choice == "D":
             handle_daily_cycle()
-        elif choice.upper() == "A":
+        elif choice == "A":
             handle_auth()
         elif choice == "0":
             print("\nExiting naukariPro. Good luck with your ₹25 LPA goal!\n")
@@ -320,13 +386,13 @@ def main():
 
     for cmd, hlp in [
         ("pro", "Run Complete All-in-One Pro Autonomous Pipeline"),
+        ("performance", "Inspect Server-Side Entitlements & Profile Analytics"),
         ("auto-apply", "Auto-Apply to target vacancies"),
         ("alerts", "Scan instant hot alerts"),
         ("bump", "Bump profile to Today"),
-        ("hidden-jobs", "Discover hidden/stealth jobs"),
+        ("hidden-jobs", "Discover hidden/off-market jobs"),
         ("early-access", "Scan early access roles and NVites"),
         ("search-all", "Search across Naukri, LinkedIn, and Hacker News Who's Hiring"),
-        ("interview-prep", "Interview prep master bank"),
         ("skill-insights", "In-demand skills intelligence"),
         ("hiring-trends", "Salary & GCC hiring report"),
         ("daily", "Run full daily autonomous cycle"),
@@ -335,7 +401,10 @@ def main():
     ]:
         subparsers.add_parser(cmd, help=hlp, parents=[common_parser])
 
-    resume_parser = subparsers.add_parser("resume-maker", help="Generate ATS Resume PDF (Supports --jd tailoring)", parents=[common_parser])
+    prep_parser = subparsers.add_parser("interview-prep", help="Interview prep master bank and mock evaluator", parents=[common_parser])
+    prep_parser.add_argument("--mock", action="store_true", help="Launch interactive AI mock interview evaluator with scoring")
+
+    resume_parser = subparsers.add_parser("resume-maker", help="Generate ATS Resume PDF & Quality Scorecard (Supports --jd tailoring)", parents=[common_parser])
     resume_parser.add_argument("--jd", type=str, help="Path to target Job Description text file or raw JD string for tailoring")
 
     portal_parser = subparsers.add_parser("portal-apply", help="Auto-fill external career portal application (Greenhouse, Ashby, Lever, Workday)", parents=[common_parser])
@@ -350,6 +419,8 @@ def main():
 
     if args.command == "pro":
         handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run)
+    elif args.command == "performance":
+        handle_performance(headless=args.headless)
     elif args.command == "agy-schedule":
         handle_agy_schedule(action=args.action)
     elif args.command == "auto-apply":
@@ -367,11 +438,11 @@ def main():
     elif args.command == "resume-maker":
         handle_resume_maker(jd=args.jd)
     elif args.command == "interview-prep":
-        handle_interview_prep()
+        handle_interview_prep(mock=getattr(args, "mock", False))
     elif args.command == "skill-insights":
-        handle_skill_insights()
+        handle_skill_insights(headless=args.headless)
     elif args.command == "hiring-trends":
-        handle_hiring_trends()
+        handle_hiring_trends(headless=args.headless)
     elif args.command == "daily":
         handle_daily_cycle(headless=args.headless, dry_run=args.dry_run)
     elif args.command == "portal-apply":

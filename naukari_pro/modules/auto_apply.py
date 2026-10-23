@@ -1,10 +1,14 @@
 """
 naukariPro Feature 1: Intelligent Auto-Apply Engine
 Dual-Engine Architecture:
-1. Native Chrome Bridge (macOS): 100% undetected by Akamai WAF. Interacts directly
-   with the user's authentic, authenticated Google Chrome browser.
-2. Playwright Stealth Context (Linux/Headless): Automated headless pipeline for remote
-   cloud servers and scheduled cron jobs.
+1. Native Chrome Bridge (macOS): Undetected by WAF, operates through authentic user Chrome browser.
+2. Playwright Stealth Context (Linux/Headless): Automated headless pipeline with full Chromium fallback.
+
+Critical Guarantees:
+- Never fakes application success: checks for explicit submission confirmation before reporting 'applied'.
+- Distinguishes external company site redirects from 1-click Naukri submissions.
+- Multi-apply requires actual selectable checkboxes; returns 0 if none found.
+- Seamlessly falls back to Playwright Chromium on Linux or headless setups.
 """
 
 import os
@@ -18,13 +22,13 @@ from datetime import datetime
 import openpyxl
 
 from naukari_pro.config import TRACKER_PATH, SESSION_DIR, COOKIES_SEED_PATH, load_config
-from naukari_pro.modules.career_portals import CareerPortalFiller
+from naukari_pro.session import get_stealth_context
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SKIP_FILE = os.path.join(BASE_DIR, "skip_list.json")
 LOG_FILE = os.path.join(BASE_DIR, "naukri_applications_log.json")
 
-# Candidate facts dynamically loaded from single source of truth (naukri_system/config.json + .env)
+# Candidate facts dynamically loaded from single source of truth
 _CONFIG = load_config()
 _CANDIDATE = _CONFIG.get("candidate", {})
 _SEARCH = _CONFIG.get("search_settings", {})
@@ -36,8 +40,6 @@ NOTICE_PERIOD = str(_CANDIDATE.get("notice_period_days", "30"))
 CURRENT_CTC = str(_CANDIDATE.get("current_ctc_lakhs", "12"))
 EXPECTED_CTC = str(_CANDIDATE.get("expected_ctc_lakhs", "25"))
 MIN_SALARY_LPA = float(_SEARCH.get("min_salary_lpa", 12.0))
-APPLY_TIMEOUT_SECONDS = int(os.getenv("APPLY_TIMEOUT_SECONDS", "15"))
-BATCH_SIZE = 5
 
 DEFAULT_KEYWORDS = _SEARCH.get("keywords", [
     "Azure Data Engineer",
@@ -173,7 +175,7 @@ class NativeChromeRunner:
         (() => {
             try {
                 window.scrollTo(0, 1000);
-                const checkboxes = Array.from(document.querySelectorAll('i.naukicon-ot-checkbox, .tuple-check-box'));
+                const checkboxes = Array.from(document.querySelectorAll('.tuple-check-box, input[type="checkbox"], i.naukicon-ot-checkbox'));
                 let count = 0;
                 for (let cb of checkboxes.slice(0, 5)) {
                     cb.click();
@@ -230,12 +232,11 @@ class NativeChromeRunner:
             
             -- Step 1: Check button status
             set step1 to execute myTab javascript "(() => {{
-                const btn = document.querySelector('button#apply-button, .styles_apply-button__uJI3A, button.apply-button');
                 const coBtn = document.querySelector('button#company-site-button, .styles_company-site-button__C_2YK');
                 if (coBtn) {{
-                    coBtn.click();
-                    return JSON.stringify({{ action: 'company_site_clicked' }});
+                    return JSON.stringify({{ action: 'company_site' }});
                 }}
+                const btn = document.querySelector('button#apply-button, .styles_apply-button__uJI3A, button.apply-button');
                 if (!btn) return JSON.stringify({{ action: 'no_button' }});
                 const txt = (btn.innerText || '').toLowerCase();
                 if (txt.includes('already applied')) return JSON.stringify({{ action: 'already_applied' }});
@@ -245,17 +246,24 @@ class NativeChromeRunner:
             
             delay 3
             
-            if step1 contains "company_site_clicked" then
+            if step1 contains "company_site" then
                 close myTab
-                return "{'isApplied': true, 'action': 'company_site'}"
+                return "{'isApplied': false, 'action': 'company_site'}"
+            end if
+            if step1 contains "already_applied" then
+                close myTab
+                return "{'isApplied': false, 'action': 'already_applied'}"
             end if
             
             -- Step 2: Handle potential screening chatbot questions
             set step2 to execute myTab javascript "(() => {{
                 const drawer = document.querySelector('.chatbot_Drawer, [class*=\\"chatbot_Drawer\\"]');
                 if (!drawer) {{
-                    const applied = document.body.innerText.toLowerCase().includes('application sent') || document.body.innerText.toLowerCase().includes('applied');
-                    return JSON.stringify({{ isApplied: applied, hasDrawer: false }});
+                    const successToast = document.querySelector('.apply-message, .success-msg, [class*=\\"applySuccess\\"], [class*=\\"applied-msg\\"]');
+                    const btn = document.querySelector('button#apply-button, .styles_apply-button__uJI3A, button.apply-button');
+                    const btnTxt = btn ? (btn.innerText || '').toLowerCase() : '';
+                    const isConfirmed = !!successToast || btnTxt.includes('applied');
+                    return JSON.stringify({{ isApplied: isConfirmed, hasDrawer: false, reason: isConfirmed ? 'confirmed_toast' : 'no_confirmation' }});
                 }}
                 
                 const qEls = drawer.querySelectorAll('.botMsg span, .botMsg div, .botMsg');
@@ -304,7 +312,9 @@ class NativeChromeRunner:
                 const sendBtn = drawer.querySelector('.sendMsg, .send, button[type=\\"submit\\"], button.send');
                 if (sendBtn) sendBtn.click();
                 
-                return JSON.stringify({{ isApplied: true, hasDrawer: true, answered: lastQ }});
+                const drawerTxt = drawer.innerText.toLowerCase();
+                const submitted = drawerTxt.includes('submitted') || drawerTxt.includes('sent') || drawerTxt.includes('applied');
+                return JSON.stringify({{ isApplied: submitted, hasDrawer: true, answered: lastQ }});
             }})()"
             
             delay 2
@@ -318,12 +328,16 @@ class NativeChromeRunner:
             try:
                 data = json.loads(out)
                 if data.get("action") == "company_site":
-                    return True, "Redirected to External Career Portal (Tracked)"
+                    return False, "Redirected to External Career Portal (Not 1-Click Apply)"
+                if data.get("action") == "already_applied":
+                    return False, "Already applied previously"
                 if data.get("isApplied"):
                     return True, "Applied via Native Chrome"
+                else:
+                    return False, data.get("reason", "No apply confirmation observed")
             except Exception:
                 pass
-        return False, "Failed to confirm"
+        return False, "Failed to confirm application"
 
     def run(self, limit=20):
         mode_label = "DRY-RUN (Simulated — No Live Applications)" if self.dry_run else "LIVE SUBMISSION"
@@ -337,12 +351,12 @@ class NativeChromeRunner:
 
         search_js = """
         (() => {
-            const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, article.jobTuple'));
+            const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple'));
             return JSON.stringify(items.slice(0, 10).map(it => {
-                const title = it.querySelector('a.title');
-                const comp = it.querySelector('a.comp-name, a.subTitle');
-                const exp = it.querySelector('.exp-wrap, [class*="exp"]');
-                const sal = it.querySelector('.sal-wrap, [class*="sal"]');
+                const title = it.querySelector('a.title, a[class*="title"]');
+                const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
+                const exp = it.querySelector('span.expwdth, .exp-wrap, [class*="exp"]');
+                const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
                 return {
                     title: title ? title.innerText.trim() : '',
                     href: title ? title.href : '',
@@ -354,25 +368,22 @@ class NativeChromeRunner:
         })()
         """
 
-        print("\n[PHASE 2] Scanning Keyword Search Feeds (2-5 YOE)...")
         for kw in DEFAULT_KEYWORDS:
             if total_applied >= limit:
                 break
 
             slug = "-".join(kw.lower().split())
-            search_url = f"https://www.naukri.com/{slug}-jobs-in-hyderabad?experience={EXPERIENCE_PARAM}&jobAge=1"
-            print(f"\nScanning: '{kw}' (Hyderabad) -> {search_url}")
+            url = f"https://www.naukri.com/{slug}-jobs-in-hyderabad?experience={EXPERIENCE_PARAM}&jobAge=1"
+            print(f"\n[*] Scanning keyword: '{kw}' -> {url}")
 
-            raw = self.exec_js_in_tab(search_url, search_js, wait_sec=4)
-            if not raw:
+            jobs_raw = self.exec_js_in_tab(url, search_js, wait_sec=4)
+            if not jobs_raw:
                 continue
 
             try:
-                jobs = json.loads(raw)
+                jobs = json.loads(jobs_raw)
             except Exception:
-                continue
-
-            print(f"  Found {len(jobs)} fresh vacancies.")
+                jobs = []
 
             for job in jobs:
                 if total_applied >= limit:
@@ -409,7 +420,11 @@ class NativeChromeRunner:
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "already-applied")
                 else:
                     print(f"    ⚠️ Could not submit direct apply ({msg}).")
-                    self.skip_list = add_to_skip(self.skip_list, title, comp, "no-direct-apply")
+                    if "company portal" in msg.lower() or "external" in msg.lower():
+                        log_to_excel(title, comp, "External Redirect", "External Employer Portal", salary, job_url)
+                        self.skip_list = add_to_skip(self.skip_list, title, comp, "external-redirect")
+                    else:
+                        self.skip_list = add_to_skip(self.skip_list, title, comp, "no-direct-apply")
 
                 time.sleep(1.5)
 
@@ -424,33 +439,39 @@ class NativeChromeRunner:
 # ─────────────────────────────────────────────────────────────────────────────
 # ENGINE 2: PLAYWRIGHT STEALTH RUNNER (Linux Cloud Server / Headless Fallback)
 # ─────────────────────────────────────────────────────────────────────────────
-STEALTH_JS = """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-window.navigator.chrome = { runtime: {} };
-Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'hi'] });
-"""
-
 class PlaywrightRunner:
     def __init__(self, skip_list, dry_run=False):
         self.skip_list = skip_list
         self.dry_run = dry_run
 
     async def handle_chatbot(self, page):
+        """
+        Handles the screening chatbot questions.
+        Returns True ONLY if an unequivocal submission confirmation is observed.
+        """
+        has_drawer = False
         for _ in range(5):
             await page.wait_for_timeout(300)
             has_drawer = await page.evaluate("() => !!document.querySelector('.chatbot_Drawer, [class*=\"chatbot_Drawer\"]')")
             if has_drawer:
                 break
-        else:
-            return False
+
+        if not has_drawer:
+            # Check if button changed to Applied or a success toast appeared
+            is_confirmed = await page.evaluate("""() => {
+                const toast = document.querySelector('.apply-message, .success-msg, [class*="applySuccess"], [class*="applied-msg"]');
+                const btn = document.querySelector('button#apply-button, .styles_apply-button__uJI3A, button.apply-button');
+                const btnTxt = btn ? (btn.innerText || '').toLowerCase() : '';
+                return !!toast || btnTxt.includes('applied');
+            }""")
+            return is_confirmed
 
         print("  💬 Screening Chatbot detected — auto-answering questions...")
-        for _ in range(10):
+        for _ in range(8):
             await page.wait_for_timeout(400)
             status = await page.evaluate("""() => {
                 const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
-                if (!drawer) return { isApplied: true };
+                if (!drawer) return { isApplied: false };
                 const txt = drawer.innerText.toLowerCase();
                 return { isApplied: txt.includes('submitted') || txt.includes('sent') || txt.includes('applied') };
             }""")
@@ -474,7 +495,17 @@ class PlaywrightRunner:
                 if (send) send.click();
             }}""")
 
-        return True
+        # Final confirmation check
+        final_check = await page.evaluate("""() => {
+            const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
+            if (drawer) {
+                const t = drawer.innerText.toLowerCase();
+                if (t.includes('submitted') || t.includes('sent') || t.includes('applied')) return true;
+            }
+            const toast = document.querySelector('.apply-message, .success-msg, [class*="applySuccess"]');
+            return !!toast;
+        }""")
+        return final_check
 
     async def run_async(self, headless=False, limit=20):
         from playwright.async_api import async_playwright
@@ -494,17 +525,35 @@ class PlaywrightRunner:
                     pass
 
         async with async_playwright() as p:
-            context = await p.chromium.launch_persistent_context(
-                user_data_dir=SESSION_DIR,
-                headless=headless,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-infobars"
-                ]
-            )
-            await context.add_init_script(STEALTH_JS)
+            # Use persistent context with Chromium fallback
+            try:
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=SESSION_DIR,
+                    headless=headless,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu"
+                    ]
+                )
+            except Exception as e:
+                print(f"Launch notice ({e}); launching standard persistent context...")
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=SESSION_DIR,
+                    headless=headless
+                )
+
             page = context.pages[0] if context.pages else await context.new_page()
+
+            # Load seed cookies if present
+            if os.path.exists(COOKIES_SEED_PATH):
+                try:
+                    with open(COOKIES_SEED_PATH, "r", encoding="utf-8") as f:
+                        cookies = json.load(f)
+                    await context.add_cookies(cookies)
+                except Exception:
+                    pass
 
             total_applied = 0
             for kw in DEFAULT_KEYWORDS:
@@ -520,11 +569,11 @@ class PlaywrightRunner:
                     await page.wait_for_timeout(3000)
 
                     jobs = await page.evaluate("""() => {
-                        const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, article.jobTuple'));
+                        const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple'));
                         return items.slice(0, 10).map(it => {
-                            const title = it.querySelector('a.title');
-                            const comp = it.querySelector('a.comp-name, a.subTitle');
-                            const sal = it.querySelector('.sal-wrap, [class*="sal"]');
+                            const title = it.querySelector('a.title, a[class*="title"]');
+                            const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
+                            const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
                             return {
                                 title: title ? title.innerText.trim() : '',
                                 href: title ? title.href : '',
@@ -567,21 +616,28 @@ class PlaywrightRunner:
 
                             co_btn = await job_tab.query_selector("button#company-site-button, .styles_company-site-button__C_2YK")
                             if co_btn:
-                                print(f"    ℹ️ Company portal apply detected. Logging and tracking...")
+                                print(f"    ℹ️ Company portal apply detected. Logging external redirect (not submitted via 1-click)...")
                                 log_to_excel(title, comp, "External Redirect", "External Employer Portal", salary, job_url)
                                 self.skip_list = add_to_skip(self.skip_list, title, comp, "external-redirect")
-                                total_applied += 1
+                                # Do NOT increment total_applied since it was not submitted
                                 continue
 
                             apply_btn = await job_tab.query_selector("button#apply-button, .styles_apply-button__uJI3A, button.apply-button")
                             if apply_btn:
                                 await apply_btn.click()
                                 await job_tab.wait_for_timeout(2000)
-                                await self.handle_chatbot(job_tab)
-                                total_applied += 1
-                                print(f"    ✓ Successfully applied to {title} @ {comp}!")
-                                log_to_excel(title, comp, "Submitted (Pending)", "1-Click Direct", salary, job_url)
-                                self.skip_list = add_to_skip(self.skip_list, title, comp, "already-applied")
+                                confirmed = await self.handle_chatbot(job_tab)
+                                if confirmed:
+                                    total_applied += 1
+                                    print(f"    ✓ Successfully applied to {title} @ {comp}!")
+                                    log_to_excel(title, comp, "Submitted (Pending)", "1-Click Direct", salary, job_url)
+                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "already-applied")
+                                else:
+                                    print(f"    ⚠️ Could not confirm application submission.")
+                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "unconfirmed")
+                            else:
+                                print(f"    ⚠️ Apply button not found or already applied.")
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, "no-apply-button")
                         except Exception as e:
                             print(f"    ❌ Error: {e}")
                         finally:
@@ -603,7 +659,7 @@ class AutoApplyEngine:
 
     def run(self, page=None, headless=False, limit=20, dry_run=None):
         active_dry_run = self.dry_run if dry_run is None else dry_run
-        if is_mac_chrome_available():
+        if not headless and is_mac_chrome_available():
             engine = NativeChromeRunner(self.skip_list, dry_run=active_dry_run)
             return engine.run(limit=limit)
         else:

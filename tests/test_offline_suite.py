@@ -1,7 +1,14 @@
 """
 Offline Test Suite for naukariPro
-Asserts that offline intelligence modules (resume-maker, skill-insights, hiring-trends, interview-prep)
-and config single-source-of-truth operate predictably without needing live network or Naukri portal sessions.
+Asserts that offline intelligence modules:
+- Config single source of truth
+- Resume Maker (PDF generation, JD tailoring, Quality Scorecard)
+- Server Entitlement & JWT Session Inspector (ud_isPaidClient detection)
+- Interactive AI Interview Prep Answer Evaluator
+- Skill Insights & Hiring Trends data matrices
+- Salary parsing, filtering, and deterministic ID generation
+- Profile Enhancer factual completeness audit
+all operate predictably without requiring live network or external Naukri portal calls.
 """
 
 import os
@@ -11,8 +18,11 @@ from naukari_pro.config import load_config
 from naukari_pro.modules.resume_maker import AIResumeMaker
 from naukari_pro.modules.skill_insights import SkillInsightsEngine
 from naukari_pro.modules.hiring_trends import HiringTrendsEngine
-from naukari_pro.modules.interview_prep import InterviewPrepEngine
-from naukari_pro.modules.auto_apply import is_salary_acceptable, make_job_id
+from naukari_pro.modules.interview_prep import InterviewPrepEngine, INTERVIEW_TRACKS
+from naukari_pro.modules.auto_apply import is_salary_acceptable, make_job_id, parse_salary
+from naukari_pro.modules.profile_performance import ProfilePerformanceEngine, decode_naukri_jwt
+from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
+from naukari_pro.modules.job_alerts import InstantAlertsEngine
 
 def test_config_single_source_of_truth():
     """Verify that configuration loads facts and derives screening answers from candidate data."""
@@ -71,6 +81,69 @@ def test_resume_maker_tailoring_with_jd(tmp_path):
     reader = pypdf.PdfReader(res_path)
     assert len(reader.pages) == 1, f"Tailored resume must strictly be 1 page, got {len(reader.pages)}"
 
+def test_resume_quality_scorecard():
+    """Assert resume maker calculates an objective, multi-factor ATS quality score."""
+    maker = AIResumeMaker()
+    score = maker.calculate_resume_quality_score(jd_text="Azure Databricks PySpark Delta Lake Kafka")
+
+    assert "overall_score" in score
+    assert score["overall_score"] >= 70.0
+    assert "ats_compliance_score" in score
+    assert "quantified_metrics_score" in score
+    assert "keyword_alignment_score" in score
+    assert len(score["matched_keywords"]) > 0
+    assert len(score["recommendations"]) > 0
+
+def test_server_entitlements_jwt_inspection():
+    """Verify that ProfilePerformanceEngine decodes nauk_at JWT and inspects ud_isPaidClient."""
+    engine = ProfilePerformanceEngine()
+    entitlements = engine.get_session_entitlements()
+
+    assert "tier" in entitlements
+    assert "is_paid_client" in entitlements
+    assert "authenticated" in entitlements
+    # In cookies_seed.json, ud_isPaidClient is false (Standard Free Account)
+    assert entitlements["is_paid_client"] is False
+    assert "Standard Free Account" in entitlements["tier"]
+    assert entitlements["user_id"] == 239235296
+    assert entitlements["server_entitlements"]["featured_flag_resdex"] is False
+    assert entitlements["server_entitlements"]["priority_applicant_flag"] is False
+
+def test_interview_prep_answer_evaluator():
+    """Verify AI mock interview evaluator scores technical accuracy, metrics, and key concepts."""
+    engine = InterviewPrepEngine()
+    q = INTERVIEW_TRACKS["1. Azure Databricks & PySpark Core"][0]
+    
+    # Strong answer
+    strong_ans = (
+        "I inspect stage execution in Spark UI to identify the skewed task. "
+        "For small tables under 100MB I use a broadcast join to eliminate shuffle. "
+        "For large tables, I apply salting by adding a random prefix to distribute the key. "
+        "In Spark 3, I enable AQE skewJoin configuration to split partitions automatically."
+    )
+    res = engine.score_candidate_answer(q, strong_ans)
+    assert res["score"] >= 8.0
+    assert "spark ui" in res["concepts_covered"]
+    assert "salting" in res["concepts_covered"]
+    assert "broadcast" in res["concepts_covered"]
+    assert "Excellent response" in res["feedback"]
+
+    # Weak/empty answer
+    weak_res = engine.score_candidate_answer(q, "")
+    assert weak_res["score"] == 0
+    assert len(weak_res["concepts_missed"]) > 0
+
+def test_profile_enhancer_audit_offline():
+    """Verify profile enhancer evaluates actual config fields rather than returning dummy 100."""
+    engine = ProfileEnhancerEngine()
+    audit = engine.audit_profile_strength()
+
+    assert "score" in audit
+    assert "tier" in audit
+    assert "checklist" in audit
+    assert audit["score"] >= 75  # Factual earned points for complete profile facts
+    assert len(audit["checklist"]) >= 5
+
 def test_skill_insights_offline():
     """Verify in-demand skill insights load without network calls."""
     engine = SkillInsightsEngine()
@@ -93,17 +166,8 @@ def test_hiring_trends_offline():
     assert len(companies) >= 5
     assert any("PNC Bank" in c["name"] for c in companies)
 
-def test_interview_prep_offline():
-    """Verify interview master bank loads technical questions for Azure Data Engineering."""
-    engine = InterviewPrepEngine()
-    assert len(engine.q_and_a_bank) >= 5
-    first_q = engine.q_and_a_bank[0]
-    assert "topic" in first_q
-    assert "q" in first_q
-    assert "ans" in first_q
-
 def test_auto_apply_salary_and_id_logic():
-    """Verify salary threshold filtering and deterministic job ID generation."""
+    """Verify salary threshold filtering, undisclosed handling, and deterministic job ID."""
     # High salary
     acceptable, _ = is_salary_acceptable("18 - 26 Lacs PA", min_threshold_lpa=12.0)
     assert acceptable is True
@@ -117,8 +181,22 @@ def test_auto_apply_salary_and_id_logic():
     acceptable, reason = is_salary_acceptable("Not Disclosed", min_threshold_lpa=12.0)
     assert acceptable is True
 
+    # Parse salary checks
+    parsed, min_s, max_s, summary = parse_salary("₹ 18 - 26 Lacs P.A.")
+    assert min_s == 18.0
+    assert max_s == 26.0
+
     # Deterministic job ID
     id1 = make_job_id("Azure Data Engineer", "Microsoft")
     id2 = make_job_id("azure data engineer", "MICROSOFT ")
     assert id1 == id2
     assert len(id1) == 12
+
+def test_job_alerts_match_score():
+    """Verify keyword scoring in job alerts engine."""
+    engine = InstantAlertsEngine()
+    score = engine.calculate_match_score("Senior Azure Data Engineer Databricks PySpark Delta Lake SQL")
+    assert score >= 70
+
+    score_low = engine.calculate_match_score("Manual QA Tester")
+    assert score_low == 0
