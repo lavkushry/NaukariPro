@@ -582,7 +582,7 @@ class NativeChromeRunner:
                     company: comp ? comp.innerText.trim() : '',
                     exp: exp ? exp.innerText.trim() : '',
                     sal: sal ? sal.innerText.trim() : 'Undisclosed',
-                    desc: desc ? desc.innerText.trim() : '',
+                    desc: (desc ? desc.innerText.trim() : '') + ' ' + (it.innerText || '').trim(),
                     tags: tags || ''
                 };
             }));
@@ -891,7 +891,7 @@ class PlaywrightRunner:
                                     href: title ? title.href : '',
                                     company: comp ? comp.innerText.trim() : '',
                                     sal: sal ? sal.innerText.trim() : 'Undisclosed',
-                                    desc: desc ? desc.innerText.trim() : '',
+                                    desc: (desc ? desc.innerText.trim() : '') + ' ' + (it.innerText || '').trim(),
                                     tags: tags || ''
                                 };
                             });
