@@ -63,9 +63,13 @@ def test_resume_maker_pdf_generation(tmp_path):
     assert "LAVKUSH" in extracted_text.upper()
     assert "lavkushry@gmail.com" in extracted_text
     assert "9122036484" in extracted_text
+    assert "Hyderabad, India" in extracted_text
     assert "CGI India" in extracted_text
     assert "HFCL" in extracted_text
+    assert "Jun 2026" in extracted_text
     assert "Enterprise Medallion Lakehouse Platform on Azure" in extracted_text
+    assert "A, z, u, r, e" not in extracted_text
+    assert "Azure Databricks, PySpark" in extracted_text
 
 def test_resume_maker_tailoring_with_jd(tmp_path):
     """Assert resume maker accepts a JD, reorders skills/bullets, and stays 1-page."""

@@ -279,7 +279,13 @@ class AIResumeMaker:
         # 1. Header
         elements.append(Paragraph(cand.get("name", "Lavkush Kumar").upper(), name_style))
         elements.append(Spacer(1, 2))
-        contact_line = f"{cand.get('location', '')} • {cand.get('phone', '')} • {cand.get('email', '')} • LinkedIn • GitHub"
+        loc = cand.get("location") or cand.get("primary_location", "")
+        phone = cand.get("phone", "")
+        email = cand.get("email", "")
+        linkedin = cand.get("linkedin", "linkedin.com/in/lavkushry")
+        github = cand.get("github", "github.com/lavkushry")
+        contact_parts = [p for p in [loc, phone, email, linkedin, github] if p]
+        contact_line = " • ".join(contact_parts)
         elements.append(Paragraph(contact_line, contact_style))
         elements.append(Spacer(1, 4))
         elements.append(HRFlowable(width="100%", thickness=0.8, color=NAVY, spaceAfter=4, spaceBefore=1))
@@ -288,11 +294,21 @@ class AIResumeMaker:
         elements.append(Paragraph("TECHNICAL COMPETENCIES", section_style))
         skills_text_lines = []
         for cat_name, skills in skills_dict.items():
+            if isinstance(skills, str):
+                skill_items = [s.strip() for s in skills.split(",") if s.strip()]
+            elif isinstance(skills, list):
+                skill_items = list(skills)
+            else:
+                skill_items = [str(skills)]
+
             if jd_keywords:
-                sorted_skills = sorted(skills, key=lambda s: self._score_text(s, jd_keywords), reverse=True)
+                sorted_skills = sorted(skill_items, key=lambda s: self._score_text(s, jd_keywords), reverse=True)
                 skills_str = ", ".join(sorted_skills)
             else:
-                skills_str = ", ".join(skills)
+                if isinstance(skills, str):
+                    skills_str = skills
+                else:
+                    skills_str = ", ".join(skill_items)
             skills_text_lines.append(f"<b>{cat_name}:</b> {skills_str}")
         elements.append(Paragraph("<br/>".join(skills_text_lines), body_style))
         elements.append(Spacer(1, 3))
@@ -302,7 +318,7 @@ class AIResumeMaker:
         for exp in experience_list:
             comp = exp.get("company", "")
             title = exp.get("title", "")
-            dates = exp.get("dates", "")
+            dates = exp.get("duration") or exp.get("dates", "")
             loc = exp.get("location", "")
             header_text = f"<b>{comp}</b> | {title} <font color='{SLATE_GRAY}'>({dates} • {loc})</font>"
             elements.append(Paragraph(header_text, role_header_style))
@@ -319,8 +335,12 @@ class AIResumeMaker:
         elements.append(Paragraph("KEY ENGINEERING PROJECTS", section_style))
         for proj in projects_list:
             pname = proj.get("name", "")
+            ptech = proj.get("tech_stack", "")
             pbullets = proj.get("bullets", [])
-            elements.append(Paragraph(f"<b>{pname}</b>", role_header_style))
+            header = f"<b>{pname}</b>"
+            if ptech:
+                header += f" <font color='{SLATE_GRAY}'>({ptech})</font>"
+            elements.append(Paragraph(header, role_header_style))
             if jd_keywords:
                 pbullets = sorted(pbullets, key=lambda b: self._score_text(b, jd_keywords), reverse=True)
             for pb in pbullets:
