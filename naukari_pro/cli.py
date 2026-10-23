@@ -245,11 +245,29 @@ def handle_multi_search():
 
 def handle_daily_cycle(headless=False, dry_run=False, force=False):
     print("\n[*] Launching Complete Autonomous Daily Cycle...")
-    # 1. Profile bump (throttled to once-a-day)
-    handle_profile(headless=headless, force=force)
+    # 1. Profile Synchronization & Active Today Bump
+    print("\n[Step 1/3] Full Profile Synchronization & Resdex Recency Touch...")
+    if not dry_run:
+        try:
+            from scripts.sync_naukri_live_profile import sync_full_naukri_profile
+            with sync_playwright() as p:
+                context = get_stealth_context(p, headless=headless)
+                page = context.pages[0] if context.pages else context.new_page()
+                if ensure_authenticated(page, headless=headless):
+                    sync_full_naukri_profile(page, force=force)
+                context.close()
+        except Exception as e:
+            print(f"[!] Profile sync notice: {e}. Executing standard recency bump...")
+            handle_profile(headless=headless, force=force)
+    else:
+        handle_profile(headless=headless, force=force)
+
     # 2. Auto-apply
+    print("\n[Step 2/3] Autonomous Auto-Apply on Naukri...")
     handle_auto_apply(headless=headless, limit=20, dry_run=dry_run)
+
     # 3. Alerts
+    print("\n[Step 3/3] Scanning Instant High-Priority Alerts...")
     handle_alerts(headless=headless)
 
 def handle_auth():

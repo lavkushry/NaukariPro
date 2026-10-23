@@ -239,3 +239,59 @@ def test_profile_bump_once_a_day_throttle(tmp_path):
     # Second bump should cleanly return True without needing page interaction
     result = engine.bump_profile(None, force=False)
     assert result is True
+
+def test_boosted_profile_summary_and_keywords():
+    """Verify profile summary is enriched with core keywords and realistic metrics."""
+    cfg = load_config()
+    summary = cfg.get("profile_summary", "")
+    assert len(summary) >= 150, "Profile summary must be substantial"
+    
+    # Must-have recruiter keywords
+    keywords = [
+        "Azure Data Engineer",
+        "Databricks",
+        "PySpark",
+        "Delta Lake",
+        "ADF",
+        "Medallion",
+        "Kafka",
+        "Terraform",
+        "CI/CD"
+    ]
+    for kw in keywords:
+        assert kw.lower() in summary.lower(), f"Keyword '{kw}' missing from profile summary"
+
+def test_agents_md_compliance_no_forbidden_verbs_and_quantified_metrics():
+    """Verify all experience and project bullets adhere strictly to AGENTS.md rules."""
+    import re
+    cfg = load_config()
+    forbidden_verbs = ["helped", "worked on", "responsible for", "assisted", "handled", "participated in"]
+    
+    all_bullets = []
+    for exp in cfg.get("experience", []):
+        all_bullets.extend(exp.get("bullets", []))
+    for proj in cfg.get("projects", []):
+        all_bullets.extend(proj.get("bullets", []))
+
+    assert len(all_bullets) >= 10, "Should have at least 10 bullets across experience and projects"
+
+    for b in all_bullets:
+        b_lower = b.lower()
+        # 1. No forbidden verbs
+        for fv in forbidden_verbs:
+            assert fv not in b_lower, f"Forbidden verb phrase '{fv}' found in bullet: {b}"
+
+        # 2. Must start with a capitalized Tier 1/2 action verb
+        first_word = b.split()[0].rstrip(",.:")
+        tier_verbs = [
+            "Architected", "Spearheaded", "Orchestrated", "Pioneered", "Scaled", "Transformed",
+            "Engineered", "Automated", "Shipped", "Deployed", "Refactored", "Optimized",
+            "Slashed", "Containerized", "Instrumented", "Provisioned", "Built", "Integrated",
+            "Configured", "Standardized", "Hardened"
+        ]
+        assert first_word in tier_verbs, f"Bullet should begin with Tier 1/2 verb, got '{first_word}': {b}"
+
+        # 3. Quantified metrics
+        has_metric = bool(re.search(r'\d+(?:\.\d+)?\s*(?:[kmgtb]\+?|%)|\$\d+|\d+\s*(?:ms|min|sec|hours?|h|x|gb|tb|lpa|nodes?|microservices|events?|roles?|days?|environments?)', b, re.IGNORECASE))
+        assert has_metric, f"Bullet must contain a quantified metric: {b}"
+

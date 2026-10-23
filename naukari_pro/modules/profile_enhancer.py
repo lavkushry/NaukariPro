@@ -229,3 +229,9 @@ class ProfileEnhancerEngine:
             "checklist": checklist,
             "tier": tier
         }
+
+    def sync_live_profile(self, page, force=False):
+        """Delegates to sync_full_naukri_profile for complete profile synchronization."""
+        from scripts.sync_naukri_live_profile import sync_full_naukri_profile
+        return sync_full_naukri_profile(page, config=self.cfg, force=force)
+
