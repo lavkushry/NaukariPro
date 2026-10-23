@@ -49,6 +49,7 @@ def print_menu():
     print("  [S] Multi-Source Job Hunter (Search Naukri + LinkedIn + Hacker News)")
     print("  [C] Career Portal Auto-Filler (Greenhouse / Ashby / Lever / Workday / Portals)")
     print("  [D] Run Complete Daily Autonomous Cycle (Bump + Scan + Apply + Log)")
+    print("  [G] AGY Autonomous Scheduler (Linux systemd & agy CLI schedule)")
     print("  [A] Authenticate Session (One-time Chrome Login Setup)")
     print("  [0] Exit")
     print("========================================================================")
@@ -219,12 +220,40 @@ def handle_early_access(headless=False):
                     print(f"  • {n}")
         context.close()
 
+def handle_agy_schedule(action="status"):
+    import subprocess
+    import os
+    workspace = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    runner = os.path.join(workspace, "agy_schedule_runner.sh")
+    installer = os.path.join(workspace, "install_linux_schedule.sh")
+
+    if action == "install":
+        print("\n[*] Installing NaukariPro AGY Autonomous Linux Scheduler...")
+        subprocess.run(["bash", installer], check=False)
+    elif action == "run":
+        print("\n[*] Triggering immediate AGY Autonomous Cycle...")
+        subprocess.run(["bash", runner], check=False)
+    elif action == "logs":
+        history = os.path.join(workspace, "logs", "agy_schedule_history.log")
+        if os.path.exists(history):
+            print(f"\n[*] Recent logs from {history}:")
+            subprocess.run(["tail", "-n", "50", history])
+        else:
+            print(f"\n[*] No schedule logs found yet in {history}")
+    else:  # status
+        print("\n[*] Checking Linux systemd user timers (naukaripro-agy):")
+        subprocess.run(["systemctl", "--user", "list-timers", "--no-pager"], check=False)
+        print("\n[*] Checking Crontab Fallback:")
+        subprocess.run(["crontab", "-l"], check=False)
+
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, P, S, C, D, A]: ").strip().upper()
+        choice = input("Select an option [0-9, P, S, C, D, G, A]: ").strip().upper()
         if choice == "P":
             handle_pro()
+        elif choice == "G":
+            handle_agy_schedule("status")
         elif choice == "1":
             handle_auto_apply()
         elif choice == "2":
@@ -289,10 +318,15 @@ def main():
     portal_parser.add_argument("--company", default="Company", help="Company name")
     portal_parser.add_argument("--role", default="Azure Data Engineer", help="Role title")
 
+    sched_parser = subparsers.add_parser("agy-schedule", help="Manage Linux AGY Autonomous Scheduler (systemd timer + agy CLI)", parents=[common_parser])
+    sched_parser.add_argument("action", nargs="?", default="status", choices=["install", "run", "status", "logs"], help="Action to perform: install | run | status | logs")
+
     args = parser.parse_args()
 
     if args.command == "pro":
         handle_pro(limit=args.limit, headless=args.headless)
+    elif args.command == "agy-schedule":
+        handle_agy_schedule(action=args.action)
     elif args.command == "auto-apply":
         handle_auto_apply(headless=args.headless, limit=args.limit)
     elif args.command == "alerts":

@@ -1,0 +1,17 @@
+[Unit]
+Description=NaukariPro Autonomous AI Career Agent (via agy CLI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/Resume
+Environment=HOME=/home/ubuntu
+Environment=WORKSPACE=/home/ubuntu/Resume
+ExecStart=/bin/bash /home/ubuntu/Resume/agy_schedule_runner.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=default.target
