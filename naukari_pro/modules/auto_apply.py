@@ -511,6 +511,10 @@ class PlaywrightRunner:
     async def run_async(self, headless=False, limit=20):
         from playwright.async_api import async_playwright
 
+        # Automatically enforce headless mode on Linux servers without an X11 display
+        if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+            headless = True
+
         mode_label = "DRY-RUN (Simulated — No Live Applications)" if self.dry_run else "LIVE SUBMISSION"
         print("\n" + "=" * 65)
         print(f"  🚀 NAUKARIPRO: PLAYWRIGHT STEALTH ENGINE (Linux/Headless) [{mode_label}]")
