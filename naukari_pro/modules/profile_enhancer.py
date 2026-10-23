@@ -63,19 +63,13 @@ class ProfileEnhancerEngine:
             return False
 
         try:
-            # Modern and legacy selectors for headline edit button
             headline_edit = page.locator(
-                "[data-qa='resume-headline-edit'], .resumeHeadline .edit, span.edit, .widgetHead .editBtn, .editOneTheme"
+                'span[aria-label*="Edit resume headline"], span[aria-label*="resume headline" i], .resumeHeadline .edit'
             ).first
 
-            if not headline_edit.is_visible():
-                # Try scrolling down slightly to trigger lazy-loaded widgets
-                page.evaluate("window.scrollBy(0, 300)")
-                time.sleep(1)
-
-            if headline_edit.is_visible():
+            if headline_edit.count() > 0:
                 headline_edit.click()
-                time.sleep(1.5)
+                time.sleep(2)
 
                 textarea = page.locator(
                     "textarea#resumeHeadlineTxt, form[name='resumeHeadline'] textarea, .resumeHeadline textarea, textarea"
@@ -97,11 +91,9 @@ class ProfileEnhancerEngine:
                 textarea.fill(new_val)
                 time.sleep(1)
 
-                save_btn = page.locator(
-                    "form[name='resumeHeadline'] button:visible, .action.s12 button:visible, button.btn-dark-ot:visible, button:visible:has-text('Save')"
-                ).first
+                save_btn = page.get_by_role("button", name="Save", exact=True)
 
-                if save_btn.is_visible():
+                if save_btn.count() > 0 and save_btn.is_visible():
                     save_btn.click()
                     time.sleep(3)
                     state["last_bumped_date"] = today
@@ -128,8 +120,14 @@ class ProfileEnhancerEngine:
             page.goto("https://www.naukri.com/mnjuser/profile", wait_until="domcontentloaded", timeout=30000)
             time.sleep(3)
 
+            page.evaluate('''() => {
+                const el = document.getElementById('lazyAttachCV');
+                if (el) el.scrollIntoView();
+            }''')
+            time.sleep(2)
+
             # File inputs on Naukri
-            file_input = page.locator("input#attachCV, input#fileUpload, input[type='file']").first
+            file_input = page.locator("input#attachCV, input[type='file']").first
             if file_input.count() > 0:
                 file_input.set_input_files(pdf_path)
                 logger.info("File attached to input. Waiting for server confirmation...")

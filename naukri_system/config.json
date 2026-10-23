@@ -51,7 +51,7 @@
   "experience": [
     {
       "company": "CGI India (PNC Bank GCC)",
-      "title": "DevOps Engineer (Cloud Infrastructure & Automation)",
+      "title": "Azure Data Engineer / Cloud Infrastructure",
       "duration": "Jun 2026 – Present",
       "location": "Hyderabad / Bangalore",
       "bullets": [
@@ -84,17 +84,26 @@
   "projects": [
     {
       "name": "Enterprise Medallion Lakehouse Platform on Azure",
-      "tech_stack": "Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2",
+      "tech_stack": "Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2, Terraform",
       "bullets": [
-        "Architected an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest transactional event datasets into curated Bronze, Silver, and Gold layers on ADLS Gen2.",
+        "Architected an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest transactional event datasets into curated Bronze, Silver, and Gold layers across ADLS Gen2.",
         "Optimized distributed PySpark batch transformations with schema validation and partition pruning, slashing ETL pipeline runtime by 35% while ensuring ACID transactional consistency."
       ]
     },
     {
-      "name": "Project Vulcan - Enterprise Automation Control Plane",
-      "tech_stack": "Python, FastAPI, Redis Redlock, MinIO S3, PostgreSQL",
+      "name": "Real-Time Streaming Ingestion & CDC Lakehouse",
+      "tech_stack": "Apache Kafka, Spark Structured Streaming, Delta Lake, Unity Catalog",
       "bullets": [
-        "Built an infrastructure control plane in Python (FastAPI), engineering distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate concurrent data pipeline race conditions."
+        "Engineered a low-latency real-time streaming ingestion pipeline using Apache Kafka and Spark Structured Streaming, processing 2M+ events/day into Delta Lake with under 500ms end-to-end ingestion latency.",
+        "Implemented Change Data Capture (CDC) with Delta Lake merge operations and Unity Catalog access controls, cutting data freshness lag from 4 hours to near real-time (sub-minute)."
+      ]
+    },
+    {
+      "name": "Cloud Data Platform CI/CD & Governance",
+      "tech_stack": "Azure DevOps, Terraform, Great Expectations, Prometheus/Grafana",
+      "bullets": [
+        "Automated end-to-end DataOps release cycles using Azure DevOps multi-stage YAML pipelines and Terraform IaC, provisioning reproducible Databricks workspaces and storage accounts with zero manual intervention.",
+        "Configured automated data quality validation gates with Great Expectations and Prometheus/Grafana monitoring, catching 99.2% of upstream schema anomalies before Gold table ingestion."
       ]
     }
   ],
