@@ -145,23 +145,13 @@ def sync_employment_descriptions(page, experience_data):
     if not experience_data:
         return False
 
-    # Structure descriptions
+    # Structure descriptions directly from unified configuration facts
     roles_payload = []
-    # Role 0: CGI (Current)
-    if len(experience_data) > 0:
-        roles_payload.append(("CGI Current", "\n".join(f"• {b}" for b in experience_data[0].get("bullets", []))))
-    # Role 1: HFCL
-    if len(experience_data) > 1:
-        roles_payload.append(("HFCL", "\n".join(f"• {b}" for b in experience_data[1].get("bullets", []))))
-    # Role 2: CGI Apprentice
-    if len(experience_data) > 2:
-        roles_payload.append(("CGI Apprentice", "\n".join(f"• {b}" for b in experience_data[2].get("bullets", []))))
-    # Role 3: Stipe Solutions
-    stipe_desc = (
-        "• Developed 30+ production mobile screens and UI components using React Native and Flutter, integrating RESTful APIs and SQL backends for 1,000+ daily active users.\n"
-        "• Engineered responsive UI modules, state management workflows, and client-side data validation across iOS and Android builds, reducing crash rates by 25%."
-    )
-    roles_payload.append(("Stipe Solutions", stipe_desc))
+    for exp in experience_data:
+        rname = exp.get("company", "Role")
+        bullets = exp.get("bullets", [])
+        desc = "\n".join(f"• {b}" for b in bullets)
+        roles_payload.append((rname, desc))
 
     for idx, (rname, desc) in enumerate(roles_payload):
         logger.info("Updating Employment Role %d: %s...", idx + 1, rname)
@@ -210,6 +200,8 @@ def sync_employment_descriptions(page, experience_data):
             time.sleep(0.2)
             ta.fill(desc)
             time.sleep(0.3)
+        else:
+            logger.info("Notice: No jobDescription textarea in form for Role %d (%s) (internship/pre-configured card).", idx + 1, rname)
 
         save_btn = page.locator('#submitEmployment')
         if save_btn.count() > 0 and save_btn.is_visible():
@@ -222,14 +214,17 @@ def sync_employment_descriptions(page, experience_data):
 
 PROJECT_METADATA = [
     {
+        "name": "Enterprise Medallion Lakehouse Platform on Azure",
         "client": "Enterprise Cloud Data Platform",
         "role": "Architected Medallion Lakehouse pipelines and distributed PySpark batch transformations on Azure Databricks with Delta Lake."
     },
     {
+        "name": "Real-Time Streaming Ingestion & CDC Lakehouse",
         "client": "Streaming Lakehouse Platform",
         "role": "Engineered real-time streaming ingestion and CDC pipelines using Apache Kafka, Spark Structured Streaming, and Delta Lake."
     },
     {
+        "name": "Cloud Data Platform CI/CD & Governance",
         "client": "DataOps & Cloud Infrastructure",
         "role": "Automated end-to-end DataOps release cycles, Terraform IaC provisioning, and Great Expectations quality validation gates."
     },
@@ -237,10 +232,10 @@ PROJECT_METADATA = [
         "name": "Cloud AI Infrastructure & Observability Platform",
         "client": "Cloud AI & Platform Engineering",
         "tech_stack": "Kubernetes, Docker, Prometheus, Grafana, OpenTelemetry, Python, CI/CD",
-        "role": "Engineered platform observability, telemetry dashboards, and containerized deployment pipelines.",
+        "role": "Engineered real-time platform observability, telemetry dashboards, and automated CI/CD release pipelines across 15+ microservices.",
         "bullets": [
-            "Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry, monitoring pipeline latency, data throughput, and system health.",
-            "Automated deployment and scaling of data serving microservices using Docker, Kubernetes, and GitHub Actions with automated rollback safeguards, maintaining 99.9% availability."
+            "Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry, monitoring 15+ distributed microservices with under 100ms scraping latency, slashing incident MTTR by 40%.",
+            "Automated deployment and scaling of data serving microservices using Docker, Kubernetes, and GitHub Actions with automated canary rollback safeguards, sustaining 99.9% platform availability."
         ]
     }
 ]
@@ -256,9 +251,9 @@ def sync_projects(page, projects_data):
         tech = proj.get("tech_stack", "")
         bullets = proj.get("bullets", [])
         details = "\n".join(f"• {b}" for b in bullets)
-        meta = PROJECT_METADATA[idx] if idx < len(PROJECT_METADATA) else {}
-        client = meta.get("client", "Enterprise Cloud Data Platform")
-        role_desc = meta.get("role", "Engineered scalable cloud data infrastructure and automated pipelines.")
+        fallback_meta = PROJECT_METADATA[idx] if idx < len(PROJECT_METADATA) else {}
+        client = proj.get("client") or fallback_meta.get("client", "Enterprise Cloud Data Platform")
+        role_desc = proj.get("role") or fallback_meta.get("role", "Engineered scalable cloud data infrastructure and automated pipelines.")
 
         logger.info("Updating Project %d: '%s'...", idx + 1, title)
         page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
@@ -384,7 +379,7 @@ def main():
     cfg = load_config()
     with sync_playwright() as p:
         ctx = get_stealth_context(p, headless=True)
-        page = ctx.new_page()
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
         if not ensure_authenticated(page, headless=True):
             logger.error("Authentication check failed. Cannot proceed with live synchronization.")

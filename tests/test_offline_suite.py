@@ -68,6 +68,8 @@ def test_resume_maker_pdf_generation(tmp_path):
     assert "HFCL" in extracted_text
     assert "Jun 2026" in extracted_text
     assert "Enterprise Medallion Lakehouse Platform on Azure" in extracted_text
+    assert "Cloud AI Infrastructure & Observability Platform" in extracted_text
+    assert "Stipe Solution" in extracted_text
     assert "A, z, u, r, e" not in extracted_text
     assert "Azure Databricks, PySpark" in extracted_text
 
@@ -292,6 +294,13 @@ def test_agents_md_compliance_no_forbidden_verbs_and_quantified_metrics():
         assert first_word in tier_verbs, f"Bullet should begin with Tier 1/2 verb, got '{first_word}': {b}"
 
         # 3. Quantified metrics
-        has_metric = bool(re.search(r'\d+(?:\.\d+)?\s*(?:[kmgtb]\+?|%)|\$\d+|\d+\s*(?:ms|min|sec|hours?|h|x|gb|tb|lpa|nodes?|microservices|events?|roles?|days?|environments?)', b, re.IGNORECASE))
+        has_metric = bool(re.search(r'\d+(?:\.\d+)?\s*(?:[kmgtb]\+?|%)|\$\d+|\d+\s*(?:ms|min|sec|hours?|h|x|gb|tb|lpa|nodes?|microservices|events?|roles?|days?|environments?|users?|screens?|datasets?)', b, re.IGNORECASE))
         assert has_metric, f"Bullet must contain a quantified metric: {b}"
+
+    # Verify that all 4 projects and all 4 employment entries are present
+    assert len(cfg.get("experience", [])) == 4, "Must have exactly 4 employment roles (CGI Current, HFCL, CGI Apprentice, Stipe Solutions)"
+    assert len(cfg.get("projects", [])) == 4, "Must have exactly 4 flagship projects"
+    for p in cfg.get("projects", []):
+        assert "client" in p and p["client"], f"Project {p.get('name')} must specify client"
+        assert "role" in p and p["role"], f"Project {p.get('name')} must specify role"
 

@@ -60,8 +60,8 @@ def print_menu():
     print("  [0] Exit")
     print("========================================================================")
 
-def handle_pro(limit=10, headless=False, dry_run=False):
-    engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run)
+def handle_pro(limit=10, headless=False, dry_run=False, force=False):
+    engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run, force=force)
     engine.run_full_pipeline()
 
 def handle_performance(headless=False):
@@ -418,9 +418,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="naukariPro Career Suite", parents=[common_parser])
     subparsers = parser.add_subparsers(dest="command")
+    pro_parser = subparsers.add_parser("pro", help="Run Complete All-in-One Pro Autonomous Pipeline", parents=[common_parser])
+    pro_parser.add_argument("--force", action="store_true", help="Force profile sync and bump even if already updated today")
 
     for cmd, hlp in [
-        ("pro", "Run Complete All-in-One Pro Autonomous Pipeline"),
         ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),
         ("performance", "Inspect Server-Side Entitlements & Profile Analytics"),
         ("auto-apply", "Auto-Apply to target vacancies"),
@@ -458,7 +459,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "pro":
-        handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run)
+        handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
     elif args.command == "weekly-report":
         handle_weekly_report(headless=args.headless)
     elif args.command == "performance":

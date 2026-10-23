@@ -25,10 +25,11 @@ from naukari_pro.modules.profile_performance import ProfilePerformanceEngine
 from naukari_pro.modules.resume_maker import AIResumeMaker
 
 class ProAutoPilotEngine:
-    def __init__(self, limit=10, headless=False, dry_run=False):
+    def __init__(self, limit=10, headless=False, dry_run=False, force=False):
         self.limit = limit
         self.headless = headless
         self.dry_run = dry_run
+        self.force = force
         self.profile_engine = ProfileEnhancerEngine()
         self.apply_engine = AutoApplyEngine(dry_run=dry_run)
         self.search_engine = UniversalJobSearchEngine()
@@ -68,13 +69,13 @@ class ProAutoPilotEngine:
 
                 today = datetime.now().strftime("%Y-%m-%d")
                 state = self.profile_engine._load_state()
-                if state.get("last_sync_date") != today or state.get("last_bumped_date") != today:
+                if self.force or state.get("last_sync_date") != today or state.get("last_bumped_date") != today:
                     print("  [*] Performing autonomous profile synchronization & recency bump...")
                     with sync_playwright() as p:
                         ctx = get_stealth_context(p, headless=self.headless)
-                        page = ctx.new_page()
+                        page = ctx.pages[0] if ctx.pages else ctx.new_page()
                         if ensure_authenticated(page, headless=self.headless):
-                            sync_full_naukri_profile(page, force=False)
+                            sync_full_naukri_profile(page, force=self.force)
                         ctx.close()
                 else:
                     print(f"  [✓] Profile facts and 'Active Today' Resdex status already synchronized today ({today}).")

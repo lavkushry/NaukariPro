@@ -80,11 +80,23 @@
       "bullets": [
         "Engineered centralized log telemetry ingestion pipelines via ELK Stack (Elasticsearch, Logstash, Kibana) and SQL analytical queries, authoring custom Logstash Grok parsing patterns that transformed 500GB+ of unstructured telemetry into structured schemas, accelerating incident triage by 50%."
       ]
+    },
+    {
+      "company": "Stipe Solution Private Limited",
+      "title": "Full Stack Developer Intern",
+      "duration": "Mar 2024 – Sep 2024",
+      "location": "Bengaluru",
+      "bullets": [
+        "Shipped 30+ responsive UI screens and data validation workflows using React Native and Flutter, integrating RESTful APIs and SQL queries for 1,000+ daily active users, cutting initial screen load latency by 35%.",
+        "Optimized client-side caching and mobile state management across iOS and Android builds, slashing application crash rates by 25%."
+      ]
     }
   ],
   "projects": [
     {
       "name": "Enterprise Medallion Lakehouse Platform on Azure",
+      "client": "Enterprise Cloud Data Platform",
+      "role": "Architected Medallion Lakehouse pipelines and distributed PySpark batch transformations on Azure Databricks with Delta Lake.",
       "tech_stack": "Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2, Terraform, SQL",
       "bullets": [
         "Architected an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest 1.5M+ events/day into curated Bronze, Silver, and Gold layers across ADLS Gen2 with Unity Catalog governance.",
@@ -93,6 +105,8 @@
     },
     {
       "name": "Real-Time Streaming Ingestion & CDC Lakehouse",
+      "client": "Streaming Lakehouse Platform",
+      "role": "Engineered real-time streaming ingestion and CDC pipelines using Apache Kafka, Spark Structured Streaming, and Delta Lake.",
       "tech_stack": "Apache Kafka, Spark Structured Streaming, Delta Lake, Unity Catalog, SQL",
       "bullets": [
         "Engineered a low-latency real-time streaming ingestion pipeline using Apache Kafka and Spark Structured Streaming, processing 2M+ events/day into Delta Lake with under 500ms end-to-end ingestion latency.",
@@ -101,10 +115,22 @@
     },
     {
       "name": "Cloud Data Platform CI/CD & Governance",
+      "client": "DataOps & Cloud Infrastructure",
+      "role": "Automated end-to-end DataOps release cycles, Terraform IaC provisioning, and Great Expectations quality validation gates.",
       "tech_stack": "Azure DevOps, Terraform, Great Expectations, Prometheus/Grafana, Databricks",
       "bullets": [
         "Automated end-to-end DataOps release cycles using Azure DevOps multi-stage CI/CD pipelines and Terraform IaC across 3 environments, cutting workspace deployment time from 6 hours to 20 minutes (94% reduction).",
         "Configured automated data quality validation gates with Great Expectations and Prometheus/Grafana monitoring, catching 99.2% of upstream schema anomalies before Gold table ingestion."
+      ]
+    },
+    {
+      "name": "Cloud AI Infrastructure & Observability Platform",
+      "client": "Cloud AI & Platform Engineering",
+      "role": "Engineered real-time platform observability, telemetry dashboards, and automated CI/CD release pipelines across 15+ microservices.",
+      "tech_stack": "Kubernetes, Docker, Prometheus, Grafana, OpenTelemetry, Python, CI/CD",
+      "bullets": [
+        "Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry, monitoring 15+ distributed microservices with under 100ms scraping latency, slashing incident MTTR by 40%.",
+        "Automated deployment and scaling of data serving microservices using Docker, Kubernetes, and GitHub Actions with automated canary rollback safeguards, sustaining 99.9% platform availability."
       ]
     }
   ],

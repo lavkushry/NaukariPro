@@ -127,8 +127,8 @@ class AIResumeMaker:
         total_bullets = len(bullets)
         quantified_bullets = 0
         for b in bullets:
-            # Check for numbers, percentages, time/latency units, cost savings
-            if re.search(r'\d+(?:\.\d+)?%|\$\d+|\d+\s*(?:ms|min|sec|hours?|x|gb|tb|lpa)', b, re.IGNORECASE):
+            # Check for numbers, percentages, time/latency units, throughput/scale, cost savings
+            if re.search(r'\d+(?:\.\d+)?\s*(?:[kmgtb]\+?|%)|\$\d+|\d+\s*(?:ms|min|sec|hours?|h|x|gb|tb|lpa|nodes?|microservices|events?|roles?|days?|environments?|users?|screens?)', b, re.IGNORECASE):
                 quantified_bullets += 1
 
         metric_ratio = quantified_bullets / max(1, total_bullets)
