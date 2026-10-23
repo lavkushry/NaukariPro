@@ -12,7 +12,7 @@ import json
 import logging
 import platform
 import shutil
-from naukari_pro.config import SESSION_DIR, COOKIES_SEED_PATH, WORKSPACE_DIR
+from naukari_pro.config import SESSION_DIR, COOKIES_SEED_PATH, WORKSPACE_DIR, load_config
 
 logger = logging.getLogger("naukariPro.Session")
 
@@ -67,12 +67,18 @@ def get_stealth_context(playwright, headless=False):
     if not headless:
         launch_args.append("--start-maximized")
 
-    # On macOS or Linux, determine if Google Chrome binary is present
+    # On macOS or Linux, determine if Google Chrome or system Chromium binary is present
     has_system_chrome = False
+    system_chromium_path = None
     if sys.platform == "darwin":
         has_system_chrome = os.path.exists("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     elif sys.platform.startswith("linux"):
         has_system_chrome = bool(shutil.which("google-chrome") or shutil.which("google-chrome-stable"))
+        if not has_system_chrome:
+            for cand in [shutil.which("chromium"), shutil.which("chromium-browser"), "/snap/bin/chromium", "/usr/bin/chromium"]:
+                if cand and os.path.exists(cand):
+                    system_chromium_path = cand
+                    break
 
     channel = "chrome" if has_system_chrome else None
 
@@ -81,16 +87,19 @@ def get_stealth_context(playwright, headless=False):
         "headless": headless,
         "args": launch_args,
         "viewport": None,
-        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     }
     if channel:
         kwargs["channel"] = channel
+    elif system_chromium_path:
+        kwargs["executable_path"] = system_chromium_path
 
     try:
         context = playwright.chromium.launch_persistent_context(**kwargs)
     except Exception as e:
         logger.warning("Primary browser launch fallback (%s). Retrying with default bundled Chromium...", e)
         kwargs.pop("channel", None)
+        kwargs.pop("executable_path", None)
         context = playwright.chromium.launch_persistent_context(**kwargs)
 
     context.add_init_script(STEALTH_JS)
@@ -135,6 +144,33 @@ def ensure_authenticated(page, headless=False):
     is_login_page = "login" in page.url or page.locator("text=Login").first.is_visible() or "Access Denied" in page.title()
     
     if is_login_page:
+        # 1. Attempt automated credential login if configured
+        email = os.getenv("NAUKRI_EMAIL") or load_config().get("candidate", {}).get("email")
+        password = os.getenv("NAUKRI_PASSWORD")
+        if email and password:
+            try:
+                logger.info("Attempting automated credential login...")
+                if "nlogin" not in page.url:
+                    page.goto("https://www.naukri.com/nlogin/login", wait_until="domcontentloaded", timeout=30000)
+                    time.sleep(2)
+                user_field = page.locator("#usernameField").first
+                pass_field = page.locator("#passwordField").first
+                btn = page.locator("button[type='submit']").first
+                if user_field.is_visible() and pass_field.is_visible():
+                    user_field.fill(email)
+                    time.sleep(0.3)
+                    pass_field.fill(password)
+                    time.sleep(0.3)
+                    btn.click()
+                    time.sleep(5)
+                    # Check if login succeeded
+                    if "nlogin" not in page.url or page.locator("text=View profile").count() > 0 or "Mynaukri" in page.title():
+                        logger.info("Automated login succeeded!")
+                        save_session_cookies(page.context)
+                        return True
+            except Exception as e:
+                logger.warning("Automated login attempt notice: %s", e)
+
         challenge = detect_challenge(page)
         challenge_str = f" ({challenge} detected)" if challenge else ""
         

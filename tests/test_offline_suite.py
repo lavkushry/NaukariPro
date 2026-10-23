@@ -225,7 +225,8 @@ def test_keyword_diff_engine():
 def test_profile_bump_once_a_day_throttle(tmp_path):
     """Verify once-a-day bump throttle skips redundant edits if already bumped today."""
     from datetime import datetime
-    engine = ProfileEnhancerEngine()
+    test_state_file = str(tmp_path / "test_session_state.json")
+    engine = ProfileEnhancerEngine(state_file=test_state_file)
     today = datetime.now().strftime("%Y-%m-%d")
     
     # Save simulated state as already bumped today

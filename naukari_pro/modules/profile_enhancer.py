@@ -15,13 +15,14 @@ logger = logging.getLogger("naukariPro.ProfileEnhancer")
 STATE_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "session_state.json")
 
 class ProfileEnhancerEngine:
-    def __init__(self):
+    def __init__(self, state_file=None):
         self.cfg = load_config()
+        self.state_file = state_file or STATE_FILE
 
     def _load_state(self):
-        if os.path.exists(STATE_FILE):
+        if os.path.exists(self.state_file):
             try:
-                with open(STATE_FILE, "r", encoding="utf-8") as f:
+                with open(self.state_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 pass
@@ -29,8 +30,8 @@ class ProfileEnhancerEngine:
 
     def _save_state(self, state):
         try:
-            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
+            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
+            with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
         except Exception as e:
             logger.warning("Could not save session state: %s", e)
@@ -97,7 +98,7 @@ class ProfileEnhancerEngine:
                 time.sleep(1)
 
                 save_btn = page.locator(
-                    "button[type='submit'], .btn-dark-ot, button.save-btn, button:has-text('Save')"
+                    "form[name='resumeHeadline'] button:visible, .action.s12 button:visible, button.btn-dark-ot:visible, button:visible:has-text('Save')"
                 ).first
 
                 if save_btn.is_visible():
