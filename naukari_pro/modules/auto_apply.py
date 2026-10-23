@@ -17,34 +17,38 @@ import subprocess
 from datetime import datetime
 import openpyxl
 
-from naukari_pro.config import TRACKER_PATH, SESSION_DIR, COOKIES_SEED_PATH
+from naukari_pro.config import TRACKER_PATH, SESSION_DIR, COOKIES_SEED_PATH, load_config
 from naukari_pro.modules.career_portals import CareerPortalFiller
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SKIP_FILE = os.path.join(BASE_DIR, "skip_list.json")
 LOG_FILE = os.path.join(BASE_DIR, "naukri_applications_log.json")
 
-# Candidate Profile Defaults
-NAUKRI_EMAIL = "lavkushry@gmail.com"
-EXPERIENCE_PARAM = "2"  # Integer for Naukri query string (2 matches 2-5 YOE; 2.5 causes 20-25 YOE bug)
-EXPERIENCE_YEARS = "2.5"
-NOTICE_PERIOD = "30"
-CURRENT_CTC = "12"
-EXPECTED_CTC = "25"
-MIN_SALARY_LPA = 12.0
-APPLY_TIMEOUT_SECONDS = 15
+# Candidate facts dynamically loaded from single source of truth (naukri_system/config.json + .env)
+_CONFIG = load_config()
+_CANDIDATE = _CONFIG.get("candidate", {})
+_SEARCH = _CONFIG.get("search_settings", {})
+
+NAUKRI_EMAIL = _CANDIDATE.get("email", "lavkushry@gmail.com")
+EXPERIENCE_YEARS = str(_CANDIDATE.get("total_experience_years", "2.5"))
+EXPERIENCE_PARAM = str(int(float(EXPERIENCE_YEARS)))  # "2" for Naukri query string (2 matches 2-5 YOE)
+NOTICE_PERIOD = str(_CANDIDATE.get("notice_period_days", "30"))
+CURRENT_CTC = str(_CANDIDATE.get("current_ctc_lakhs", "12"))
+EXPECTED_CTC = str(_CANDIDATE.get("expected_ctc_lakhs", "25"))
+MIN_SALARY_LPA = float(_SEARCH.get("min_salary_lpa", 12.0))
+APPLY_TIMEOUT_SECONDS = int(os.getenv("APPLY_TIMEOUT_SECONDS", "15"))
 BATCH_SIZE = 5
 
-DEFAULT_KEYWORDS = [
+DEFAULT_KEYWORDS = _SEARCH.get("keywords", [
     "Azure Data Engineer",
     "Azure Databricks",
     "PySpark",
     "Delta Lake",
     "Azure Data Factory",
     "Data Engineer"
-]
+])
 
-LOCATIONS = ["hyderabad", "bengaluru", "pune"]
+LOCATIONS = _SEARCH.get("locations", ["hyderabad", "bengaluru", "pune"])
 
 def make_job_id(title, company):
     raw = f"{title.lower().strip()}_{company.lower().strip()}"
@@ -98,48 +102,55 @@ def parse_salary(salary_text):
     if not salary_text:
         return True, None, None, ""
     text = salary_text.strip()
-    lower = text.lower()
-    if any(u in lower for u in ["not disclosed", "undisclosed", "confidential", "best in industry"]):
-        return True, None, None, text
-
-    cleaned = re.sub(r'(?<=\d),(?=\d)', '', lower)
-    range_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)', cleaned)
-    if range_match:
-        v1 = float(range_match.group(1))
-        v2 = float(range_match.group(2))
-        return False, min(v1, v2), max(v1, v2), text
-
-    single_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lacs|lac|lpa)', cleaned)
+    if any(w in text.lower() for w in ["not disclosed", "undisclosed", "confidential", "best in industry"]):
+        return True, None, None, "Undisclosed"
+    clean = text.replace(",", "").replace("₹", "").replace("INR", "").replace("Rs.", "").strip()
+    match = re.search(r'([\d\.]+)\s*(?:-|to)\s*([\d\.]+)\s*(?:lacs?|lac|lpa|pa|per annum)?', clean, re.IGNORECASE)
+    if match:
+        try:
+            min_sal = float(match.group(1))
+            max_sal = float(match.group(2))
+            return True, min_sal, max_sal, f"{min_sal}-{max_sal} LPA"
+        except ValueError:
+            pass
+    single_match = re.search(r'([\d\.]+)\s*(?:lacs?|lac|lpa)', clean, re.IGNORECASE)
     if single_match:
-        v = float(single_match.group(1))
-        return False, v, v, text
-
+        try:
+            val = float(single_match.group(1))
+            return True, val, val, f"{val} LPA"
+        except ValueError:
+            pass
     return True, None, None, text
 
 def is_salary_acceptable(salary_text, min_threshold_lpa=MIN_SALARY_LPA):
-    is_undisclosed, min_lpa, max_lpa, _ = parse_salary(salary_text)
-    if is_undisclosed:
-        return True, "Salary undisclosed (allowed)"
-    if max_lpa < min_threshold_lpa:
-        return False, f"Salary {min_lpa}-{max_lpa} LPA below minimum {min_threshold_lpa} LPA"
-    return True, f"Salary {min_lpa}-{max_lpa} LPA meets minimum"
+    parsed, min_sal, max_sal, summary = parse_salary(salary_text)
+    if not parsed:
+        return True, "Could not parse salary; considering"
+    if min_sal is None:
+        return True, "Undisclosed salary; considering"
+    check_val = max_sal if max_sal is not None else min_sal
+    if check_val < min_threshold_lpa:
+        return False, f"Max salary {check_val} LPA is below {min_threshold_lpa} LPA threshold"
+    return True, f"Salary {summary} meets threshold"
 
 def is_mac_chrome_available():
     if sys.platform != "darwin":
         return False
+    check_script = 'tell application "System Events" to return (name of processes) contains "Google Chrome"'
     try:
-        cmd = "pgrep -i 'Google Chrome'"
-        out = subprocess.check_output(cmd, shell=True).decode().strip()
-        return bool(out)
+        p = subprocess.run(["osascript", "-e", check_script], capture_output=True, text=True)
+        return p.returncode == 0 and "true" in p.stdout.strip().lower()
     except Exception:
         return False
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# ENGINE 1: NATIVE MACOS CHROME RUNNER (100% Undetected by Akamai)
+# ENGINE 1: NATIVE CHROME RUNNER (macOS Authentic Session)
 # ─────────────────────────────────────────────────────────────────────────────
 class NativeChromeRunner:
-    def __init__(self, skip_list):
+    def __init__(self, skip_list, dry_run=False):
         self.skip_list = skip_list
+        self.dry_run = dry_run
 
     def exec_js_in_tab(self, tab_url, js_code, wait_sec=4):
         apple_script = f'''
@@ -163,30 +174,35 @@ class NativeChromeRunner:
             try {
                 window.scrollTo(0, 1000);
                 const checkboxes = Array.from(document.querySelectorAll('i.naukicon-ot-checkbox, .tuple-check-box'));
-                let checked = 0;
+                let count = 0;
                 for (let cb of checkboxes.slice(0, 5)) {
                     cb.click();
-                    checked++;
+                    count++;
                 }
-                const allBtns = Array.from(document.querySelectorAll('button'));
-                const multiBtn = allBtns.find(b => (b.innerText || '').trim().toLowerCase() === 'apply');
-                if (checked > 0 && multiBtn) {
-                    multiBtn.click();
-                    return JSON.stringify({ status: 'applied', count: checked });
+                const btn = document.querySelector('button.multi-apply-button, .apply-all');
+                if (btn && count > 0) {
+                    btn.click();
+                    return JSON.stringify({ count: count, applied: true });
                 }
-                return JSON.stringify({ status: 'no_jobs', count: checked });
-            } catch(e) {
+                return JSON.stringify({ count: count, applied: false });
+            } catch (e) {
                 return JSON.stringify({ error: e.toString() });
             }
         })()
         """
-        res = self.exec_js_in_tab("https://www.naukri.com/mnjuser/recommendedjobs", multi_js, wait_sec=4)
-        if res:
+        if self.dry_run:
+            print("  [DRY-RUN] Would scan Recommended feed at: https://www.naukri.com/mnjuser/recommendedjobs")
+            print("  [DRY-RUN] Would check available batch checkboxes and click Multi-Apply.")
+            print("  [DRY-RUN] Would append Excel tracker row: [Timestamp, 'Naukri Curated Matches', 'Multi-Apply Recommended Batch', 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', 'Recommended Multi-Apply (Dry Run)', 'DRY_RUN_MATCH']")
+            return 1
+
+        res_raw = self.exec_js_in_tab("https://www.naukri.com/mnjuser/recommendedjobs", multi_js, wait_sec=5)
+        if res_raw:
             try:
-                data = json.loads(res)
-                if data.get("status") == "applied":
-                    c = data.get("count", 0)
-                    print(f"  ✓ Multi-Apply Batch Submitted: {c} jobs on Recommended Feed!")
+                res = json.loads(res_raw)
+                c = res.get("count", 0)
+                if c > 0 and res.get("applied"):
+                    print(f"  ✓ Multi-applied to {c} Recommended Jobs directly in Chrome!")
                     log_to_excel("Multi-Apply Recommended Jobs Batch", "Naukri Curated AI Matches", "Submitted", "Recommended Multi-Apply")
                     return c
             except Exception:
@@ -196,6 +212,17 @@ class NativeChromeRunner:
 
     def apply_to_job(self, job_url, title, company, salary):
         """Applies to a single job in Chrome, handling 1-click and screening questionnaires."""
+        if self.dry_run:
+            print(f"  [DRY-RUN] Would open job URL: {job_url}")
+            print(f"  [DRY-RUN] Screening Questionnaire Answers:")
+            print(f"    • Experience: {EXPERIENCE_YEARS} Years")
+            print(f"    • Notice Period: {NOTICE_PERIOD} Days")
+            print(f"    • Current CTC: ₹{CURRENT_CTC} LPA")
+            print(f"    • Expected CTC: ₹{EXPECTED_CTC} LPA")
+            print(f"    • Relocation / Immediate: Yes / Comfortable")
+            print(f"  [DRY-RUN] Would log to Excel: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {company}, {title}, 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_ELIGIBLE', {job_url}]")
+            return True, "Dry Run Simulation (No Live Application Sent)"
+
         apply_script = f'''
         tell application "Google Chrome"
             set myTab to make new tab at end of tabs of window 1 with properties {{URL:"{job_url}"}}
@@ -231,7 +258,6 @@ class NativeChromeRunner:
                     return JSON.stringify({{ isApplied: applied, hasDrawer: false }});
                 }}
                 
-                // Read last bot question
                 const qEls = drawer.querySelectorAll('.botMsg span, .botMsg div, .botMsg');
                 let lastQ = '';
                 for (let el of qEls) {{
@@ -300,8 +326,9 @@ class NativeChromeRunner:
         return False, "Failed to confirm"
 
     def run(self, limit=20):
+        mode_label = "DRY-RUN (Simulated — No Live Applications)" if self.dry_run else "LIVE SUBMISSION"
         print("\n" + "=" * 65)
-        print("  🚀 NAUKARIPRO: NATIVE CHROME STEALTH ENGINE (macOS)")
+        print(f"  🚀 NAUKARIPRO: NATIVE CHROME STEALTH ENGINE (macOS) [{mode_label}]")
         print(f"  Target: Up to {limit} Applications | Candidate: {NAUKRI_EMAIL}")
         print("  Zero Akamai WAF blocking — using authentic Chrome session")
         print("=" * 65)
@@ -364,6 +391,14 @@ class NativeChromeRunner:
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
                     continue
 
+                if self.dry_run:
+                    print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {comp} ({salary})")
+                    print(f"    • URL: {job_url}")
+                    print(f"    • Simulated Answers: exp={EXPERIENCE_YEARS}y, notice={NOTICE_PERIOD}d, current_ctc={CURRENT_CTC}L, expected_ctc={EXPECTED_CTC}L")
+                    print(f"    • Simulated Excel Row: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {comp}, {title}, 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_MATCH', {job_url}]")
+                    total_applied += 1
+                    continue
+
                 print(f"\n  → Applying to: {title} @ {comp} ({salary})")
                 success, msg = self.apply_to_job(job_url, title, comp, salary)
 
@@ -379,7 +414,8 @@ class NativeChromeRunner:
                 time.sleep(1.5)
 
         print("\n" + "=" * 65)
-        print(f"  🏁 AUTO-APPLY CYCLE FINISHED: {total_applied} Applications Submitted.")
+        status_label = "Simulated Applications" if self.dry_run else "Applications Submitted"
+        print(f"  🏁 AUTO-APPLY CYCLE FINISHED: {total_applied} {status_label}.")
         print(f"  📊 Live Excel Tracker: {TRACKER_PATH}")
         print("=" * 65 + "\n")
         return total_applied
@@ -396,8 +432,9 @@ Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'hi']
 """
 
 class PlaywrightRunner:
-    def __init__(self, skip_list):
+    def __init__(self, skip_list, dry_run=False):
         self.skip_list = skip_list
+        self.dry_run = dry_run
 
     async def handle_chatbot(self, page):
         for _ in range(5):
@@ -430,7 +467,7 @@ class PlaywrightRunner:
                 const txt = drawer.querySelector('div.textArea[contenteditable="true"], input[type="text"], textarea');
                 if (txt) {{
                     txt.focus();
-                    txt.innerText = 'NA';
+                    txt.innerText = '{EXPERIENCE_YEARS}';
                     txt.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 }}
                 const send = drawer.querySelector('.sendMsg, .send, button[type="submit"]');
@@ -442,16 +479,17 @@ class PlaywrightRunner:
     async def run_async(self, headless=False, limit=20):
         from playwright.async_api import async_playwright
 
+        mode_label = "DRY-RUN (Simulated — No Live Applications)" if self.dry_run else "LIVE SUBMISSION"
         print("\n" + "=" * 65)
-        print("  🚀 NAUKARIPRO: PLAYWRIGHT STEALTH ENGINE (Linux/Headless)")
+        print(f"  🚀 NAUKARIPRO: PLAYWRIGHT STEALTH ENGINE (Linux/Headless) [{mode_label}]")
         print(f"  Target: Up to {limit} Applications | Candidate: {NAUKRI_EMAIL}")
         print("=" * 65)
 
         for lock_file in ["SingletonLock", "SingletonSocket", "SingletonCookie"]:
-            lock_path = os.path.join(SESSION_DIR, lock_file)
-            if os.path.exists(lock_path) or os.path.islink(lock_path):
+            lp = os.path.join(SESSION_DIR, lock_file)
+            if os.path.exists(lp):
                 try:
-                    os.unlink(lock_path)
+                    os.remove(lp)
                 except Exception:
                     pass
 
@@ -459,83 +497,91 @@ class PlaywrightRunner:
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=SESSION_DIR,
                 headless=headless,
-                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-infobars"
+                ]
             )
             await context.add_init_script(STEALTH_JS)
-
-            if os.path.exists(COOKIES_SEED_PATH):
-                try:
-                    with open(COOKIES_SEED_PATH, "r") as f:
-                        cookies = json.load(f)
-                    await context.add_cookies(cookies)
-                except Exception:
-                    pass
-
             page = context.pages[0] if context.pages else await context.new_page()
-            total_applied = 0
 
-            # Scan keywords
-            for kw in DEFAULT_KEYWORDS[:3]:
+            total_applied = 0
+            for kw in DEFAULT_KEYWORDS:
                 if total_applied >= limit:
                     break
+
                 slug = "-".join(kw.lower().split())
                 url = f"https://www.naukri.com/{slug}-jobs-in-hyderabad?experience={EXPERIENCE_PARAM}&jobAge=1"
-                print(f"\nScanning: '{kw}' in Hyderabad ({url})")
+                print(f"\n[*] Scanning keyword: '{kw}' -> {url}")
 
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     await page.wait_for_timeout(3000)
 
-                    tuples = await page.query_selector_all("article.jobTuple, div.srp-jobtuple-wrapper")
-                    print(f"Found {len(tuples)} postings.")
+                    jobs = await page.evaluate("""() => {
+                        const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, article.jobTuple'));
+                        return items.slice(0, 10).map(it => {
+                            const title = it.querySelector('a.title');
+                            const comp = it.querySelector('a.comp-name, a.subTitle');
+                            const sal = it.querySelector('.sal-wrap, [class*="sal"]');
+                            return {
+                                title: title ? title.innerText.trim() : '',
+                                href: title ? title.href : '',
+                                company: comp ? comp.innerText.trim() : '',
+                                sal: sal ? sal.innerText.trim() : 'Undisclosed'
+                            };
+                        });
+                    }""")
 
-                    for item in tuples[:6]:
+                    for job in jobs:
                         if total_applied >= limit:
                             break
 
-                        title_el = await item.query_selector("a.title")
-                        comp_el = await item.query_selector("a.comp-name, a.subTitle")
-                        sal_el = await item.query_selector(".sal-wrap")
-
-                        title = (await title_el.inner_text()).strip() if title_el else "Data Engineer"
-                        comp = (await comp_el.inner_text()).strip() if comp_el else "Employer"
-                        salary = (await sal_el.inner_text()).strip() if sal_el else "Undisclosed"
-                        job_url = await title_el.get_attribute("href") if title_el else ""
+                        title = job.get("title", "")
+                        comp = job.get("company", "")
+                        salary = job.get("sal", "Undisclosed")
+                        job_url = job.get("href", "")
 
                         if not job_url or make_job_id(title, comp) in self.skip_list:
+                            continue
+
+                        acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                        if not acceptable:
+                            self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                            continue
+
+                        if self.dry_run:
+                            print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {comp} ({salary})")
+                            print(f"    • URL: {job_url}")
+                            print(f"    • Simulated Screening Answers: exp={EXPERIENCE_YEARS}y, notice={NOTICE_PERIOD}d, current_ctc={CURRENT_CTC}L, expected_ctc={EXPECTED_CTC}L")
+                            print(f"    • Simulated Excel Row: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {comp}, {title}, 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_MATCH', {job_url}]")
+                            total_applied += 1
                             continue
 
                         print(f"\n  → Applying to: {title} @ {comp} ({salary})")
                         job_tab = await context.new_page()
                         try:
-                            await job_tab.goto(job_url, wait_until="domcontentloaded", timeout=25000)
-                            await job_tab.wait_for_timeout(2500)
+                            await job_tab.goto(job_url, wait_until="domcontentloaded", timeout=30000)
+                            await job_tab.wait_for_timeout(3000)
 
-                            btn = await job_tab.query_selector("button#apply-button, .styles_apply-button__uJI3A, button:has-text('Apply')")
                             co_btn = await job_tab.query_selector("button#company-site-button, .styles_company-site-button__C_2YK")
-
                             if co_btn:
-                                print("    🌐 External portal detected — auto-filling via CareerPortalFiller...")
-                                filler = CareerPortalFiller()
-                                ok, _ = filler.fill_in_playwright(job_tab, job_url, comp, title)
-                                if ok:
-                                    total_applied += 1
-                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "career-portal-filled")
-                                else:
-                                    log_to_excel(title, comp, "External Redirect", "External Employer Portal", salary, job_url)
-                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "external-portal")
-                            elif btn and await btn.is_visible():
-                                await btn.click()
+                                print(f"    ℹ️ Company portal apply detected. Logging and tracking...")
+                                log_to_excel(title, comp, "External Redirect", "External Employer Portal", salary, job_url)
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, "external-redirect")
+                                total_applied += 1
+                                continue
+
+                            apply_btn = await job_tab.query_selector("button#apply-button, .styles_apply-button__uJI3A, button.apply-button")
+                            if apply_btn:
+                                await apply_btn.click()
                                 await job_tab.wait_for_timeout(2000)
                                 await self.handle_chatbot(job_tab)
                                 total_applied += 1
                                 print(f"    ✓ Successfully applied to {title} @ {comp}!")
                                 log_to_excel(title, comp, "Submitted (Pending)", "1-Click Direct", salary, job_url)
                                 self.skip_list = add_to_skip(self.skip_list, title, comp, "already-applied")
-                            else:
-                                print("    ⚠️ No direct apply button.")
-                                self.skip_list = add_to_skip(self.skip_list, title, comp, "no-apply-button")
                         except Exception as e:
                             print(f"    ❌ Error: {e}")
                         finally:
@@ -551,15 +597,16 @@ class PlaywrightRunner:
 # MAIN AUTO APPLY ENGINE ENTRYPOINT
 # ─────────────────────────────────────────────────────────────────────────────
 class AutoApplyEngine:
-    def __init__(self):
+    def __init__(self, dry_run=False):
         self.skip_list = load_skip_list()
+        self.dry_run = dry_run
 
-    def run(self, page=None, headless=False, limit=20):
-        # Auto-detect best engine: Native Chrome on macOS if Chrome is open; otherwise Playwright
+    def run(self, page=None, headless=False, limit=20, dry_run=None):
+        active_dry_run = self.dry_run if dry_run is None else dry_run
         if is_mac_chrome_available():
-            engine = NativeChromeRunner(self.skip_list)
+            engine = NativeChromeRunner(self.skip_list, dry_run=active_dry_run)
             return engine.run(limit=limit)
         else:
             import asyncio
-            engine = PlaywrightRunner(self.skip_list)
+            engine = PlaywrightRunner(self.skip_list, dry_run=active_dry_run)
             return asyncio.run(engine.run_async(headless=headless, limit=limit))

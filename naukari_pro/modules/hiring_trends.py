@@ -1,20 +1,22 @@
 """
 Feature 8: Industry Hiring Trends
 Salary benchmarks, geographic compensation distribution, and high-volume GCC hiring trends.
+Driven directly from unified configuration facts.
 """
 
 import logging
+from naukari_pro.config import load_config
 
 logger = logging.getLogger("naukariPro.HiringTrends")
 
-SALARY_BENCHMARKS = {
+DEFAULT_SALARY_BENCHMARKS = {
     "Bengaluru": {"min": 20, "median": 24, "max": 28, "open_vacancies_pct": "38%"},
     "Hyderabad": {"min": 18, "median": 22, "max": 26, "open_vacancies_pct": "29%"},
     "Pune": {"min": 16, "median": 20, "max": 24, "open_vacancies_pct": "18%"},
     "Remote / Pan-India": {"min": 22, "median": 25, "max": 30, "open_vacancies_pct": "15%"}
 }
 
-TOP_HIRING_COMPANIES = [
+DEFAULT_TOP_COMPANIES = [
     {"name": "Lloyds Technology Centre", "hub": "Hyderabad", "focus": "Azure Databricks & Cloud Lakehouse", "package": "₹22 - 27 LPA"},
     {"name": "PNC Bank GCC", "hub": "Hyderabad / Remote", "focus": "Platform & Data Infra", "package": "₹22 - 26 LPA"},
     {"name": "JPMorgan Chase", "hub": "Bengaluru / Hyderabad", "focus": "Big Data PySpark & AWS/Azure", "package": "₹24 - 30 LPA"},
@@ -25,7 +27,19 @@ TOP_HIRING_COMPANIES = [
 ]
 
 class HiringTrendsEngine:
+    def __init__(self, config=None):
+        self.config = config or load_config()
+
+    def get_benchmarks(self):
+        return self.config.get("salary_benchmarks", DEFAULT_SALARY_BENCHMARKS)
+
+    def get_top_companies(self):
+        return self.config.get("top_hiring_companies", DEFAULT_TOP_COMPANIES)
+
     def display_market_report(self):
+        benchmarks = self.get_benchmarks()
+        companies = self.get_top_companies()
+
         print("\n" + "=" * 75)
         print("  NAUKARIPRO: 2026 INDUSTRY HIRING & SALARY BENCHMARK REPORT")
         print("  Focus: Azure Data Engineering (2-4 YOE | Target 25 LPA)")
@@ -34,13 +48,13 @@ class HiringTrendsEngine:
         print("\n[+] GEOGRAPHIC SALARY DISTRIBUTION (LPA)")
         print(f"{'Location Hub':<20} | {'Min CTC':<10} | {'Median CTC':<12} | {'Top Tier (25 LPA)':<18} | {'Share'}")
         print("-" * 75)
-        for loc, data in SALARY_BENCHMARKS.items():
+        for loc, data in benchmarks.items():
             print(f"{loc:<20} | ₹{data['min']} LPA   | ₹{data['median']} LPA    | ₹{data['max']} LPA          | {data['open_vacancies_pct']}")
 
         print("\n[+] TOP ACTIVELY HIRING ENTERPRISES & GCCS")
         print(f"{'Enterprise / GCC':<26} | {'Target Hub':<16} | {'Salary Range':<16} | {'Key Focus'}")
         print("-" * 75)
-        for comp in TOP_HIRING_COMPANIES:
+        for comp in companies:
             print(f"{comp['name']:<26} | {comp['hub']:<16} | {comp['package']:<16} | {comp['focus']}")
 
         print("\n[+] RECRUITER ENGAGEMENT STRATEGY:")

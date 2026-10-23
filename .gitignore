@@ -64,7 +64,10 @@ login_result.png
 scratch/
 scratch_*.js
 scratch_*.py
-test_*.py
+test_scratch_*.py
+/test_*.py
+!tests/
+!tests/**
 inspect_*.py
 find_*.py
 click_*.py

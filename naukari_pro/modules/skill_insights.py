@@ -1,13 +1,15 @@
 """
 Feature 7: In-Demand Skill Insights
 Market intelligence on keyword frequencies, tech stack demand, and certification ROI.
+Driven directly from unified configuration facts.
 """
 
 import logging
+from naukari_pro.config import load_config
 
 logger = logging.getLogger("naukariPro.SkillInsights")
 
-SKILL_DEMAND_DATA = {
+DEFAULT_SKILL_DEMAND = {
     "Core Data Engineering": [
         {"skill": "PySpark / Spark SQL", "demand": "94%", "priority": "CRITICAL", "yoe_sweet_spot": "2-4 Yrs"},
         {"skill": "Azure Databricks", "demand": "91%", "priority": "CRITICAL", "yoe_sweet_spot": "1.5-3 Yrs"},
@@ -31,14 +33,18 @@ SKILL_DEMAND_DATA = {
 }
 
 class SkillInsightsEngine:
+    def __init__(self, config=None):
+        self.config = config or load_config()
+
     def get_skill_matrix(self):
-        return SKILL_DEMAND_DATA
+        return self.config.get("skill_demand_data", DEFAULT_SKILL_DEMAND)
 
     def display_insights(self):
+        data = self.get_skill_matrix()
         print("\n" + "=" * 75)
         print("  NAUKARIPRO: IN-DEMAND SKILL INTELLIGENCE (AZURE DATA PLATFORMS)")
         print("=" * 75)
-        for category, skills in SKILL_DEMAND_DATA.items():
+        for category, skills in data.items():
             print(f"\n[+] {category.upper()}")
             print(f"{'Skill Name':<35} | {'Recruiter Demand':<16} | {'Impact / Priority'}")
             print("-" * 75)

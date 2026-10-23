@@ -2,15 +2,18 @@
   "candidate": {
     "name": "Lavkush Kumar",
     "email": "lavkushry@gmail.com",
-    "phone": "9122036484",
-    "current_company": "CGI",
-    "current_designation": "DevOps Engineer",
+    "phone": "+91 9122036484",
+    "current_company": "CGI India (PNC Bank GCC)",
+    "current_designation": "DevOps Engineer (Cloud Infrastructure & Automation)",
     "current_ctc_lakhs": 12,
     "expected_ctc_lakhs": 25,
     "total_experience_years": 2.5,
     "notice_period_days": 30,
-    "primary_location": "Hyderabad",
-    "resume_path": "/Users/lavkushkumar/Desktop/Resume/Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
+    "primary_location": "Hyderabad, India",
+    "target_title": "AZURE DATA ENGINEER | CLOUD DATA PLATFORMS & LAKEHOUSE",
+    "linkedin": "linkedin.com/in/lavkushry",
+    "github": "github.com/lavkushry",
+    "resume_path": "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
   },
   "search_settings": {
     "roles": [
@@ -19,16 +22,94 @@
       "databricks-engineer",
       "devops-engineer"
     ],
+    "keywords": [
+      "Azure Data Engineer",
+      "Azure Databricks",
+      "PySpark",
+      "Delta Lake",
+      "Azure Data Factory",
+      "Data Engineer"
+    ],
     "locations": [
       "hyderabad",
       "bangalore",
+      "bengaluru",
       "pune",
       "remote"
     ],
     "max_experience": 4,
+    "min_salary_lpa": 12.0,
     "posted_within_days": 1,
     "daily_application_limit": 20
   },
+  "technical_competencies": {
+    "Data Platforms & Lakehouse": "Azure Databricks, PySpark (Spark SQL), Delta Lake (ACID, Time Travel, Liquid Clustering), Azure Data Factory (ADF), ADLS Gen2, Medallion Architecture (Bronze/Silver/Gold).",
+    "Streaming & Databases": "Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, advanced SQL (window functions, CTEs).",
+    "Cloud & DataOps": "Terraform (IaC), AWS (EKS, VPC, IAM), Docker, Helm, Jenkins CI/CD, GitLab CI, Linux/Bash, Git.",
+    "Observability & Governance": "Prometheus, Grafana, ELK Stack (Logstash Grok), Data Quality Gates, Unity Catalog concepts."
+  },
+  "experience": [
+    {
+      "company": "CGI India (PNC Bank GCC)",
+      "title": "DevOps Engineer (Cloud Infrastructure & Automation)",
+      "duration": "Jun 2026 – Present",
+      "location": "Hyderabad / Bangalore",
+      "bullets": [
+        "Standardized multi-tenant AWS EKS cluster infrastructure using Terraform modules and Ansible, establishing reproducible VPC peering, IAM role bindings, and auto-scaling node groups across environments.",
+        "Engineered declarative CI/CD pipelines across Jenkins and GitLab CI with Trivy vulnerability scanning and quality gates, cutting deployment lead time by 40%.",
+        "Hardened ingress routing and data API gateway policies using Nginx Ingress and Kong Gateway with rate-limiting and mTLS, slashing gateway latency overhead by 15% across 8 production microservices."
+      ]
+    },
+    {
+      "company": "Himachal Futuristic Communications (HFCL)",
+      "title": "Engineer 1 - DevOps - Platform Engineering",
+      "duration": "Aug 2025 – Jun 2026",
+      "location": "Gurugram / Bangalore",
+      "bullets": [
+        "Orchestrated stateful distributed data backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, slashing RTO from 8h to 30min (93% reduction) and MTTR by 45%.",
+        "Automated bare-metal Kubernetes (kubeadm) cluster lifecycle management using 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting cluster bootstrap time from 2 days to 4 hours (83% reduction).",
+        "Operated a 50-node on-premise Kubernetes platform for 15+ mission-critical microservices with namespace isolation, RBAC, and HPA, sustaining 99.95% platform availability."
+      ]
+    },
+    {
+      "company": "CGI India",
+      "title": "Security Analyst Apprentice (Log Analytics & Telemetry)",
+      "duration": "Sep 2024 – Aug 2025",
+      "location": "Bangalore",
+      "bullets": [
+        "Deployed centralized log telemetry pipelines via ELK Stack (Elasticsearch, Logstash, Kibana), authoring custom Logstash Grok patterns that transformed unstructured telemetry into structured schemas and accelerated incident triage by 50%."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Enterprise Medallion Lakehouse Platform on Azure",
+      "tech_stack": "Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2",
+      "bullets": [
+        "Architected an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest transactional event datasets into curated Bronze, Silver, and Gold layers on ADLS Gen2.",
+        "Optimized distributed PySpark batch transformations with schema validation and partition pruning, slashing ETL pipeline runtime by 35% while ensuring ACID transactional consistency."
+      ]
+    },
+    {
+      "name": "Project Vulcan - Enterprise Automation Control Plane",
+      "tech_stack": "Python, FastAPI, Redis Redlock, MinIO S3, PostgreSQL",
+      "bullets": [
+        "Built an infrastructure control plane in Python (FastAPI), engineering distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate concurrent data pipeline race conditions."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.Tech in Computer Science and Engineering",
+      "institution": "Maharishi Dayanand University (MDU), Rohtak",
+      "dates": "2020 – 2023"
+    }
+  ],
+  "certifications": [
+    "Microsoft Certified: Azure Fundamentals (AZ-900)",
+    "Microsoft SC-200",
+    "Databricks Data Engineer Associate (In Progress)"
+  ],
   "answers_to_common_questions": {
     "experience": "2.5",
     "pyspark_experience": "2",
@@ -42,5 +123,42 @@
     "relocation": "Yes"
   },
   "headline_template": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
-  "tracker_excel_path": "/Users/lavkushkumar/Desktop/Resume/Naukri_Live_Application_Tracker.xlsx"
+  "tracker_excel_path": "Naukri_Live_Application_Tracker.xlsx",
+  "skill_demand_data": {
+    "Core Data Engineering": [
+      {"skill": "PySpark / Spark SQL", "demand": "94%", "priority": "CRITICAL", "yoe_sweet_spot": "2-4 Yrs"},
+      {"skill": "Azure Databricks", "demand": "91%", "priority": "CRITICAL", "yoe_sweet_spot": "1.5-3 Yrs"},
+      {"skill": "Delta Lake & Medallion", "demand": "86%", "priority": "HIGH", "yoe_sweet_spot": "1-3 Yrs"},
+      {"skill": "Advanced SQL (CTEs, Window)", "demand": "98%", "priority": "MANDATORY", "yoe_sweet_spot": "2+ Yrs"},
+      {"skill": "Azure Data Factory (ADF)", "demand": "84%", "priority": "HIGH", "yoe_sweet_spot": "1.5-3 Yrs"},
+      {"skill": "Apache Kafka / Event Streaming", "demand": "72%", "priority": "HIGH", "yoe_sweet_spot": "1-2 Yrs"}
+    ],
+    "DataOps & Infrastructure": [
+      {"skill": "Terraform / IaC", "demand": "76%", "priority": "HIGH", "yoe_sweet_spot": "1.5-3 Yrs"},
+      {"skill": "Kubernetes (EKS/StatefulSets)", "demand": "68%", "priority": "HIGH", "yoe_sweet_spot": "2+ Yrs"},
+      {"skill": "Docker & Helm", "demand": "82%", "priority": "STANDARD", "yoe_sweet_spot": "2+ Yrs"},
+      {"skill": "CI/CD (Jenkins, GitLab CI)", "demand": "85%", "priority": "STANDARD", "yoe_sweet_spot": "2+ Yrs"}
+    ],
+    "Emerging 2026 High-Value Accelerators": [
+      {"skill": "Unity Catalog (Governance)", "demand": "64%", "trend": "Rapidly Growing", "salary_impact": "+15%"},
+      {"skill": "Apache Iceberg Open Table Format", "demand": "52%", "trend": "Trending in GCCs", "salary_impact": "+12%"},
+      {"skill": "dbt (data build tool)", "demand": "58%", "trend": "High Demand", "salary_impact": "+10%"},
+      {"skill": "Microsoft Fabric", "demand": "45%", "trend": "Adoption Phase", "salary_impact": "+15%"}
+    ]
+  },
+  "salary_benchmarks": {
+    "Bengaluru": {"min": 20, "median": 24, "max": 28, "open_vacancies_pct": "38%"},
+    "Hyderabad": {"min": 18, "median": 22, "max": 26, "open_vacancies_pct": "29%"},
+    "Pune": {"min": 16, "median": 20, "max": 24, "open_vacancies_pct": "18%"},
+    "Remote / Pan-India": {"min": 22, "median": 25, "max": 30, "open_vacancies_pct": "15%"}
+  },
+  "top_hiring_companies": [
+    {"name": "Lloyds Technology Centre", "hub": "Hyderabad", "focus": "Azure Databricks & Cloud Lakehouse", "package": "₹22 - 27 LPA"},
+    {"name": "PNC Bank GCC", "hub": "Hyderabad / Remote", "focus": "Platform & Data Infra", "package": "₹22 - 26 LPA"},
+    {"name": "JPMorgan Chase", "hub": "Bengaluru / Hyderabad", "focus": "Big Data PySpark & AWS/Azure", "package": "₹24 - 30 LPA"},
+    {"name": "Barclays", "hub": "Pune", "focus": "Data Engineering & Kafka", "package": "₹20 - 25 LPA"},
+    {"name": "Walmart Global Tech", "hub": "Bengaluru", "focus": "Lakehouse & Real-time Streaming", "package": "₹25 - 32 LPA"},
+    {"name": "HSBC Technology", "hub": "Hyderabad / Pune", "focus": "Data Platform & Kubernetes", "package": "₹21 - 26 LPA"},
+    {"name": "Cognizant / Infosys / TCS (High-growth Accounts)", "hub": "Pan-India", "focus": "Azure Databricks Migrations", "package": "₹16 - 22 LPA"}
+  ]
 }

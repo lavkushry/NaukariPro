@@ -4,6 +4,7 @@ Integrates all 8 core modules into a unified terminal tool and automated pipelin
 """
 
 import sys
+import os
 import argparse
 from playwright.sync_api import sync_playwright
 
@@ -54,14 +55,14 @@ def print_menu():
     print("  [0] Exit")
     print("========================================================================")
 
-def handle_pro(limit=10, headless=False):
-    engine = ProAutoPilotEngine(limit=limit, headless=headless)
+def handle_pro(limit=10, headless=False, dry_run=False):
+    engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run)
     engine.run_full_pipeline()
 
-def handle_auto_apply(headless=False, limit=20):
+def handle_auto_apply(headless=False, limit=20, dry_run=False):
     print("\n[*] Starting Auto-Apply on Naukri...")
-    engine = AutoApplyEngine()
-    engine.run(headless=headless, limit=limit)
+    engine = AutoApplyEngine(dry_run=dry_run)
+    engine.run(headless=headless, limit=limit, dry_run=dry_run)
 
 def handle_alerts(headless=False):
     print("\n[*] Scanning for Instant Job Alerts...")
@@ -107,10 +108,24 @@ def handle_hidden_jobs(headless=False):
                 print(f"    URL: {j['url']}")
         context.close()
 
-def handle_resume_maker():
-    print("\n[*] Compiling AI ATS Resume...")
+def handle_resume_maker(jd=None):
+    print("\n[*] Compiling AI ATS Resume strictly from config facts...")
+    jd_content = None
+    if jd:
+        if os.path.exists(jd):
+            try:
+                with open(jd, "r", encoding="utf-8") as f:
+                    jd_content = f.read()
+                print(f"  [✓] Loaded target JD from file: {jd}")
+            except Exception as e:
+                print(f"  [!] Could not read JD file ({e}), treating as raw text.")
+                jd_content = jd
+        else:
+            jd_content = jd
+        print("  [✓] Tailoring skills and bullets against target Job Description keywords.")
+
     maker = AIResumeMaker()
-    out = maker.build_ats_resume_pdf()
+    out = maker.build_ats_resume_pdf(jd_text=jd_content)
     print(f"\n[✓] ATS Resume generated successfully: {out}")
 
 def handle_interview_prep():
@@ -155,12 +170,12 @@ def handle_multi_search():
     engine = UniversalJobSearchEngine()
     engine.run_multi_search()
 
-def handle_daily_cycle(headless=False):
+def handle_daily_cycle(headless=False, dry_run=False):
     print("\n[*] Launching Complete Autonomous Daily Cycle...")
     # 1. Profile bump
     handle_profile(headless=headless)
     # 2. Auto-apply
-    handle_auto_apply(headless=headless, limit=20)
+    handle_auto_apply(headless=headless, limit=20, dry_run=dry_run)
     # 3. Alerts
     handle_alerts(headless=headless)
 
@@ -175,20 +190,27 @@ def handle_auth():
             import time
             time.sleep(2)
 
-            # Auto-fill credentials if login form is displayed
+            # Auto-fill credentials from config/.env if login form is displayed
             if "nlogin" in page.url or page.locator("#usernameField").count() > 0:
+                cfg = load_config()
+                cand = cfg.get("candidate", {})
+                email = os.getenv("NAUKRI_EMAIL") or cand.get("email", "")
+                password = os.getenv("NAUKRI_PASSWORD", "")
+
                 user_field = page.locator("#usernameField").first
-                if user_field.is_visible():
-                    user_field.fill("lavkushry@gmail.com")
+                if user_field.is_visible() and email:
+                    user_field.fill(email)
                     time.sleep(0.3)
                 pass_field = page.locator("#passwordField").first
-                if pass_field.is_visible():
-                    pass_field.fill("Lodu@735671")
+                if pass_field.is_visible() and password:
+                    pass_field.fill(password)
                     time.sleep(0.3)
                 login_btn = page.locator("button[type='submit']").first
-                if login_btn.is_visible():
+                if login_btn.is_visible() and password:
                     login_btn.click()
                     time.sleep(2)
+                elif not password:
+                    print("[!] Notice: NAUKRI_PASSWORD not found in .env. Please type your password in the Chrome window.")
 
             print("\n" + "=" * 65)
             print("  🔑 CREDENTIALS SUBMITTED!")
@@ -291,6 +313,7 @@ def main():
     common_parser = argparse.ArgumentParser(add_help=False)
     common_parser.add_argument("--headless", action="store_true", help="Run browser in background")
     common_parser.add_argument("--limit", type=int, default=20, help="Max daily applications")
+    common_parser.add_argument("--dry-run", action="store_true", help="Simulate job matches, answers, and tracker logging without submitting live applications")
 
     parser = argparse.ArgumentParser(description="naukariPro Career Suite", parents=[common_parser])
     subparsers = parser.add_subparsers(dest="command")
@@ -303,7 +326,6 @@ def main():
         ("hidden-jobs", "Discover hidden/stealth jobs"),
         ("early-access", "Scan early access roles and NVites"),
         ("search-all", "Search across Naukri, LinkedIn, and Hacker News Who's Hiring"),
-        ("resume-maker", "Generate ATS Resume PDF"),
         ("interview-prep", "Interview prep master bank"),
         ("skill-insights", "In-demand skills intelligence"),
         ("hiring-trends", "Salary & GCC hiring report"),
@@ -312,6 +334,9 @@ def main():
         ("menu", "Launch interactive menu"),
     ]:
         subparsers.add_parser(cmd, help=hlp, parents=[common_parser])
+
+    resume_parser = subparsers.add_parser("resume-maker", help="Generate ATS Resume PDF (Supports --jd tailoring)", parents=[common_parser])
+    resume_parser.add_argument("--jd", type=str, help="Path to target Job Description text file or raw JD string for tailoring")
 
     portal_parser = subparsers.add_parser("portal-apply", help="Auto-fill external career portal application (Greenhouse, Ashby, Lever, Workday)", parents=[common_parser])
     portal_parser.add_argument("--url", required=True, help="Job application URL")
@@ -324,11 +349,11 @@ def main():
     args = parser.parse_args()
 
     if args.command == "pro":
-        handle_pro(limit=args.limit, headless=args.headless)
+        handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run)
     elif args.command == "agy-schedule":
         handle_agy_schedule(action=args.action)
     elif args.command == "auto-apply":
-        handle_auto_apply(headless=args.headless, limit=args.limit)
+        handle_auto_apply(headless=args.headless, limit=args.limit, dry_run=args.dry_run)
     elif args.command == "alerts":
         handle_alerts(headless=args.headless)
     elif args.command == "bump":
@@ -340,7 +365,7 @@ def main():
     elif args.command == "search-all":
         handle_multi_search()
     elif args.command == "resume-maker":
-        handle_resume_maker()
+        handle_resume_maker(jd=args.jd)
     elif args.command == "interview-prep":
         handle_interview_prep()
     elif args.command == "skill-insights":
@@ -348,7 +373,7 @@ def main():
     elif args.command == "hiring-trends":
         handle_hiring_trends()
     elif args.command == "daily":
-        handle_daily_cycle(headless=args.headless)
+        handle_daily_cycle(headless=args.headless, dry_run=args.dry_run)
     elif args.command == "portal-apply":
         handle_portal_apply(url=args.url, company=args.company, role=args.role, headless=args.headless)
     elif args.command == "auth":

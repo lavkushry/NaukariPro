@@ -23,18 +23,20 @@ from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
 
 class ProAutoPilotEngine:
-    def __init__(self, limit=10, headless=False):
+    def __init__(self, limit=10, headless=False, dry_run=False):
         self.limit = limit
         self.headless = headless
+        self.dry_run = dry_run
         self.profile_engine = ProfileEnhancerEngine()
-        self.apply_engine = AutoApplyEngine()
+        self.apply_engine = AutoApplyEngine(dry_run=dry_run)
         self.search_engine = UniversalJobSearchEngine()
         self.portal_filler = CareerPortalFiller()
 
     def run_full_pipeline(self):
         start_time = datetime.now()
+        mode_str = " [DRY-RUN SIMULATION]" if self.dry_run else ""
         print("\n" + "=" * 70)
-        print("  🚀 NAUKARIPRO: AUTONOMOUS PRO CAREER AGENT")
+        print(f"  🚀 NAUKARIPRO: AUTONOMOUS PRO CAREER AGENT{mode_str}")
         print("  Goal: Top 1% ₹25 LPA Azure Data Engineer Opportunities")
         print(f"  Candidate: {self.portal_filler.profile['fullName']} ({self.portal_filler.profile['email']})")
         print(f"  Target Locations: Hyderabad, Bengaluru, Pune, Remote | Notice: 30 Days")
@@ -49,7 +51,7 @@ class ProAutoPilotEngine:
 
         # ── STAGE 2: Autonomous Naukri Auto-Apply Cycle ──
         print(f"\n[STAGE 2/5] Executing Autonomous Apply Cycle (Target: {self.limit} Applications)...")
-        applied_naukri = self.apply_engine.run(limit=self.limit, headless=self.headless)
+        applied_naukri = self.apply_engine.run(limit=self.limit, headless=self.headless, dry_run=self.dry_run)
 
         # ── STAGE 3: Multi-Platform Job Search & Aggregation ──
         print("\n[STAGE 3/5] Ingesting Global & Cross-Platform Openings...")

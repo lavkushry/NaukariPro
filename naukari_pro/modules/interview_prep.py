@@ -73,6 +73,14 @@ INTERVIEW_TRACKS = {
 }
 
 class InterviewPrepEngine:
+    @property
+    def q_and_a_bank(self):
+        all_qas = []
+        for track, qas in INTERVIEW_TRACKS.items():
+            for qa in qas:
+                all_qas.append({"topic": track, "q": qa["q"], "ans": qa["ideal_answer"]})
+        return all_qas
+
     def get_tracks(self):
         return list(INTERVIEW_TRACKS.keys())
 

@@ -1,73 +1,98 @@
 """
 naukariPro Configuration Module
-Handles candidate facts, search preferences, paths, and screening answers.
+Single source of truth for candidate facts, credentials (.env), screening answers, and paths.
 """
 
 import os
 import json
+from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 1. Load .env once right at import
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+if os.path.exists(ENV_PATH):
+    load_dotenv(ENV_PATH, override=False)
+
+# 2. Canonical File Paths
 TRACKER_PATH = os.path.join(BASE_DIR, "Naukri_Live_Application_Tracker.xlsx")
 RESUME_PDF_PATH = os.path.join(BASE_DIR, "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf")
 COOKIES_SEED_PATH = os.path.join(BASE_DIR, "naukri_system", "cookies_seed.json")
 SESSION_DIR = os.path.expanduser("~/.naukri_system_profile")
 LOG_PATH = os.path.expanduser("~/naukari_pro.log")
-
 CONFIG_FILE = os.path.join(BASE_DIR, "naukri_system", "config.json")
 
-DEFAULT_CONFIG = {
-    "candidate": {
-        "name": "Lavkush Kumar",
-        "email": "lavkushry@gmail.com",
-        "phone": "9122036484",
-        "current_company": "CGI",
-        "current_designation": "DevOps Engineer",
-        "current_ctc_lakhs": 12,
-        "expected_ctc_lakhs": 25,
-        "total_experience_years": 2.5,
-        "notice_period_days": 30,
-        "primary_location": "Hyderabad",
-        "resume_path": RESUME_PDF_PATH
-    },
-    "search_settings": {
-        "roles": [
-            "azure-data-engineer",
-            "data-engineer",
-            "databricks-engineer",
-            "devops-engineer"
-        ],
-        "locations": [
-            "hyderabad",
-            "bangalore",
-            "pune",
-            "remote"
-        ],
-        "max_experience": 4,
-        "posted_within_days": 1,
-        "daily_application_limit": 20
-    },
-    "answers_to_common_questions": {
-        "experience": "2.5",
-        "pyspark_experience": "2",
-        "databricks_experience": "2",
-        "azure_experience": "2.5",
-        "sql_experience": "2.5",
-        "kubernetes_experience": "2.5",
-        "terraform_experience": "2",
-        "notice_period": "30 days",
-        "current_location": "Hyderabad",
-        "relocation": "Yes"
-    },
-    "headline_template": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
-    "tracker_excel_path": TRACKER_PATH
-}
-
 def load_config():
+    """
+    Loads unified configuration from naukri_system/config.json and overlays .env values.
+    Ensures candidate facts, screening answers, and search settings stay 100% in sync.
+    """
+    cfg = {}
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-                return cfg
         except Exception:
+            cfg = {}
+
+    candidate = cfg.setdefault("candidate", {})
+    search_settings = cfg.setdefault("search_settings", {})
+    common_answers = cfg.setdefault("answers_to_common_questions", {})
+
+    # Overlay environment variables from .env if present
+    if os.getenv("NAUKRI_EMAIL"):
+        candidate["email"] = os.getenv("NAUKRI_EMAIL")
+    if os.getenv("TOTAL_EXPERIENCE"):
+        try:
+            candidate["total_experience_years"] = float(os.getenv("TOTAL_EXPERIENCE"))
+        except ValueError:
             pass
-    return DEFAULT_CONFIG
+    if os.getenv("CURRENT_CTC"):
+        try:
+            candidate["current_ctc_lakhs"] = float(os.getenv("CURRENT_CTC"))
+        except ValueError:
+            pass
+    if os.getenv("EXPECTED_CTC"):
+        try:
+            candidate["expected_ctc_lakhs"] = float(os.getenv("EXPECTED_CTC"))
+        except ValueError:
+            pass
+    if os.getenv("NOTICE_PERIOD"):
+        try:
+            candidate["notice_period_days"] = int(os.getenv("NOTICE_PERIOD"))
+        except ValueError:
+            pass
+    if os.getenv("MIN_SALARY_LPA"):
+        try:
+            search_settings["min_salary_lpa"] = float(os.getenv("MIN_SALARY_LPA"))
+        except ValueError:
+            pass
+    if os.getenv("DAILY_APPLICATION_LIMIT"):
+        try:
+            search_settings["daily_application_limit"] = int(os.getenv("DAILY_APPLICATION_LIMIT"))
+        except ValueError:
+            pass
+
+    # Ensure screening answers are dynamically derived from candidate facts
+    tot_exp = str(candidate.get("total_experience_years", "2.5"))
+    notice_days = str(candidate.get("notice_period_days", "30"))
+    curr_ctc = str(candidate.get("current_ctc_lakhs", "12"))
+    exp_ctc = str(candidate.get("expected_ctc_lakhs", "25"))
+
+    common_answers.setdefault("experience", tot_exp)
+    common_answers["experience"] = tot_exp
+    common_answers.setdefault("notice_period", f"{notice_days} days")
+    common_answers["notice_period"] = f"{notice_days} days"
+    common_answers.setdefault("current_ctc", curr_ctc)
+    common_answers["current_ctc"] = curr_ctc
+    common_answers.setdefault("expected_ctc", exp_ctc)
+    common_answers["expected_ctc"] = exp_ctc
+
+    # Absolute paths
+    if "resume_path" in candidate and not os.path.isabs(candidate["resume_path"]):
+        candidate["resume_path"] = os.path.join(BASE_DIR, candidate["resume_path"])
+    else:
+        candidate["resume_path"] = RESUME_PDF_PATH
+
+    cfg["tracker_excel_path"] = TRACKER_PATH
+    return cfg
