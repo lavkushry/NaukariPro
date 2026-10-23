@@ -19,7 +19,7 @@ if os.path.exists(ENV_PATH):
 TRACKER_PATH = os.path.join(BASE_DIR, "Naukri_Live_Application_Tracker.xlsx")
 RESUME_PDF_PATH = os.path.join(BASE_DIR, "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf")
 COOKIES_SEED_PATH = os.path.join(BASE_DIR, "naukri_system", "cookies_seed.json")
-SESSION_DIR = os.path.expanduser("~/.naukri_system_profile")
+SESSION_DIR = os.path.join(BASE_DIR, "naukri_system", "browser_session")
 LOG_PATH = os.path.expanduser("~/naukari_pro.log")
 CONFIG_FILE = os.path.join(BASE_DIR, "naukri_system", "config.json")
 CONFIG_PATH = CONFIG_FILE

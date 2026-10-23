@@ -19,6 +19,7 @@ import re
 import hashlib
 import subprocess
 from datetime import datetime
+import shutil
 import openpyxl
 
 from naukari_pro.config import TRACKER_PATH, SESSION_DIR, COOKIES_SEED_PATH, load_config
@@ -524,25 +525,34 @@ class PlaywrightRunner:
                 except Exception:
                     pass
 
+        system_chromium_path = None
+        if sys.platform.startswith("linux"):
+            for cand in [shutil.which("chromium"), shutil.which("chromium-browser"), "/snap/bin/chromium", "/usr/bin/chromium"]:
+                if cand and os.path.exists(cand):
+                    system_chromium_path = cand
+                    break
+
         async with async_playwright() as p:
             # Use persistent context with Chromium fallback
+            launch_kwargs = {
+                "user_data_dir": SESSION_DIR,
+                "headless": headless,
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu"
+                ]
+            }
+            if system_chromium_path:
+                launch_kwargs["executable_path"] = system_chromium_path
+
             try:
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=SESSION_DIR,
-                    headless=headless,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu"
-                    ]
-                )
+                context = await p.chromium.launch_persistent_context(**launch_kwargs)
             except Exception as e:
                 print(f"Launch notice ({e}); launching standard persistent context...")
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=SESSION_DIR,
-                    headless=headless
-                )
+                launch_kwargs.pop("executable_path", None)
+                context = await p.chromium.launch_persistent_context(**launch_kwargs)
 
             page = context.pages[0] if context.pages else await context.new_page()
 

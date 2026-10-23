@@ -39,6 +39,7 @@ venv.bak/
 cookies_seed.json
 *cookie*.json
 naukri_system/cookies_seed.json
+naukri_system/browser_session/
 ~/.naukri_system_profile/
 .naukri_system_profile/
 
