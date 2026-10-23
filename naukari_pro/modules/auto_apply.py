@@ -856,89 +856,92 @@ class PlaywrightRunner:
                 await context.add_init_script(STEALTH_JS)
                 page = context.pages[0] if context.pages else await context.new_page()
 
-            # Load seed cookies if present
-            if os.path.exists(COOKIES_SEED_PATH):
+                # Load seed cookies if present
+                if os.path.exists(COOKIES_SEED_PATH):
+                    try:
+                        with open(COOKIES_SEED_PATH, "r", encoding="utf-8") as f:
+                            cookies = json.load(f)
+                        await context.add_cookies(cookies)
+                    except Exception:
+                        pass
+
+                total_applied = 0
+                for kw in DEFAULT_KEYWORDS:
+                    if total_applied >= limit:
+                        break
+
+                    slug = "-".join(kw.lower().split())
+                    url = f"https://www.naukri.com/{slug}-jobs-in-hyderabad?experience={EXPERIENCE_PARAM}&jobAge=1"
+                    print(f"\n[*] Scanning keyword: '{kw}' -> {url}")
+
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                        await page.wait_for_timeout(3000)
+
+                        jobs = await page.evaluate("""() => {
+                            const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple'));
+                            return items.slice(0, 10).map(it => {
+                                const title = it.querySelector('a.title, a[class*="title"]');
+                                const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
+                                const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
+                                const desc = it.querySelector('.job-desc, .row4, .job-description, .ellipsis');
+                                const tags = Array.from(it.querySelectorAll('.tag-li, .tags-gt li, ul.tags li')).map(t => t.innerText.trim()).join(' ');
+                                return {
+                                    title: title ? title.innerText.trim() : '',
+                                    href: title ? title.href : '',
+                                    company: comp ? comp.innerText.trim() : '',
+                                    sal: sal ? sal.innerText.trim() : 'Undisclosed',
+                                    desc: desc ? desc.innerText.trim() : '',
+                                    tags: tags || ''
+                                };
+                            });
+                        }""")
+
+                        for job in jobs:
+                            if total_applied >= limit:
+                                break
+
+                            title = job.get("title", "")
+                            comp = job.get("company", "")
+                            salary = job.get("sal", "Undisclosed")
+                            job_url = job.get("href", "")
+                            raw_jd = f"{job.get('desc', '')} {job.get('tags', '')}".strip()
+
+                            if not job_url or make_job_id(title, comp) in self.skip_list:
+                                continue
+
+                            acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                            if not acceptable:
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                                continue
+
+                            # Match Scoring Gate (>= 70%) (Feature 10)
+                            is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
+                            if not is_match:
+                                print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
+                                continue
+
+                            applied_ok, _ = await self.apply_to_job_async(
+                                context,
+                                job_url,
+                                title,
+                                comp,
+                                salary,
+                                raw_jd=raw_jd,
+                                match_score=score,
+                                proxy=active_proxy
+                            )
+                            if applied_ok:
+                                total_applied += 1
+                    except Exception as e:
+                        print(f"Search warning: {e}")
+
                 try:
-                    with open(COOKIES_SEED_PATH, "r", encoding="utf-8") as f:
-                        cookies = json.load(f)
-                    await context.add_cookies(cookies)
+                    await context.close()
                 except Exception:
                     pass
-
-            total_applied = 0
-            for kw in DEFAULT_KEYWORDS:
-                if total_applied >= limit:
-                    break
-
-                slug = "-".join(kw.lower().split())
-                url = f"https://www.naukri.com/{slug}-jobs-in-hyderabad?experience={EXPERIENCE_PARAM}&jobAge=1"
-                print(f"\n[*] Scanning keyword: '{kw}' -> {url}")
-
-                try:
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    await page.wait_for_timeout(3000)
-
-                    jobs = await page.evaluate("""() => {
-                        const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple'));
-                        return items.slice(0, 10).map(it => {
-                            const title = it.querySelector('a.title, a[class*="title"]');
-                            const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
-                            const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
-                            const desc = it.querySelector('.job-desc, .row4, .job-description, .ellipsis');
-                            const tags = Array.from(it.querySelectorAll('.tag-li, .tags-gt li, ul.tags li')).map(t => t.innerText.trim()).join(' ');
-                            return {
-                                title: title ? title.innerText.trim() : '',
-                                href: title ? title.href : '',
-                                company: comp ? comp.innerText.trim() : '',
-                                sal: sal ? sal.innerText.trim() : 'Undisclosed',
-                                desc: desc ? desc.innerText.trim() : '',
-                                tags: tags || ''
-                            };
-                        });
-                    }""")
-
-                    for job in jobs:
-                        if total_applied >= limit:
-                            break
-
-                        title = job.get("title", "")
-                        comp = job.get("company", "")
-                        salary = job.get("sal", "Undisclosed")
-                        job_url = job.get("href", "")
-                        raw_jd = f"{job.get('desc', '')} {job.get('tags', '')}".strip()
-
-                        if not job_url or make_job_id(title, comp) in self.skip_list:
-                            continue
-
-                        acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
-                        if not acceptable:
-                            self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
-                            continue
-
-                        # Match Scoring Gate (>= 70%) (Feature 10)
-                        is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
-                        if not is_match:
-                            print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
-                            self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
-                            continue
-
-                        applied_ok, _ = await self.apply_to_job_async(
-                            context,
-                            job_url,
-                            title,
-                            comp,
-                            salary,
-                            raw_jd=raw_jd,
-                            match_score=score,
-                            proxy=active_proxy
-                        )
-                        if applied_ok:
-                            total_applied += 1
-                except Exception as e:
-                    print(f"Search warning: {e}")
-
-            await context.close()
-            return total_applied
+                return total_applied
         finally:
             session_lock.release()
 
