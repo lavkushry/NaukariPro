@@ -76,6 +76,10 @@ class ProAutoPilotEngine:
                         page = ctx.pages[0] if ctx.pages else ctx.new_page()
                         if ensure_authenticated(page, headless=self.headless):
                             sync_full_naukri_profile(page, force=self.force)
+                            try:
+                                self.perf_engine.display_weekly_report(page=page)
+                            except Exception as perf_err:
+                                print(f"  [!] Notice during live performance telemetry log: {perf_err}")
                         ctx.close()
                 else:
                     print(f"  [✓] Profile facts and 'Active Today' Resdex status already synchronized today ({today}).")

@@ -118,3 +118,6 @@ fi
 
 echo "[*] Cycle Finished: $(date)" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 echo "========================================================================" | tee -a "$RUN_LOG" "$HISTORY_LOG"
+
+# 7. Long-Term 5+ Month Unattended Maintenance: Prune run logs older than 30 days
+find "$LOG_DIR" -name "agy_run_*.log" -type f -mtime +30 -delete 2>/dev/null || true
