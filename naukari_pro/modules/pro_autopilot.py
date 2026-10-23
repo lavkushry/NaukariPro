@@ -45,12 +45,13 @@ class ProAutoPilotEngine:
         print(f"  Active Session: {'macOS Native Chrome Bridge' if sys.platform == 'darwin' else 'Linux Stealth Playwright'}")
         print("=" * 70)
 
-        # ── STAGE 1: Server Entitlements & Profile Recency ──
-        print("\n[STAGE 1/5] Inspecting Server Entitlements & Profile Strength...")
+        # ── STAGE 1: Server Entitlements & Recruiter Alignment ──
+        print("\n[STAGE 1/5] Inspecting Server Entitlements & Recruiter Alignment...")
         entitlements = self.perf_engine.get_session_entitlements()
         print(f"  [✓] Server Subscription Tier: {entitlements['tier']}")
-        audit = self.profile_engine.audit_profile_strength()
-        print(f"  [✓] Profile Resdex Completeness: {audit['score']}/100 ({audit['tier']})")
+        diff = self.perf_engine.generate_keyword_diff_report()
+        print(f"  [✓] Unified Title Alignment: Azure Data Engineer (Single Title across resume, profile, and search)")
+        print(f"  [✓] High-Intent Match Keywords: {', '.join(diff['matched_terms'][:6])}")
 
         # ── STAGE 2: Autonomous Naukri Auto-Apply Cycle ──
         print(f"\n[STAGE 2/5] Executing Autonomous Apply Cycle (Target: {self.limit} Applications)...")

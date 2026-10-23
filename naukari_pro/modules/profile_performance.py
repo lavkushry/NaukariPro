@@ -1,28 +1,56 @@
 """
-Profile Performance & Account Entitlements Engine
-Inspects authentic Naukri server-side entitlements and profile analytics:
-- JWT Session Entitlement Inspector (ud_isPaidClient, auth state, user ID)
-- Profile Performance Analytics (Search Appearances, Recruiter Actions, Downloads, Views)
-- Top Recruiter Search Keywords (Real keywords recruiters used in Resdex)
-- Paid Services Entitlement Verifier (Featured Profile, Priority Applicant, Pro Status)
+Profile Performance, Entitlement Verification & Keyword Diff Engine
+Tracks the 5 live numbers that dictate recruiter outreach:
+1. Search Appearances (recruiter database searches returning candidate)
+2. Profile Views (recruiters opening full profile)
+3. Resume Downloads (recruiters downloading PDF)
+4. Contact Views (recruiters unlocking phone/email — THE NORTH STAR)
+5. Recruiter Search Terms (exact keywords recruiters typed in Resdex)
+
+Provides:
+- Conversion Funnel Analysis (CTR, Contact Conversion Rate, Bottleneck Detection)
+- Keyword Diff against Headline and Key Skills (Matching, Missing High-Intent, Diluting)
+- Weekly Performance Logging to JSON and Excel Tracker
 """
 
 import os
 import json
 import base64
 import time
+import re
+from datetime import datetime
 import logging
-from naukari_pro.config import COOKIES_SEED_PATH, load_config
+import openpyxl
+
+from naukari_pro.config import COOKIES_SEED_PATH, TRACKER_PATH, load_config, WORKSPACE_DIR
 
 logger = logging.getLogger("naukariPro.Performance")
 
+HISTORY_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "profile_performance_history.json")
+
+# Verified Azure Data Engineer target keywords and spelling standards
+TARGET_DE_KEYWORDS = [
+    "Azure Data Engineer",
+    "PySpark",
+    "Azure Databricks",
+    "Delta Lake",
+    "Azure Data Factory",
+    "SQL",
+    "Apache Kafka",
+    "ADLS Gen2",
+    "Medallion Architecture",
+    "Terraform",
+    "ETL",
+    "Data Pipeline",
+    "Data Lakehouse"
+]
+
 def decode_naukri_jwt(token_str):
-    """Decodes JWT payload without external crypto dependencies."""
+    """Decodes JWT payload without external dependencies."""
     try:
         parts = token_str.split(".")
         if len(parts) >= 2:
             payload_b64 = parts[1]
-            # Add padding if needed
             padding = len(payload_b64) % 4
             if padding:
                 payload_b64 += "=" * (4 - padding)
@@ -50,7 +78,7 @@ class ProfilePerformanceEngine:
 
         if not token and os.path.exists(COOKIES_SEED_PATH):
             try:
-                with open(COOKIES_SEED_PATH, "r") as f:
+                with open(COOKIES_SEED_PATH, "r", encoding="utf-8") as f:
                     seed = json.load(f)
                 for c in seed:
                     if c.get("name") == "nauk_at":
@@ -64,6 +92,7 @@ class ProfilePerformanceEngine:
                 "authenticated": False,
                 "is_paid_client": False,
                 "user_id": None,
+                "user_state": "UNAUTHENTICATED",
                 "tier": "Unknown / Unauthenticated",
                 "details": "No 'nauk_at' session token found in cookies."
             }
@@ -96,16 +125,16 @@ class ProfilePerformanceEngine:
     def fetch_live_performance(self, page):
         """
         Navigates to Naukri Profile Performance (/mnjuser/profile-performance)
-        and extracts real recruiter view, download, search appearance, and keyword metrics.
+        and extracts the 5 authentic live metrics.
         """
         logger.info("Accessing live Naukri Profile Performance...")
         metrics = {
-            "search_appearances": None,
-            "recruiter_actions": None,
-            "profile_views": None,
-            "resume_downloads": None,
-            "top_search_keywords": [],
-            "recent_recruiters": [],
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "search_appearances": 0,
+            "profile_views": 0,
+            "resume_downloads": 0,
+            "contact_views": 0,
+            "search_terms": [],
             "data_source": "Live Naukri Portal"
         }
 
@@ -113,46 +142,61 @@ class ProfilePerformanceEngine:
             page.goto("https://www.naukri.com/mnjuser/profile-performance", wait_until="domcontentloaded", timeout=30000)
             time.sleep(3)
 
-            # Check if redirected to login
             if "login" in page.url:
                 logger.warning("Session expired; redirected to login page.")
                 metrics["data_source"] = "Session Expired (Login Required)"
                 return metrics
 
-            # Scrape performance cards
             body_text = page.locator("body").inner_text()
 
-            # Search appearances (e.g., "120 Search appearances in last 90 days")
-            app_el = page.locator(".search-appearances, .perf-count, span[class*='searchAppCount'], div[class*='searchApp']").first
-            if app_el.count() > 0 and app_el.is_visible():
-                metrics["search_appearances"] = app_el.inner_text().strip()
+            # Helper to extract integer from selector or regex
+            def extract_stat(selectors, regex_patterns):
+                for sel in selectors:
+                    el = page.locator(sel).first
+                    if el.count() > 0 and el.is_visible():
+                        txt = el.inner_text().strip()
+                        num_match = re.search(r'\b\d+\b', txt)
+                        if num_match:
+                            return int(num_match.group(0))
+                for pat in regex_patterns:
+                    m = re.search(pat, body_text, re.IGNORECASE)
+                    if m:
+                        return int(m.group(1))
+                return 0
 
-            # Recruiter actions / views
-            rec_el = page.locator(".recruiter-actions, span[class*='recruiterAction'], div[class*='recAction']").first
-            if rec_el.count() > 0 and rec_el.is_visible():
-                metrics["recruiter_actions"] = rec_el.inner_text().strip()
+            # 1. Search appearances
+            metrics["search_appearances"] = extract_stat(
+                [".search-appearances", ".perf-count", "span[class*='searchAppCount']", "div[class*='searchApp']"],
+                [r'(\d+)\s*search appearance', r'appeared in\s*(\d+)\s*searches']
+            )
 
-            view_el = page.locator(".profile-views, span[class*='profileViews'], div[class*='profView']").first
-            if view_el.count() > 0 and view_el.is_visible():
-                metrics["profile_views"] = view_el.inner_text().strip()
+            # 2. Profile views
+            metrics["profile_views"] = extract_stat(
+                [".profile-views", "span[class*='profileViews']", "div[class*='profView']"],
+                [r'(\d+)\s*recruiter views?', r'(\d+)\s*profile views?']
+            )
 
-            # Top keywords searched by recruiters
-            kw_els = page.locator(".keyword-chip, .keyword-pill, div[class*='keywordTag'], span[class*='keyword']").all()
-            for kw in kw_els[:10]:
+            # 3. Resume downloads
+            metrics["resume_downloads"] = extract_stat(
+                ["span[class*='download']", "div[class*='downloadCount']", "div:has-text('download')"],
+                [r'(\d+)\s*resume downloads?', r'(\d+)\s*cv downloads?']
+            )
+
+            # 4. Contact views (the ultimate North Star)
+            metrics["contact_views"] = extract_stat(
+                ["span[class*='contactView']", "div[class*='contactCount']", "div:has-text('contact')"],
+                [r'(\d+)\s*contact views?', r'(\d+)\s*contact details? viewed']
+            )
+
+            # 5. Search terms typed by recruiters
+            kw_els = page.locator(".keyword-chip, .keyword-pill, div[class*='keywordTag'], span[class*='keyword'], .chip").all()
+            for kw in kw_els[:15]:
                 t = kw.inner_text().strip()
-                if t and t not in metrics["top_search_keywords"]:
-                    metrics["top_search_keywords"].append(t)
+                if t and len(t) < 40 and t not in metrics["search_terms"]:
+                    metrics["search_terms"].append(t)
 
-            # Fallback parsing from text blocks if specific classes vary
-            lines = [l.strip() for l in body_text.split("\n") if l.strip()]
-            for i, line in enumerate(lines):
-                l_lower = line.lower()
-                if "search appearance" in l_lower and i > 0 and not metrics["search_appearances"]:
-                    if lines[i-1].isdigit():
-                        metrics["search_appearances"] = lines[i-1]
-                if "recruiter action" in l_lower and i > 0 and not metrics["recruiter_actions"]:
-                    if lines[i-1].isdigit():
-                        metrics["recruiter_actions"] = lines[i-1]
+            # Log snapshot to history
+            self.log_performance_snapshot(metrics)
 
         except Exception as e:
             logger.warning("Profile performance query notice: %s", e)
@@ -160,49 +204,222 @@ class ProfilePerformanceEngine:
 
         return metrics
 
-    def display_report(self, page=None):
-        """Displays clear, honest breakdown of account status and performance metrics."""
+    def log_performance_snapshot(self, metrics):
+        """Persists the 5 live numbers to a historical JSON ledger and Excel tracker."""
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        history = []
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+            except Exception:
+                history = []
+
+        history.append(metrics)
+        try:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(history, f, indent=2)
+        except Exception as e:
+            logger.warning("Could not save performance history JSON: %s", e)
+
+        # Log to Excel Tracker under Recruiter_Performance_Log
+        try:
+            wb = openpyxl.load_workbook(TRACKER_PATH)
+            sheet_name = "Recruiter_Performance_Log"
+            if sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+            else:
+                ws = wb.create_sheet(title=sheet_name)
+                ws.append([
+                    "Timestamp",
+                    "Search Appearances",
+                    "Profile Views",
+                    "Resume Downloads",
+                    "Contact Views",
+                    "Recruiter Search Terms",
+                    "CTR % (Views/Searches)",
+                    "Contact Conversion % (Contacts/Views)",
+                    "Data Source"
+                ])
+
+            apps = metrics.get("search_appearances", 0)
+            views = metrics.get("profile_views", 0)
+            downloads = metrics.get("resume_downloads", 0)
+            contacts = metrics.get("contact_views", 0)
+            terms_str = ", ".join(metrics.get("search_terms", []))
+
+            ctr = f"{round((views / apps) * 100, 1)}%" if apps > 0 else "N/A"
+            contact_conv = f"{round((contacts / views) * 100, 1)}%" if views > 0 else "N/A"
+
+            ws.append([
+                metrics.get("timestamp", datetime.now().strftime("%Y-%m-%d")),
+                apps,
+                views,
+                downloads,
+                contacts,
+                terms_str,
+                ctr,
+                contact_conv,
+                metrics.get("data_source", "Portal")
+            ])
+            wb.save(TRACKER_PATH)
+        except Exception as e:
+            logger.warning("Could not append to Excel tracker: %s", e)
+
+    def generate_keyword_diff_report(self, live_search_terms=None):
+        """
+        Calculates exact diff between:
+        1. Recruiter search terms that found candidate (from Profile Performance)
+        2. Verified target Azure Data Engineer keywords
+        3. Current headline and technical skills configured
+        """
+        cfg = load_config()
+        headline = cfg.get("headline_template", "")
+        competencies = cfg.get("technical_competencies", {})
+        
+        # Collect candidate's current configured skill strings
+        current_skills = []
+        for cat, skills in competencies.items():
+            if isinstance(skills, list):
+                current_skills.extend(skills)
+            elif isinstance(skills, str):
+                current_skills.extend([s.strip() for s in skills.split(",") if s.strip()])
+
+        headline_lower = headline.lower()
+        skills_lower = [s.lower() for s in current_skills]
+
+        # Use live search terms if available, otherwise target DE keywords
+        benchmark_terms = live_search_terms if (live_search_terms and len(live_search_terms) > 0) else TARGET_DE_KEYWORDS
+
+        matched_terms = []
+        missing_high_intent = []
+        for term in benchmark_terms:
+            t_clean = term.strip()
+            if t_clean.lower() in headline_lower or any(t_clean.lower() in s for s in skills_lower):
+                matched_terms.append(t_clean)
+            else:
+                missing_high_intent.append(t_clean)
+
+        # Detect diluting terms (generic non-DE terms that dilute data platform ranking)
+        diluting_terms = []
+        diluting_candidates = ["devops", "security analyst", "trivy", "jenkins only", "sysadmin"]
+        for dt in diluting_candidates:
+            if dt in headline_lower:
+                diluting_terms.append(dt.capitalize())
+
+        # Build recommended aligned headline
+        recommended_headline = (
+            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
+            "Azure Data Factory (ADF) · SQL · Apache Kafka · ADLS Gen2 · Terraform | "
+            "2.5 YOE Cloud Data Platforms & Medallion Lakehouse"
+        )
+
+        return {
+            "current_headline": headline,
+            "matched_terms": matched_terms,
+            "missing_high_intent": missing_high_intent,
+            "diluting_terms": diluting_terms,
+            "recommended_headline": recommended_headline,
+            "recommended_key_skills": (
+                "PySpark, Azure Databricks, Delta Lake, Azure Data Factory (ADF), "
+                "SQL, Apache Kafka, ADLS Gen2, Medallion Architecture, Terraform, "
+                "Python, Spark SQL, Data Pipelines, ETL, Unity Catalog, Docker, Linux"
+            )
+        }
+
+    def display_weekly_report(self, page=None):
+        """
+        Displays the weekly performance audit:
+        The 5 live numbers + conversion funnel analytics + keyword diff.
+        """
         cookies = page.context.cookies() if page else None
         entitlements = self.get_session_entitlements(cookies=cookies)
-
-        print("\n" + "=" * 70)
-        print("  📊 NAUKARIPRO: SERVER-SIDE ENTITLEMENTS & PROFILE PERFORMANCE")
-        print("=" * 70)
-        print(f"  Candidate: {self.cfg['candidate']['name']} ({self.cfg['candidate']['email']})")
-        print(f"  Account State: {entitlements['user_state']}")
-        print(f"  User ID: {entitlements['user_id']}")
-        print(f"  Server Subscription Tier: {entitlements['tier']}")
-        print("-" * 70)
-        print("  [SERVER ENTITLEMENT AUDIT]")
-        is_paid = entitlements['is_paid_client']
-        print(f"  • Featured Profile (Resdex Weekly Refresh): {'ACTIVE (Server-Side)' if is_paid else 'INACTIVE (Requires Paid Subscription)'}")
-        print(f"  • Priority Applicant Tag on Applications:   {'ACTIVE (Server-Side)' if is_paid else 'STANDARD (Free Tier Submission)'}")
-        print(f"  • Naukri Pro AI Tools Entitlement:         {'ACTIVE (Server-Side)' if is_paid else 'INACTIVE (Off-Market Local Suite Active)'}")
-        print("-" * 70)
-
-        if not is_paid:
-            print("  ℹ️ NOTICE ON NAUKRI PRO / PAID SERVICES:")
-            print("    Naukri's backend strictly enforces 'ud_isPaidClient=false' for this session.")
-            print("    Client automation cannot inject server-side paid flags (Featured/Priority).")
-            print("    However, NaukariPro maximizes your free account performance through:")
-            print("      1. Daily Recency Bumping (maintains 'Last updated today' timestamp)")
-            print("      2. Strict 1-Page ATS Resume Generation & Keyword Tailoring")
-            print("      3. Sub-6-hour Fast Vacancy Response & Direct 1-Click Apply")
-            print("-" * 70)
-
+        
+        # Query live metrics if page is active, otherwise inspect latest history
+        metrics = None
         if page:
-            perf = self.fetch_live_performance(page)
-            print("  [LIVE PROFILE PERFORMANCE METRICS]")
-            print(f"  • Search Appearances (90 Days): {perf['search_appearances'] or 'Not Disclosed by Portal'}")
-            print(f"  • Recruiter Actions / Views:    {perf['recruiter_actions'] or 'Not Disclosed by Portal'}")
-            print(f"  • Profile Views:                {perf['profile_views'] or 'Not Disclosed by Portal'}")
-            if perf['top_search_keywords']:
-                print(f"  • Keywords Found By:            {', '.join(perf['top_search_keywords'])}")
-            print(f"  • Data Source:                  {perf['data_source']}")
+            metrics = self.fetch_live_performance(page)
+        elif os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                if history:
+                    metrics = history[-1]
+            except Exception:
+                pass
+
+        if not metrics:
+            metrics = {
+                "timestamp": datetime.now().strftime("%Y-%m-%d"),
+                "search_appearances": 0,
+                "profile_views": 0,
+                "resume_downloads": 0,
+                "contact_views": 0,
+                "search_terms": [],
+                "data_source": "No prior records (Connect live browser to query)"
+            }
+
+        apps = metrics.get("search_appearances", 0)
+        views = metrics.get("profile_views", 0)
+        downloads = metrics.get("resume_downloads", 0)
+        contacts = metrics.get("contact_views", 0)
+        terms = metrics.get("search_terms", [])
+
+        # Conversion calculations
+        ctr = round((views / apps) * 100, 1) if apps > 0 else 0.0
+        contact_rate = round((contacts / views) * 100, 1) if views > 0 else 0.0
+
+        print("\n" + "=" * 75)
+        print("  📈 NAUKARIPRO: WEEKLY RECRUITER PERFORMANCE & CONVERSION AUDIT")
+        print("  Focus: Azure Data Engineer (Single Unified Title | 2.5 YOE | ₹20 LPA)")
+        print("=" * 75)
+        print(f"  Candidate: {self.cfg['candidate']['name']} ({self.cfg['candidate']['email']})")
+        print(f"  Account State: {entitlements['user_state']} | Server Entitlement: {entitlements['tier']}")
+        print(f"  Data As Of: {metrics.get('timestamp', 'N/A')} ({metrics.get('data_source', 'Portal')})")
+        print("-" * 75)
+
+        print("  [THE 5 RECRUITER ACTION NUMBERS]")
+        print(f"  1. Search Appearances: {apps:>6}  (Recruiters who saw your profile card in Resdex)")
+        print(f"  2. Profile Views:      {views:>6}  (Recruiters who clicked and opened full profile)")
+        print(f"  3. Resume Downloads:   {downloads:>6}  (Recruiters who saved your ATS resume PDF)")
+        print(f"  4. Contact Views:      {contacts:>6}  (Recruiters who viewed phone/email — THE NORTH STAR ⭐)")
+        print(f"  5. Recruiter Queries:  {', '.join(terms) if terms else 'Connect browser session to extract'}")
+        print("-" * 75)
+
+        print("  [CONVERSION FUNNEL ANALYTICS]")
+        print(f"  • Click-Through Rate (Views / Searches):       {ctr}%  (Target: > 8%)")
+        print(f"  • Contact Conversion Rate (Contacts / Views):  {contact_rate}%  (Target: > 15%)")
+        print("-" * 75)
+
+        print("  [FUNNEL BOTTLENECK DIAGNOSTICS]")
+        if apps == 0:
+            print("  ⚠️ ZERO SEARCH APPEARANCES DETECTED:")
+            print("    1. Recruiter Filters: Ensure Expected CTC is within ₹18-22 LPA band for 2.5 YOE.")
+            print("    2. Active Recency: Run daily bump at 09:15 AM to enter 'Active Today' search filter.")
+            print("    3. Title Alignment: Primary title must be strictly 'Azure Data Engineer'.")
+        elif ctr < 5.0:
+            print("  ⚠️ LOW CLICK-THROUGH RATE (< 5%):")
+            print("    Recruiters see your profile in searches but aren't clicking.")
+            print("    Remedy: Headline must start immediately with 'Azure Data Engineer | Azure Databricks'.")
+        elif contact_rate < 10.0 and views > 5:
+            print("  ⚠️ LOW CONTACT CONVERSION RATE (< 10%):")
+            print("    Recruiters open your profile but don't unlock phone/email.")
+            print("    Remedy: Ensure Project bullets and Key Skills emphasize production Lakehouse impact.")
         else:
-            print("  [LIVE PROFILE PERFORMANCE METRICS]")
-            print("  • Search Appearances:           Connect live browser session to query")
-            print("  • Recruiter Actions:            Connect live browser session to query")
-            print("  • Tip: Run './naukariPro performance' with active login to inspect.")
-        print("=" * 70 + "\n")
-        return entitlements
+            print("  ✓ Healthy Funnel Dynamics: Traffic is successfully converting to recruiter engagement.")
+        print("-" * 75)
+
+        # Keyword Diff Report
+        diff = self.generate_keyword_diff_report(live_search_terms=terms)
+        print("  [KEYWORD DIFF: RECRUITER SEARCH TERMS VS HEADLINE & SKILLS]")
+        print(f"  • Matched High-Intent Keywords: {', '.join(diff['matched_terms'][:8]) if diff['matched_terms'] else 'None'}")
+        if diff['missing_high_intent']:
+            print(f"  • Missing High-Value Terms:     {', '.join(diff['missing_high_intent'][:5])}")
+        if diff['diluting_terms']:
+            print(f"  • Diluting Keywords to Prune:   {', '.join(diff['diluting_terms'])}")
+        print("\n  [RECOMMENDED SYNCHRONIZED HEADLINE]")
+        print(f"  👉 \"{diff['recommended_headline']}\"")
+        print("\n  [RECOMMENDED KEY SKILLS (EXACT SPELLINGS FOR RESDEX)]")
+        print(f"  👉 {diff['recommended_key_skills']}")
+        print("=" * 75 + "\n")
+        return metrics

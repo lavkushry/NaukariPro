@@ -5,20 +5,50 @@ Autonomous Profile Bumper, Real Profile Completeness Audit, and Resdex Search Ra
 
 import os
 import time
+import json
+from datetime import datetime
 import logging
-from naukari_pro.config import load_config, RESUME_PDF_PATH
+from naukari_pro.config import load_config, RESUME_PDF_PATH, WORKSPACE_DIR
 
 logger = logging.getLogger("naukariPro.ProfileEnhancer")
+
+STATE_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "session_state.json")
 
 class ProfileEnhancerEngine:
     def __init__(self):
         self.cfg = load_config()
 
-    def bump_profile(self, page):
+    def _load_state(self):
+        if os.path.exists(STATE_FILE):
+            try:
+                with open(STATE_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
+
+    def _save_state(self, state):
+        try:
+            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            logger.warning("Could not save session state: %s", e)
+
+    def bump_profile(self, page, force=False):
         """
         Micro-toggles the headline punctuation to force Naukri backend to update 'Last updated today'.
-        Updates recruiter search recency ranking in Resdex.
+        Enforces a once-a-day throttle: skips redundant edits if already bumped today unless force=True.
         """
+        today = datetime.now().strftime("%Y-%m-%d")
+        state = self._load_state()
+
+        if not force and state.get("last_bumped_date") == today:
+            logger.info("Profile was already touched today (%s). Status is 'Active Today'. Skipping redundant edit.", today)
+            print(f"  ℹ️ Profile was already touched today ({today}). Status is already 'Active Today'.")
+            print("     Skipping redundant edit to stay inside recruiter recency window without repetitive saves.")
+            return True
+
         logger.info("Executing daily profile bump on Naukri...")
         try:
             page.goto("https://www.naukri.com/mnjuser/profile", wait_until="domcontentloaded", timeout=30000)
@@ -73,6 +103,9 @@ class ProfileEnhancerEngine:
                 if save_btn.is_visible():
                     save_btn.click()
                     time.sleep(3)
+                    state["last_bumped_date"] = today
+                    state["last_bumped_timestamp"] = datetime.now().isoformat()
+                    self._save_state(state)
                     logger.info("SUCCESS: Profile timestamp touched! Status is 'Last updated today'.")
                     return True
                 else:

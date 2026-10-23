@@ -52,6 +52,8 @@ naukri_system/cookies_seed.json
 # Application logs & state
 skip_list.json
 naukri_applications_log.json
+naukri_system/session_state.json
+naukri_system/profile_performance_history.json
 ehthumbs.db
 Thumbs.db
 

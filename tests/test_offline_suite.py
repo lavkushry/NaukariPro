@@ -35,7 +35,7 @@ def test_config_single_source_of_truth():
     assert cand.get("total_experience_years") == 2.5
     assert cand.get("notice_period_days") == 30
     assert cand.get("current_ctc_lakhs") == 12
-    assert cand.get("expected_ctc_lakhs") == 25
+    assert cand.get("expected_ctc_lakhs") == 20
 
     # Verify dynamic linkage in screening answers
     answers = cfg.get("answers_to_common_questions", {})
@@ -200,3 +200,37 @@ def test_job_alerts_match_score():
 
     score_low = engine.calculate_match_score("Manual QA Tester")
     assert score_low == 0
+
+def test_unified_title_and_ctc_calibration():
+    """Verify single title Azure Data Engineer and calibrated expected CTC."""
+    cfg = load_config()
+    cand = cfg.get("candidate", {})
+
+    assert cand.get("target_title") == "Azure Data Engineer"
+    assert cand.get("current_designation") == "Azure Data Engineer"
+    assert cand.get("expected_ctc_lakhs") == 20
+    assert cand.get("notice_period_days") == 30
+
+def test_keyword_diff_engine():
+    """Verify Keyword Diff matches high-intent terms and produces recommended headline."""
+    engine = ProfilePerformanceEngine()
+    diff = engine.generate_keyword_diff_report(live_search_terms=["Azure Databricks", "PySpark", "Delta Lake", "ADF"])
+
+    assert "Azure Databricks" in diff["matched_terms"]
+    assert "PySpark" in diff["matched_terms"]
+    assert "Azure Data Engineer" in diff["recommended_headline"]
+    assert "PySpark" in diff["recommended_key_skills"]
+    assert "Azure Databricks" in diff["recommended_key_skills"]
+
+def test_profile_bump_once_a_day_throttle(tmp_path):
+    """Verify once-a-day bump throttle skips redundant edits if already bumped today."""
+    from datetime import datetime
+    engine = ProfileEnhancerEngine()
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    # Save simulated state as already bumped today
+    engine._save_state({"last_bumped_date": today, "last_bumped_timestamp": f"{today}T09:15:00"})
+    
+    # Second bump should cleanly return True without needing page interaction
+    result = engine.bump_profile(None, force=False)
+    assert result is True

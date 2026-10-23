@@ -40,10 +40,11 @@ BANNER = r"""
 def print_menu():
     print(BANNER)
     print("  [P] PRO AUTONOMOUS AUTO-PILOT (Complete All-in-One AI Career Engine)")
+    print("  [W] Weekly Recruiter Performance & Keyword Diff Report (The 5 Live Numbers)")
     print("  [E] Server Entitlements & Profile Performance (JWT & Search Stats)")
     print("  [1] Auto-Apply on Naukri (1-Click & Verified Questionnaire Solver)")
     print("  [2] Instant Job Alerts (Cross-platform Desktop & In-App Alerts)")
-    print("  [3] AI-Enhanced Profile (Daily Timestamp Touch & Completeness Audit)")
+    print("  [3] AI-Enhanced Profile (Once-a-Day Timestamp Touch & Audit)")
     print("  [4] Hidden Job Opportunities (Inquiries, Recommended Feed & GCCs)")
     print("  [5] AI Resume Maker (1-Page ATS PDF & Quality Scorecard)")
     print("  [6] AI Interview Prep Tools (Master Q&A Bank for ₹25 LPA)")
@@ -77,6 +78,20 @@ def handle_performance(headless=False):
                 engine.display_report()
             context.close()
 
+def handle_weekly_report(headless=False):
+    engine = ProfilePerformanceEngine()
+    if headless:
+        engine.display_weekly_report()
+    else:
+        with sync_playwright() as p:
+            context = get_stealth_context(p, headless=headless)
+            page = context.pages[0] if context.pages else context.new_page()
+            if ensure_authenticated(page, headless=headless):
+                engine.display_weekly_report(page=page)
+            else:
+                engine.display_weekly_report()
+            context.close()
+
 def handle_auto_apply(headless=False, limit=20, dry_run=False):
     print("\n[*] Starting Auto-Apply on Naukri...")
     engine = AutoApplyEngine(dry_run=dry_run)
@@ -96,8 +111,8 @@ def handle_alerts(headless=False):
                 print(f"    URL: {a['url']}")
         context.close()
 
-def handle_profile(headless=False):
-    print("\n[*] Running AI-Enhanced Profile Module...")
+def handle_profile(headless=False, force=False):
+    print("\n[*] Running AI-Enhanced Profile Module (Once-a-Day Recency Throttle)...")
     engine = ProfileEnhancerEngine()
     
     with sync_playwright() as p:
@@ -111,7 +126,7 @@ def handle_profile(headless=False):
             print(f"  [✓] {name:<26} (+{pts} pts) : {desc}")
 
         if ensure_authenticated(page, headless=headless):
-            engine.bump_profile(page)
+            engine.bump_profile(page, force=force)
         context.close()
 
 def handle_hidden_jobs(headless=False):
@@ -228,10 +243,10 @@ def handle_multi_search():
     engine = UniversalJobSearchEngine()
     engine.run_multi_search()
 
-def handle_daily_cycle(headless=False, dry_run=False):
+def handle_daily_cycle(headless=False, dry_run=False, force=False):
     print("\n[*] Launching Complete Autonomous Daily Cycle...")
-    # 1. Profile bump
-    handle_profile(headless=headless)
+    # 1. Profile bump (throttled to once-a-day)
+    handle_profile(headless=headless, force=force)
     # 2. Auto-apply
     handle_auto_apply(headless=headless, limit=20, dry_run=dry_run)
     # 3. Alerts
@@ -333,9 +348,11 @@ def handle_agy_schedule(action="status"):
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, P, E, M, S, C, D, G, A]: ").strip().upper()
+        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A]: ").strip().upper()
         if choice == "P":
             handle_pro()
+        elif choice == "W":
+            handle_weekly_report()
         elif choice == "E":
             handle_performance()
         elif choice == "G":
@@ -386,20 +403,25 @@ def main():
 
     for cmd, hlp in [
         ("pro", "Run Complete All-in-One Pro Autonomous Pipeline"),
+        ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),
         ("performance", "Inspect Server-Side Entitlements & Profile Analytics"),
         ("auto-apply", "Auto-Apply to target vacancies"),
         ("alerts", "Scan instant hot alerts"),
-        ("bump", "Bump profile to Today"),
         ("hidden-jobs", "Discover hidden/off-market jobs"),
         ("early-access", "Scan early access roles and NVites"),
         ("search-all", "Search across Naukri, LinkedIn, and Hacker News Who's Hiring"),
         ("skill-insights", "In-demand skills intelligence"),
         ("hiring-trends", "Salary & GCC hiring report"),
-        ("daily", "Run full daily autonomous cycle"),
         ("auth", "Authenticate session"),
         ("menu", "Launch interactive menu"),
     ]:
         subparsers.add_parser(cmd, help=hlp, parents=[common_parser])
+
+    bump_parser = subparsers.add_parser("bump", help="Bump profile to Today (Once-a-day throttle)", parents=[common_parser])
+    bump_parser.add_argument("--force", action="store_true", help="Force profile bump even if already touched today")
+
+    daily_parser = subparsers.add_parser("daily", help="Run full daily autonomous cycle", parents=[common_parser])
+    daily_parser.add_argument("--force", action="store_true", help="Force profile bump even if already touched today")
 
     prep_parser = subparsers.add_parser("interview-prep", help="Interview prep master bank and mock evaluator", parents=[common_parser])
     prep_parser.add_argument("--mock", action="store_true", help="Launch interactive AI mock interview evaluator with scoring")
@@ -419,6 +441,8 @@ def main():
 
     if args.command == "pro":
         handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run)
+    elif args.command == "weekly-report":
+        handle_weekly_report(headless=args.headless)
     elif args.command == "performance":
         handle_performance(headless=args.headless)
     elif args.command == "agy-schedule":
@@ -428,7 +452,7 @@ def main():
     elif args.command == "alerts":
         handle_alerts(headless=args.headless)
     elif args.command == "bump":
-        handle_profile(headless=args.headless)
+        handle_profile(headless=args.headless, force=getattr(args, "force", False))
     elif args.command == "hidden-jobs":
         handle_hidden_jobs(headless=args.headless)
     elif args.command == "early-access":
@@ -444,7 +468,7 @@ def main():
     elif args.command == "hiring-trends":
         handle_hiring_trends(headless=args.headless)
     elif args.command == "daily":
-        handle_daily_cycle(headless=args.headless, dry_run=args.dry_run)
+        handle_daily_cycle(headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
     elif args.command == "portal-apply":
         handle_portal_apply(url=args.url, company=args.company, role=args.role, headless=args.headless)
     elif args.command == "auth":
