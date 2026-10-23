@@ -26,12 +26,28 @@ KEYWORD_WEIGHTS = {
     "kubernetes": 5
 }
 
+MATCH_SCORE_THRESHOLD = 70
+
+def calculate_match_score(text: str) -> int:
+    """
+    Computes weighted keyword match score (0-100) based on Azure Data Engineering competencies.
+    Returns: integer score. Threshold >= 70 required to apply.
+    """
+    if not text:
+        return 0
+    score = 0
+    text_lower = str(text).lower()
+    for kw, weight in KEYWORD_WEIGHTS.items():
+        if kw in text_lower:
+            score += weight
+    return min(score, 100)
+
 class InstantAlertsEngine:
     def __init__(self):
         self.cfg = load_config()
 
     def send_notification(self, title, subtitle, message):
-        """Dispatches native desktop notification banner across macOS and Linux."""
+        """Dispatches desktop notification banner across macOS and Linux."""
         if sys.platform == "darwin":
             try:
                 cmd = f'display notification "{message}" with title "{title}" subtitle "{subtitle}" sound name "Glass"'
@@ -57,12 +73,7 @@ class InstantAlertsEngine:
             pass
 
     def calculate_match_score(self, text):
-        score = 0
-        text_lower = text.lower()
-        for kw, weight in KEYWORD_WEIGHTS.items():
-            if kw in text_lower:
-                score += weight
-        return min(score, 100)
+        return calculate_match_score(text)
 
     def scan_for_alerts(self, page):
         roles = ["azure-data-engineer", "data-engineer"]

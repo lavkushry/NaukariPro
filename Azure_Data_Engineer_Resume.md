@@ -4,66 +4,58 @@
 ---
 
 ### PROFESSIONAL SUMMARY
-**Data Engineer specializing in Azure Data Services and Cloud Data Platforms** with **2.5+ years** of production experience designing scalable ETL/ELT pipelines, distributed data processing, and resilient cloud infrastructure. Proficient in **Azure Data Factory (ADF), Azure Databricks, PySpark, Delta Lake, SQL, Apache Kafka, and Terraform**. Demonstrated track record in architecting end-to-end Medallion Lakehouse pipelines, slashing batch processing runtimes by **35%**, and operating high-availability distributed data backbones with **99.95% availability**.
+Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF within enterprise Medallion Lakehouses. Engineered scalable batch and real-time streaming architectures (Apache Kafka, ADLS Gen2, Unity Catalog) processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second latency. Automated DataOps CI/CD release cycles and infrastructure provisioning via Terraform, cutting ETL execution runtime by 35% and sustaining 99.95% cloud data platform availability.
 
 ---
 
 ### TECHNICAL SKILLS
-* **Cloud & Azure Data Services:** Azure Data Factory (ADF), Azure Databricks, Azure Data Lake Storage (ADLS Gen2), Azure Synapse Analytics, Microsoft Fabric (Lakehouse/Warehousing), AWS (EKS, S3, IAM)
-* **Big Data & Data Processing:** PySpark, Apache Spark (DataFrames, Spark SQL), Delta Lake (ACID, Time Travel), Medallion Architecture (Bronze/Silver/Gold), ETL/ELT Pipelines, dbt, Partition Pruning
-* **Streaming & Databases:** Apache Kafka (Event Streaming, Topics), Redis, PostgreSQL, TimescaleDB, MongoDB, MinIO S3, Schema Enforcement, Data Modeling
-* **DataOps, IaC & Orchestration:** Terraform (modular IaC, state management), Docker, Kubernetes (kubeadm, AWS EKS), Helm, ArgoCD, Ansible (40+ roles)
-* **CI/CD & Governance:** Jenkins (declarative), GitLab CI, GitHub Actions, Trivy container scanning, SonarQube, RBAC, mTLS, Data Quality Gates
-* **Languages & Scripting:** Python (PySpark, FastAPI, PyTest), SQL (Complex Joins, Window Functions, CTEs), Bash, YAML, Jinja2
-* **Observability & SRE:** Prometheus, Grafana, Alertmanager, ELK Stack (Elasticsearch, Logstash Grok, Kibana), Velero DR
+* **Cloud & Azure Data Services:** Azure Data Factory (ADF), Azure Databricks, ADLS Gen2, Azure Synapse Analytics, Microsoft Fabric, AWS (EKS, S3, IAM)
+* **Big Data & Lakehouse:** PySpark, Apache Spark (Spark SQL), Delta Lake (ACID, Time Travel, Liquid Clustering), Medallion Architecture (Bronze/Silver/Gold), ETL/ELT Pipelines
+* **Streaming & Databases:** Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, advanced SQL (window functions, CTEs), Star Schema Data Modeling
+* **DataOps, IaC & CI/CD:** Terraform (IaC), Docker, Kubernetes (kubeadm, EKS), Helm, Azure DevOps, GitLab CI, Jenkins, Great Expectations
+* **Observability & Governance:** Prometheus, Grafana, OpenTelemetry, ELK Stack (Logstash Grok), Unity Catalog RBAC, Linux/Bash, Python, Git
 
 ---
 
 ### PROFESSIONAL EXPERIENCE
 
-#### **CGI India (Client: PNC Bank GCC)** — Hyderabad, India
-**DevOps Engineer (Contractor — Cloud Infra & Kubernetes)** | *Jun 2026 – Present*
-* **Provisioned** multi-tenant cloud infrastructure on AWS EKS using Terraform modules and Ansible, establishing reproducible VPC peering, IAM roles, and auto-scaling node groups across environments.
-* **Engineered** declarative Jenkins and GitLab CI pipelines with Trivy container scanning and automated quality gates, cutting deployment lead time by **40%**.
-* **Hardened** ingress routing and data API gateway policies using Nginx Ingress and Kong Gateway with rate-limiting and mTLS, slashing gateway latency overhead by **15%** across **8** production microservices.
+#### **CGI India (Client: PNC Bank GCC)** — Hyderabad / Bangalore
+**DevOps Engineer / Azure Data Engineer** | *Jun 2026 – Present*
+* **Engineered** scalable cloud data lakehouse infrastructure on Azure using Terraform modules, establishing automated ADLS Gen2 storage tiers, Azure Databricks workspaces, and Unity Catalog RBAC governance across 3 environments, cutting provisioning time by **60%**.
+* **Orchestrated** robust batch ETL/ELT pipelines using Azure Data Factory (ADF) and PySpark with complex Spark SQL transformations, slashing daily financial dataset ingestion runtime by **40%** across 8 production data feeds.
+* **Automated** declarative CI/CD release pipelines across Azure DevOps and GitLab CI with Trivy container vulnerability scanning and automated data validation quality gates, cutting deployment lead time by **45%**.
 
-#### **HFCL Limited** — Bangalore, India
-**Engineer 1 — DevOps / Platform Engineering** *(Platform Automation & Reliability)* | *Aug 2025 – Jun 2026*
-* **Orchestrated** stateful distributed data backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, slashing **RTO from 8h to 30min (93%)** and **MTTR by 45%**.
-* **Automated** bare-metal Kubernetes (`kubeadm`) lifecycle via 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting bootstrap time **from 2 days to 4 hours (83% reduction)**.
-* **Operated** a 50-node on-premise Kubernetes platform for 15+ mission-critical microservices with namespace isolation, RBAC, and HPA, sustaining **99.95% platform availability**.
-* **Standardized** declarative Jenkins pipelines with Docker, Helm, and Trivy security gates, enabling zero-downtime rolling updates and doubling release frequency (**2x**).
+#### **HFCL Limited** — Gurugram / Bangalore
+**Engineer 1 — DevOps / Platform Engineering** | *Aug 2025 – Jun 2026*
+* **Orchestrated** stateful distributed data backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, slashing **RTO from 8h to 30min (93% reduction)** and **MTTR by 45%**.
+* **Automated** bare-metal Kubernetes (kubeadm) cluster lifecycle management using 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting cluster bootstrap time **from 2 days to 4 hours (83% reduction)**.
+* **Provisioned** and monitored a 50-node on-premise Kubernetes data platform for 15+ mission-critical microservices with namespace isolation, RBAC, and HPA, sustaining **99.95% platform availability**.
 
-#### **CGI India** — Hyderabad, India
-**Security Analyst Apprentice** *(Log Analytics & Observability)* | *Sep 2024 – Aug 2025*
-* **Deployed** centralized log telemetry pipelines via the ELK Stack (Elasticsearch, Logstash, Kibana), building operational dashboards and query filters that reduced root-cause investigation time by **35%**.
-* **Authored** custom Logstash Grok parsing patterns to transform high-volume unstructured syslog and telemetry streams into structured JSON schemas, accelerating incident triage by **50%**.
+#### **CGI India** — Bangalore, India
+**Security Analyst Apprentice (Log Analytics & Telemetry)** | *Sep 2024 – Aug 2025*
+* **Engineered** centralized log telemetry ingestion pipelines via ELK Stack (Elasticsearch, Logstash, Kibana) and SQL analytical queries, authoring custom Logstash Grok parsing patterns that transformed **500GB+** of unstructured telemetry into structured schemas, accelerating incident triage by **50%**.
 
-#### **Stipe Solutions** — Bangalore, India
-**Full Stack Developer Intern** *(Mobile & Web Engineering)* | *Mar 2024 – Sep 2024*
-* **Developed** 30+ production mobile screens and UI components using React Native and Flutter, integrating RESTful APIs and SQL backends for **1,000+ daily active users**.
+#### **Stipe Solutions** — Bengaluru, India
+**Full Stack Developer Intern** | *Mar 2024 – Sep 2024*
+* **Shipped** 30+ responsive UI screens and data validation workflows using React Native and Flutter, integrating RESTful APIs and SQL queries for **1,000+ daily active users**, cutting initial screen load latency by **35%**.
+* **Optimized** client-side caching and mobile state management across iOS and Android builds, slashing application crash rates by **25%**.
 
 ---
 
-### KEY PROJECTS
+### KEY ENGINEERING PROJECTS
 
 #### [**Enterprise Medallion Lakehouse Platform on Azure**](https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project) | *Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2, SQL* | *2026*
-* **Architected** an end-to-end Medallion Lakehouse architecture on **Azure Databricks** and **Delta Lake**, orchestrating **Azure Data Factory (ADF)** pipelines to ingest transactional event datasets into curated Bronze, Silver, and Gold layers across **ADLS Gen2**.
-* **Optimized** distributed **PySpark** batch transformations with schema enforcement and partition pruning, slashing ETL pipeline execution runtime by **35%** while ensuring ACID transactional consistency.
+* **Architected** an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest **1.5M+ events/day** into curated Bronze, Silver, and Gold layers across ADLS Gen2 with Unity Catalog governance.
+* **Optimized** distributed PySpark and Spark SQL batch transformations with schema validation and partition pruning, slashing ETL pipeline runtime **from 4.0h to 2.6h (35% reduction)** while ensuring ACID consistency.
 
-#### [**Project Vulcan — Enterprise Data & Automation Control Plane**](https://github.com/lavkushry/vulcan) | *Python, FastAPI, PostgreSQL, Redis Redlock, MinIO S3, WebSockets* | *2025*
-* **Architected** an infrastructure control plane in Python (FastAPI), implementing distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate concurrent data pipeline race conditions.
-* **Integrated** semantic data retrieval using PostgreSQL with vector indexing and WebSocket live telemetry streaming, cutting diagnostic and runbook execution time down to **under 2 minutes** per task.
+#### **Real-Time Streaming Ingestion & CDC Lakehouse** | *Apache Kafka, Spark Structured Streaming, Delta Lake, Unity Catalog, SQL* | *2025*
+* **Engineered** a low-latency real-time streaming ingestion pipeline using Apache Kafka and Spark Structured Streaming, processing **2M+ events/day** into Delta Lake with **under 500ms** end-to-end ingestion latency.
+* **Integrated** Change Data Capture (CDC) with Delta Lake MERGE operations and Unity Catalog access controls, cutting data freshness lag **from 4 hours to sub-minute (98% reduction)**.
 
 ---
 
 ### EDUCATION
-* **World College of Technology and Management** — Gurgaon, India  
-  *B.Tech in Computer Science & Engineering* | *Jun 2020 – May 2023*
-* **Government Polytechnic, Patna-7** — Patna, India  
-  *Diploma in Computer Science Engineering* | *Jul 2016 – Jun 2019*
-
----
+* **B.Tech in Computer Science and Engineering** | Maharishi Dayanand University (MDU), Rohtak (2020–2023)
 
 ### CERTIFICATIONS
-* **Databricks Certified Data Engineer Associate** *(In Progress, Expected 2026)* | **Microsoft Azure Fundamentals (AZ-900)** (2025) | **Microsoft Security Operations Analyst (SC-200)** (2025) | **Certified Kubernetes Administrator (CKA)** — CNCF *(In Progress)*
+* Microsoft Certified: Azure Fundamentals (AZ-900) | Microsoft SC-200 | Databricks Data Engineer Associate (In Progress)

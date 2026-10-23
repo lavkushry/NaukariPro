@@ -23,6 +23,9 @@ logger = logging.getLogger("naukariPro.ResumeMaker")
 class AIResumeMaker:
     def __init__(self, output_pdf_path=RESUME_PDF_PATH):
         self.output_pdf_path = output_pdf_path
+        out_dir = os.path.dirname(os.path.abspath(self.output_pdf_path))
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
 
     def _score_text(self, text, keywords):
         """Scores relevance of a bullet or skill against JD keywords."""
@@ -167,9 +170,12 @@ class AIResumeMaker:
 
         return {
             "overall_score": total_score,
-            "ats_compliance_score": f"{struct_pts}/30",
-            "quantified_metrics_score": f"{metric_pts}/35 ({quantified_bullets}/{total_bullets} bullets quantified)",
-            "keyword_alignment_score": f"{kw_pts}/35 ({len(matched_kw)} keywords matched)",
+            "ats_compliance_score": float(struct_pts),
+            "quantified_metrics_score": float(metric_pts),
+            "keyword_alignment_score": float(kw_pts),
+            "ats_compliance_display": f"{struct_pts}/30",
+            "quantified_metrics_display": f"{metric_pts}/35 ({quantified_bullets}/{total_bullets} bullets quantified)",
+            "keyword_alignment_display": f"{kw_pts}/35 ({len(matched_kw)} keywords matched)",
             "matched_keywords": matched_kw[:12],
             "recommendations": recommendations
         }
@@ -179,6 +185,10 @@ class AIResumeMaker:
         Builds a pixel-perfect, 1-page ATS compliant resume strictly from config facts.
         If jd_text is provided, tailors skill order and highlights relevant bullets.
         """
+        out_dir = os.path.dirname(os.path.abspath(self.output_pdf_path))
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
         cfg = config or load_config()
         cand = cfg.get("candidate", {})
         skills_dict = cfg.get("technical_competencies", {})
@@ -186,6 +196,12 @@ class AIResumeMaker:
         projects_list = cfg.get("projects", [])
         education_list = cfg.get("education", [])
         certifications_list = cfg.get("certifications", [])
+        summary_text = (
+            cfg.get("profile_summary")
+            or cand.get("summary")
+            or cfg.get("candidate_facts", {}).get("summary")
+            or ""
+        )
 
         logger.info("Generating ATS Resume at %s (Tailored: %s)...", self.output_pdf_path, bool(jd_text))
 
@@ -196,14 +212,14 @@ class AIResumeMaker:
             stopwords = {"the", "and", "with", "for", "that", "this", "from", "have", "will", "our", "you", "your", "are"}
             jd_keywords = {w for w in raw_tokens if w not in stopwords}
 
-        # Page Setup with exact 1-page geometry
+        # Page Setup with calibrated 1-page geometry
         doc = SimpleDocTemplate(
             self.output_pdf_path,
             pagesize=letter,
             leftMargin=36,
             rightMargin=36,
-            topMargin=26,
-            bottomMargin=24
+            topMargin=20,
+            bottomMargin=18
         )
 
         styles = getSampleStyleSheet()
@@ -215,8 +231,8 @@ class AIResumeMaker:
             'CandidateName',
             parent=styles['Normal'],
             fontName='Helvetica-Bold',
-            fontSize=18,
-            leading=20,
+            fontSize=17,
+            leading=19,
             alignment=1,
             textColor=NAVY
         )
@@ -225,8 +241,8 @@ class AIResumeMaker:
             'ContactLine',
             parent=styles['Normal'],
             fontName='Helvetica',
-            fontSize=8.5,
-            leading=11,
+            fontSize=8,
+            leading=10,
             alignment=1,
             textColor=DARK_GRAY
         )
@@ -235,10 +251,10 @@ class AIResumeMaker:
             'SectionHeader',
             parent=styles['Normal'],
             fontName='Helvetica-Bold',
-            fontSize=10,
-            leading=12,
+            fontSize=9.5,
+            leading=11,
             textColor=NAVY,
-            spaceBefore=5,
+            spaceBefore=4,
             spaceAfter=2,
             keepWithNext=True
         )
@@ -247,8 +263,8 @@ class AIResumeMaker:
             'RoleHeader',
             parent=styles['Normal'],
             fontName='Helvetica-Bold',
-            fontSize=9,
-            leading=11,
+            fontSize=8.5,
+            leading=10.5,
             textColor=DARK_GRAY,
             keepWithNext=True
         )
@@ -257,8 +273,8 @@ class AIResumeMaker:
             'Body',
             parent=styles['Normal'],
             fontName='Helvetica',
-            fontSize=8,
-            leading=10.2,
+            fontSize=7.8,
+            leading=9.8,
             textColor=DARK_GRAY
         )
 
@@ -266,19 +282,19 @@ class AIResumeMaker:
             'Bullet',
             parent=styles['Normal'],
             fontName='Helvetica',
-            fontSize=8,
-            leading=10.2,
+            fontSize=7.8,
+            leading=9.8,
             textColor=DARK_GRAY,
-            leftIndent=10,
-            firstLineIndent=-7,
-            spaceAfter=1.2
+            leftIndent=9,
+            firstLineIndent=-6,
+            spaceAfter=1.0
         )
 
         elements = []
 
         # 1. Header
         elements.append(Paragraph(cand.get("name", "Lavkush Kumar").upper(), name_style))
-        elements.append(Spacer(1, 2))
+        elements.append(Spacer(1, 1))
         loc = cand.get("location") or cand.get("primary_location", "")
         phone = cand.get("phone", "")
         email = cand.get("email", "")
@@ -287,10 +303,16 @@ class AIResumeMaker:
         contact_parts = [p for p in [loc, phone, email, linkedin, github] if p]
         contact_line = " • ".join(contact_parts)
         elements.append(Paragraph(contact_line, contact_style))
-        elements.append(Spacer(1, 4))
-        elements.append(HRFlowable(width="100%", thickness=0.8, color=NAVY, spaceAfter=4, spaceBefore=1))
+        elements.append(Spacer(1, 3))
+        elements.append(HRFlowable(width="100%", thickness=0.7, color=NAVY, spaceAfter=3, spaceBefore=1))
 
-        # 2. Technical Skills Grid
+        # 2. Professional Summary (Mandatory AGENTS.md §2)
+        if summary_text:
+            elements.append(Paragraph("PROFESSIONAL SUMMARY", section_style))
+            elements.append(Paragraph(summary_text, body_style))
+            elements.append(Spacer(1, 2))
+
+        # 3. Technical Skills Grid
         elements.append(Paragraph("TECHNICAL COMPETENCIES", section_style))
         skills_text_lines = []
         for cat_name, skills in skills_dict.items():
@@ -311,9 +333,9 @@ class AIResumeMaker:
                     skills_str = ", ".join(skill_items)
             skills_text_lines.append(f"<b>{cat_name}:</b> {skills_str}")
         elements.append(Paragraph("<br/>".join(skills_text_lines), body_style))
-        elements.append(Spacer(1, 3))
+        elements.append(Spacer(1, 2))
 
-        # 3. Professional Experience
+        # 4. Professional Experience
         elements.append(Paragraph("PROFESSIONAL EXPERIENCE", section_style))
         for exp in experience_list:
             comp = exp.get("company", "")
@@ -329,9 +351,9 @@ class AIResumeMaker:
 
             for b in bullets:
                 elements.append(Paragraph(f"• {b}", bullet_style))
-            elements.append(Spacer(1, 2))
+            elements.append(Spacer(1, 1.5))
 
-        # 4. Key Projects
+        # 5. Key Projects
         elements.append(Paragraph("KEY ENGINEERING PROJECTS", section_style))
         for proj in projects_list:
             pname = proj.get("name", "")
@@ -345,21 +367,23 @@ class AIResumeMaker:
                 pbullets = sorted(pbullets, key=lambda b: self._score_text(b, jd_keywords), reverse=True)
             for pb in pbullets:
                 elements.append(Paragraph(f"• {pb}", bullet_style))
-            elements.append(Spacer(1, 2))
+            elements.append(Spacer(1, 1.5))
 
-        # 5. Education & Certifications
-        elements.append(Paragraph("EDUCATION & CERTIFICATIONS", section_style))
-        edu_cert_lines = []
+        # 6. Education (Separated)
+        elements.append(Paragraph("EDUCATION", section_style))
+        edu_lines = []
         for edu in education_list:
             deg = edu.get("degree", "")
             inst = edu.get("institution", "")
             dates = edu.get("dates", "")
-            edu_cert_lines.append(f"<b>{deg}</b> | {inst} ({dates})")
+            edu_lines.append(f"<b>{deg}</b> | {inst} ({dates})")
+        elements.append(Paragraph("<br/>".join(edu_lines), body_style))
+        elements.append(Spacer(1, 2))
 
+        # 7. Certifications (Separated)
         if certifications_list:
-            edu_cert_lines.append(f"<b>Certifications:</b> {' | '.join(certifications_list)}")
-
-        elements.append(Paragraph("<br/>".join(edu_cert_lines), body_style))
+            elements.append(Paragraph("CERTIFICATIONS", section_style))
+            elements.append(Paragraph(" • ".join(certifications_list), body_style))
 
         # Build document
         doc.build(elements)
@@ -376,3 +400,18 @@ class AIResumeMaker:
             logger.debug("PDF validation note: %s", e)
 
         return self.output_pdf_path
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    maker = AIResumeMaker()
+    pdf_out = maker.build_ats_resume_pdf()
+    score = maker.calculate_resume_quality_score()
+    print("\n================ ATS RESUME QUALITY SCORECARD ================")
+    print(f"Overall Score:            {score['overall_score']}/100")
+    print(f"ATS Compliance:           {score.get('ats_compliance_display', score['ats_compliance_score'])}")
+    print(f"Quantified Metrics:       {score.get('quantified_metrics_display', score['quantified_metrics_score'])}")
+    print(f"Keyword Alignment:        {score.get('keyword_alignment_display', score['keyword_alignment_score'])}")
+    print(f"Matched Keywords:         {', '.join(score['matched_keywords'])}")
+    print(f"Recommendations:          {'; '.join(score['recommendations'])}")
+    print(f"Target PDF Path:          {pdf_out}")
+    print("==============================================================")

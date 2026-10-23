@@ -17,9 +17,10 @@ import time
 import subprocess
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 import openpyxl
 
-from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH
+from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH, load_config
 
 # Candidate Ground Truth
 PROFILE_PATH = Path.home() / ".job-apply" / "profile.json"
@@ -41,63 +42,231 @@ DEFAULT_CANDIDATE = {
     "noticePeriodDays": "30",
     "currentCtcLpa": "12",
     "expectedCtcLpa": "25",
-    "resumePath": RESUME_PDF_PATH
+    "resumePath": RESUME_PDF_PATH,
+    "currentCompany": "CGI India (PNC Bank GCC)",
+    "currentTitle": "DevOps Engineer / Azure Data Engineer",
+    "workHistory": [
+        {
+            "company": "CGI India (PNC Bank GCC)",
+            "title": "DevOps Engineer / Azure Data Engineer",
+            "startDate": "2026-06",
+            "endDate": None,
+            "current": True,
+            "duration": "Jun 2026 – Present",
+            "location": "Hyderabad / Bangalore",
+            "description": "Engineered scalable cloud data lakehouse infrastructure on Azure using Terraform modules, establishing automated ADLS Gen2 storage tiers, Azure Databricks workspaces, and Unity Catalog RBAC governance across 3 environments, cutting provisioning time by 60%."
+        },
+        {
+            "company": "HFCL Limited",
+            "title": "Engineer 1 — DevOps / Platform Engineering",
+            "startDate": "2025-08",
+            "endDate": "2026-06",
+            "current": False,
+            "duration": "Aug 2025 – Jun 2026",
+            "location": "Gurugram / Bangalore",
+            "description": "Orchestrated stateful distributed data backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets, cutting RTO from 8h to 30min (93% reduction) and MTTR by 45%."
+        },
+        {
+            "company": "CGI India",
+            "title": "Security Analyst Apprentice",
+            "startDate": "2024-09",
+            "endDate": "2025-08",
+            "current": False,
+            "duration": "Sep 2024 – Aug 2025",
+            "location": "Bangalore",
+            "description": "Engineered centralized log telemetry ingestion pipelines via ELK Stack (Elasticsearch, Logstash, Kibana) and SQL analytical queries, accelerating incident triage by 50%."
+        },
+        {
+            "company": "Stipe Solutions",
+            "title": "Full Stack Developer Intern",
+            "startDate": "2024-03",
+            "endDate": "2024-09",
+            "current": False,
+            "duration": "Mar 2024 – Sep 2024",
+            "location": "Bengaluru",
+            "description": "Shipped 30+ responsive UI screens and data validation workflows using React Native and Flutter, integrating RESTful APIs and SQL queries for 1,000+ daily active users."
+        }
+    ],
+    "education": [
+        {
+            "degree": "B.Tech in Computer Science and Engineering",
+            "institution": "Maharishi Dayanand University (MDU), Rohtak",
+            "field": "Computer Science and Engineering",
+            "startDate": "2020-06",
+            "endDate": "2023-05",
+            "dates": "2020 – 2023"
+        }
+    ]
 }
 
 def load_applicant_profile():
+    data = json.loads(json.dumps(DEFAULT_CANDIDATE))
+
+    # 1. Overlay config.json candidate facts
+    try:
+        cfg = load_config()
+        cand = cfg.get("candidate", {})
+        if cand.get("name"):
+            names = cand["name"].split(" ", 1)
+            data["firstName"] = names[0]
+            data["lastName"] = names[1] if len(names) > 1 else ""
+            data["fullName"] = cand["name"]
+        if cand.get("email"): data["email"] = cand["email"]
+        if cand.get("phone"): data["phone"] = cand["phone"]
+        if cand.get("current_company"): data["currentCompany"] = cand["current_company"]
+        if cand.get("current_designation"): data["currentTitle"] = cand["current_designation"]
+        if cand.get("linkedin"): data["linkedInUrl"] = f"https://{cand['linkedin']}" if not cand['linkedin'].startswith('http') else cand['linkedin']
+        if cand.get("github"): data["githubUrl"] = f"https://{cand['github']}" if not cand['github'].startswith('http') else cand['github']
+        if cand.get("total_experience_years"): data["experienceYears"] = str(cand["total_experience_years"])
+        if cand.get("notice_period_days"): data["noticePeriodDays"] = str(cand["notice_period_days"])
+        if cand.get("current_ctc_lakhs"): data["currentCtcLpa"] = str(cand["current_ctc_lakhs"])
+        if cand.get("expected_ctc_lakhs"): data["expectedCtcLpa"] = str(cand["expected_ctc_lakhs"])
+
+        if cfg.get("experience") and isinstance(cfg["experience"], list):
+            mapped_history = []
+            for item in cfg["experience"]:
+                bullets = item.get("bullets", [])
+                desc = " ".join(bullets) if bullets else ""
+                mapped_history.append({
+                    "company": item.get("company", ""),
+                    "title": item.get("title", ""),
+                    "duration": item.get("duration", ""),
+                    "location": item.get("location", ""),
+                    "description": desc,
+                    "bullets": bullets,
+                    "current": "Present" in item.get("duration", "")
+                })
+            if mapped_history:
+                data["workHistory"] = mapped_history
+
+        if cfg.get("education") and isinstance(cfg["education"], list):
+            data["education"] = cfg["education"]
+    except Exception:
+        pass
+
+    # 2. Overlay ~/.job-apply/profile.json if it exists
     if PROFILE_PATH.exists():
         try:
             with open(PROFILE_PATH, "r", encoding="utf-8") as f:
                 doc = json.load(f)
                 prof = doc.get("profile", doc)
                 if prof.get("firstName"):
-                    data = dict(DEFAULT_CANDIDATE)
-                    data.update({
-                        "firstName": prof.get("firstName", "Lavkush"),
-                        "lastName": prof.get("lastName", "Kumar"),
-                        "fullName": f"{prof.get('firstName', 'Lavkush')} {prof.get('lastName', 'Kumar')}",
-                        "email": prof.get("email", "lavkushry@gmail.com"),
-                        "phone": prof.get("phone", "+91-9122036484"),
-                        "linkedInUrl": prof.get("linkedInUrl", "https://linkedin.com/in/lavkushry"),
-                        "githubUrl": prof.get("githubUrl", "https://github.com/lavkushry"),
-                        "resumePath": prof.get("resumePath", RESUME_PDF_PATH)
-                    })
+                    data["firstName"] = prof.get("firstName", data["firstName"])
+                    data["lastName"] = prof.get("lastName", data["lastName"])
+                    data["fullName"] = f"{data['firstName']} {data['lastName']}".strip()
+                    data["email"] = prof.get("email", data["email"])
+                    data["phone"] = prof.get("phone", data["phone"])
+                    data["linkedInUrl"] = prof.get("linkedInUrl", data["linkedInUrl"])
+                    data["githubUrl"] = prof.get("githubUrl", data["githubUrl"])
+                    data["resumePath"] = prof.get("resumePath", data["resumePath"])
                     if isinstance(prof.get("location"), dict):
                         loc = prof["location"]
-                        data["city"] = loc.get("city", "Hyderabad")
-                        data["country"] = loc.get("country", "India")
-                    return data
+                        data["city"] = loc.get("city", data["city"])
+                        data["country"] = loc.get("country", data["country"])
+                if prof.get("currentCompany"):
+                    data["currentCompany"] = prof.get("currentCompany", data.get("currentCompany"))
+                if prof.get("currentTitle"):
+                    data["currentTitle"] = prof.get("currentTitle", data.get("currentTitle"))
+                if prof.get("workHistory") and isinstance(prof["workHistory"], list):
+                    data["workHistory"] = prof["workHistory"]
+                if prof.get("education") and isinstance(prof["education"], list):
+                    data["education"] = prof["education"]
         except Exception:
             pass
-    return DEFAULT_CANDIDATE
 
-def log_portal_application(company, role, portal_type, status, url):
+    return data
+
+def log_portal_application(
+    company,
+    role,
+    portal_type,
+    status,
+    url,
+    match_score=85,
+    tracker_path=None
+):
+    """
+    Appends 11-column record to Applications_Log in tracker workbook:
+    [Application Date, Company Name, Job Title, Match Score (%), Role Category,
+     Experience Required, Location, Application Type, Status, Job URL, Recruiter Response]
+    """
     try:
-        wb = openpyxl.load_workbook(TRACKER_PATH)
-        ws = wb["Applications_Log"] if "Applications_Log" in wb.sheetnames else wb.active
+        path = tracker_path or TRACKER_PATH
+        if not os.path.exists(path):
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Applications_Log"
+            ws.append([
+                "Application Date",
+                "Company Name",
+                "Job Title",
+                "Match Score (%)",
+                "Role Category",
+                "Experience Required",
+                "Location",
+                "Application Type",
+                "Status",
+                "Job URL",
+                "Recruiter Response"
+            ])
+        else:
+            wb = openpyxl.load_workbook(path)
+            if "Applications_Log" in wb.sheetnames:
+                ws = wb["Applications_Log"]
+            else:
+                ws = wb.create_sheet(title="Applications_Log")
+                ws.append([
+                    "Application Date",
+                    "Company Name",
+                    "Job Title",
+                    "Match Score (%)",
+                    "Role Category",
+                    "Experience Required",
+                    "Location",
+                    "Application Type",
+                    "Status",
+                    "Job URL",
+                    "Recruiter Response"
+                ])
+
+        if isinstance(match_score, (int, float)):
+            score_str = f"{int(match_score)}%"
+        elif isinstance(match_score, str) and match_score.replace('%', '').strip().isdigit():
+            score_str = f"{int(match_score.replace('%', '').strip())}%"
+        else:
+            score_str = "85%"
+
+        safe_url = url if url and str(url).strip() else "N/A"
+
         ws.append([
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             company,
             role,
+            score_str,
             "Azure Data Engineer",
             "2-5 Yrs",
             "Hyderabad / Remote",
             f"Career Portal ({portal_type})",
             status,
-            url,
+            safe_url,
             "Form Auto-Filled; Ready for Final Review"
         ])
-        wb.save(TRACKER_PATH)
+        wb.save(path)
+        return True
     except Exception:
-        pass
+        return False
 
 
 class CareerPortalFiller:
     def __init__(self):
         self.profile = load_applicant_profile()
 
-    def detect_ats(self, url: str) -> str:
-        u = url.lower()
+    def detect_ats(self, url: Optional[str] = None) -> str:
+        if not url or not isinstance(url, str):
+            return "Generic Portal"
+        u = url.lower().strip()
+        if not u:
+            return "Generic Portal"
         if "linkedin.com" in u:
             return "LinkedIn"
         elif "greenhouse.io" in u or "gh_jid" in u:
@@ -177,6 +346,33 @@ class CareerPortalFiller:
             const loc = document.querySelector('input[name*="location" i], input[name*="city" i], input[id*="location" i], input[id*="city" i]');
             if (loc) setVal(loc, p.city, 'Location');
 
+            // 5b. Current Company / Employer / Organization
+            const comp = document.querySelector('input[name*="company" i], input[name*="org" i], input[name*="employer" i], input[id*="company" i], input[id*="org" i], input[placeholder*="company" i], input[placeholder*="current company" i], input[autocomplete="organization"]');
+            if (comp && p.currentCompany) setVal(comp, p.currentCompany, 'Current Company');
+
+            // 5c. Current Job Title / Designation / Headline
+            const curTitle = document.querySelector('input[name*="title" i], input[name*="headline" i], input[name*="designation" i], input[id*="title" i], input[id*="headline" i], input[placeholder*="title" i], input[placeholder*="current title" i]');
+            if (curTitle && p.currentTitle) setVal(curTitle, p.currentTitle, 'Current Title');
+
+            // 5d. Education (School / University / Degree)
+            const school = document.querySelector('input[name*="school" i], input[name*="university" i], input[name*="institution" i], input[id*="school" i], input[id*="university" i], input[placeholder*="school" i], input[placeholder*="university" i]');
+            if (school && p.education && p.education.length > 0) {{
+                const sName = p.education[0].institution || p.education[0].school || '';
+                if (sName) setVal(school, sName, 'Education School');
+            }}
+            const deg = document.querySelector('input[name*="degree" i], input[id*="degree" i], input[placeholder*="degree" i]');
+            if (deg && p.education && p.education.length > 0) {{
+                const dName = p.education[0].degree || '';
+                if (dName) setVal(deg, dName, 'Education Degree');
+            }}
+
+            // 5e. Experience Years & Notice Period inputs
+            const expInput = document.querySelector('input[name*="experience" i]:not([type="checkbox"]):not([type="radio"]), input[id*="experience" i]:not([type="checkbox"]):not([type="radio"])');
+            if (expInput && p.experienceYears) setVal(expInput, p.experienceYears, 'Experience Years');
+
+            const noticeInput = document.querySelector('input[name*="notice" i]:not([type="checkbox"]):not([type="radio"]), input[id*="notice" i]:not([type="checkbox"]):not([type="radio"])');
+            if (noticeInput && p.noticePeriodDays) setVal(noticeInput, p.noticePeriodDays, 'Notice Period');
+
             // 6. Radio / Dropdown screening questions (Work Auth, Relocation, Notice)
             const labels = Array.from(document.querySelectorAll('label, .ssrc__label, [role="radio"]'));
             for (let l of labels) {{
@@ -223,6 +419,10 @@ class CareerPortalFiller:
         Fills the career portal inside Google Chrome via AppleScript without submitting.
         Leaves the application on the review page for human verification.
         """
+        if not portal_url or not isinstance(portal_url, str):
+            print("    [!] Error: Invalid or empty portal URL.")
+            return False, []
+
         ats_type = self.detect_ats(portal_url)
         print(f"\n[*] Opening {ats_type} Career Portal in Chrome...")
         print(f"    URL: {portal_url}")
@@ -264,6 +464,10 @@ class CareerPortalFiller:
 
     def fill_in_playwright(self, page, portal_url: str, company: str = "Company", role: str = "Azure Data Engineer"):
         """Fills career portal using Playwright context."""
+        if not portal_url or not isinstance(portal_url, str):
+            print("    [!] Error: Invalid or empty portal URL.")
+            return False, []
+
         ats_type = self.detect_ats(portal_url)
         print(f"\n[*] Navigating to {ats_type} Portal via Playwright...")
         page.goto(portal_url, wait_until="domcontentloaded", timeout=30000)
@@ -287,3 +491,130 @@ class CareerPortalFiller:
         except Exception as e:
             print(f"    Notice: {e}")
             return False, []
+
+    def fill_dry_run(
+        self,
+        portal_url: str,
+        company: str = "Company",
+        role: str = "Azure Data Engineer",
+        raw_jd: str = "",
+        salary: str = "25 LPA",
+        calculate_score: bool = True,
+        match_score: Optional[int] = None
+    ):
+        """
+        Executes 100% offline dry-run: detects ATS, computes match score,
+        generates autofill script, and returns validated ApplicationPayload
+        without launching live browsers or submitting forms.
+        """
+        ats_type = self.detect_ats(portal_url)
+
+        if match_score is not None:
+            final_score = int(match_score)
+        elif calculate_score:
+            from naukari_pro.modules.job_alerts import calculate_match_score
+            score_text = f"{role} {company} {raw_jd}".strip()
+            final_score = calculate_match_score(score_text)
+        else:
+            final_score = 0
+
+        from naukari_pro.modules.job_alerts import MATCH_SCORE_THRESHOLD
+        status = "VALIDATED_PAYLOAD" if final_score >= MATCH_SCORE_THRESHOLD else "REJECTED_BELOW_THRESHOLD"
+
+        answers = {
+            "first_name": self.profile.get("firstName", "Lavkush"),
+            "last_name": self.profile.get("lastName", "Kumar"),
+            "full_name": self.profile.get("fullName", "Lavkush Kumar"),
+            "email": self.profile.get("email", "lavkushry@gmail.com"),
+            "phone": self.profile.get("phone", "+91-9122036484"),
+            "location": self.profile.get("city", "Hyderabad"),
+            "linkedin": self.profile.get("linkedInUrl", "https://linkedin.com/in/lavkushry"),
+            "github": self.profile.get("githubUrl", "https://github.com/lavkushry"),
+            "experience": self.profile.get("experienceYears", "2.5"),
+            "notice_period": self.profile.get("noticePeriodDays", "30"),
+            "current_ctc_lpa": self.profile.get("currentCtcLpa", "12"),
+            "expected_ctc_lpa": self.profile.get("expectedCtcLpa", "25"),
+            "current_company": self.profile.get("currentCompany", "CGI India (PNC Bank GCC)"),
+            "current_title": self.profile.get("currentTitle", "DevOps Engineer / Azure Data Engineer"),
+            "work_history": self.profile.get("workHistory", []),
+            "education": self.profile.get("education", []),
+            "work_auth": "Yes",
+            "visa_sponsorship": "No",
+            "relocation": "Yes",
+            "ats_type": ats_type
+        }
+
+        fill_script = self.generate_fill_script(ats_type)
+
+        from naukari_pro.modules.auto_apply import ApplicationPayload
+        safe_url = portal_url if (portal_url and isinstance(portal_url, str)) else "N/A"
+        payload = ApplicationPayload(
+            company=company,
+            job_title=role,
+            title=role,
+            url=safe_url,
+            match_score=final_score,
+            salary=salary,
+            answers=answers,
+            payload_data={
+                "ats_type": ats_type,
+                "script_length": len(fill_script),
+                "has_script": bool(fill_script),
+                "resume_path": self.profile.get("resumePath"),
+                "work_history_count": len(self.profile.get("workHistory", [])),
+                "current_company": self.profile.get("currentCompany")
+            },
+            portal_type=f"Career Portal ({ats_type})",
+            dry_run=True,
+            status=status
+        )
+        return payload
+
+    def fill(
+        self,
+        portal_url: str,
+        company: str = "Company",
+        role: str = "Azure Data Engineer",
+        headless: bool = False,
+        dry_run: bool = False,
+        raw_jd: str = "",
+        salary: str = "25 LPA",
+        page=None,
+        match_score: Optional[int] = None
+    ):
+        """Unified entrypoint supporting both live review-only fill and offline dry-run."""
+        if dry_run:
+            payload = self.fill_dry_run(
+                portal_url=portal_url,
+                company=company,
+                role=role,
+                raw_jd=raw_jd,
+                salary=salary,
+                match_score=match_score
+            )
+            print(f"\n[DRY-RUN] Career Portal Autofill Payload Generated:")
+            print(f"  • ATS Platform: {self.detect_ats(portal_url)}")
+            print(f"  • Company:      {payload.company}")
+            print(f"  • Title:        {payload.title}")
+            print(f"  • Match Score:  {payload.match_score}%")
+            print(f"  • Status:       {payload.status}")
+            return True, payload
+
+        if page is not None:
+            return self.fill_in_playwright(page, portal_url, company=company, role=role)
+        elif sys.platform == "darwin" and not headless:
+            return self.fill_in_chrome(portal_url, company=company, role=role)
+        else:
+            try:
+                from playwright.sync_api import sync_playwright
+                from naukari_pro.session import get_stealth_context
+                with sync_playwright() as p:
+                    context = get_stealth_context(p, headless=headless)
+                    page_ctx = context.pages[0] if context.pages else context.new_page()
+                    success, filled = self.fill_in_playwright(page_ctx, portal_url, company=company, role=role)
+                    context.close()
+                    return success, filled
+            except Exception as e:
+                print(f"Playwright automation error: {e}")
+                return False, []
+

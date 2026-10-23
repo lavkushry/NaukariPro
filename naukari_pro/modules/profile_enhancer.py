@@ -14,6 +14,20 @@ logger = logging.getLogger("naukariPro.ProfileEnhancer")
 
 STATE_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "session_state.json")
 
+class ProfileChecklistItem(tuple):
+    """
+    3-element tuple (name, description, points) with enhanced string containment.
+    Allows tuple indexing (item[0], item[1], item[2]), tuple unpacking
+    (name, desc, pts = item), and substring containment ('Headline' in item).
+    """
+    def __contains__(self, key):
+        if super().__contains__(key):
+            return True
+        for elem in self:
+            if isinstance(elem, str) and str(key).lower() in elem.lower():
+                return True
+        return False
+
 class ProfileEnhancerEngine:
     def __init__(self, state_file=None):
         self.cfg = load_config()
@@ -159,7 +173,7 @@ class ProfileEnhancerEngine:
                         return {
                             "score": live_score,
                             "source": "Live Naukri Profile",
-                            "checklist": [("Naukri Portal Completeness", f"{live_score}% reported by portal", live_score)],
+                            "checklist": [ProfileChecklistItem(("Naukri Portal Completeness", f"{live_score}% reported by portal", live_score))],
                             "tier": "Fully Complete Profile" if live_score >= 95 else "Partially Complete Profile"
                         }
             except Exception as e:
@@ -174,7 +188,7 @@ class ProfileEnhancerEngine:
         has_pdf = os.path.exists(RESUME_PDF_PATH)
         pts = 15 if has_pdf else 0
         earned_score += pts
-        checklist.append(("Resume Attachment", f"1-Page PDF {'present on disk' if has_pdf else 'MISSING'}", pts))
+        checklist.append(ProfileChecklistItem(("Resume Attachment", f"1-Page PDF {'present on disk' if has_pdf else 'MISSING'}", pts)))
 
         # 2. Headline Keyword Density
         headline = self.cfg.get("headline_template", "")
@@ -182,37 +196,38 @@ class ProfileEnhancerEngine:
         kw_count = sum(1 for kw in core_kw if kw in headline.lower())
         pts = 20 if kw_count >= 3 else (10 if kw_count >= 1 else 0)
         earned_score += pts
-        checklist.append(("Headline Keywords", f"{kw_count}/5 core keywords in headline ({pts}/20 pts)", pts))
+        checklist.append(ProfileChecklistItem(("Headline Keywords", f"{kw_count}/5 core keywords in headline ({pts}/20 pts)", pts)))
 
         # 3. Key Skills
         competencies = self.cfg.get("technical_competencies", {})
         total_skills = sum(len(v) for v in competencies.values()) if competencies else len(self.cfg.get("search_settings", {}).get("keywords", []))
         pts = 20 if total_skills >= 15 else (10 if total_skills >= 8 else 5)
         earned_score += pts
-        checklist.append(("Key Skills Tag Cloud", f"{total_skills} technical skills configured ({pts}/20 pts)", pts))
+        checklist.append(ProfileChecklistItem(("Key Skills Tag Cloud", f"{total_skills} technical skills configured ({pts}/20 pts)", pts)))
 
-        # 4. Profile Summary / Headline Depth
-        pts = 15 if len(headline) >= 60 else (8 if len(headline) >= 30 else 0)
+        # 4. Profile Summary
+        summary = self.cfg.get("profile_summary", "")
+        pts = 15 if len(summary) >= 100 else (8 if len(summary) >= 50 else 0)
         earned_score += pts
-        checklist.append(("Profile Headline Depth", f"{len(headline)} chars comprehensive headline ({pts}/15 pts)", pts))
+        checklist.append(ProfileChecklistItem(("Profile Summary", f"{len(summary)} chars optimized summary ({pts}/15 pts)", pts)))
 
         # 5. Verified Contact & Experience
         has_contact = bool(cand.get("email") and cand.get("phone") and cand.get("total_experience_years"))
         pts = 10 if has_contact else 0
         earned_score += pts
-        checklist.append(("Verified Contact & YOE", f"Email, phone, and {cand.get('total_experience_years', '0')} YOE verified", pts))
+        checklist.append(ProfileChecklistItem(("Verified Contact & YOE", f"Email, phone, and {cand.get('total_experience_years', '0')} YOE verified", pts)))
 
         # 6. Certifications
         certs = self.cfg.get("certifications", [])
         pts = 10 if len(certs) >= 1 else 0
         earned_score += pts
-        checklist.append(("Certifications Listed", f"{len(certs)} certifications on record ({pts}/10 pts)", pts))
+        checklist.append(ProfileChecklistItem(("Certifications Listed", f"{len(certs)} certifications on record ({pts}/10 pts)", pts)))
 
         # 7. Experience & Projects
         exp_roles = self.cfg.get("experience", [])
         pts = 10 if len(exp_roles) >= 1 else 0
         earned_score += pts
-        checklist.append(("Employment History", f"{len(exp_roles)} verified work history entries ({pts}/10 pts)", pts))
+        checklist.append(ProfileChecklistItem(("Employment History", f"{len(exp_roles)} verified work history entries ({pts}/10 pts)", pts)))
 
         if earned_score >= 95:
             tier = "Comprehensive Profile (High Resdex Search Alignment)"

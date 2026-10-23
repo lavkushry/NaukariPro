@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # naukariPro AGY Autonomous Career Scheduler Runner
+# Feature 15: Process-Level Mutual Exclusion File Locking via flock
 # Powered by Google Antigravity CLI (agy)
 # ==============================================================================
 set -euo pipefail
@@ -15,11 +16,44 @@ TIMESTAMP="$(date +'%Y-%m-%d_%H-%M-%S')"
 RUN_LOG="$LOG_DIR/agy_run_${TIMESTAMP}.log"
 HISTORY_LOG="$LOG_DIR/agy_schedule_history.log"
 
+# ==============================================================================
+# 2. Process-Level File Locking (flock mutual exclusion)
+# Prevents overlapping runs across systemd, cron, and manual CLI invocations
+# ==============================================================================
+LOCK_FILE="/tmp/naukaripro_runner.lock"
+exec 200>"$LOCK_FILE"
+
+acquire_lock() {
+    if command -v flock &>/dev/null; then
+        flock -n 200
+        return $?
+    else
+        # Portable fallback for environments without util-linux flock (e.g., macOS local testing)
+        python3 -c "import fcntl; fcntl.flock(200, fcntl.LOCK_EX | fcntl.LOCK_NB)" 200>&200 2>/dev/null
+        return $?
+    fi
+}
+
+if ! acquire_lock; then
+    ACTIVE_PID="$(cat "$LOCK_FILE" 2>/dev/null || echo 'unknown')"
+    echo "========================================================================" | tee -a "$HISTORY_LOG"
+    echo "[!] [MUTUAL_EXCLUSION] Overlapping execution prevented at $(date)." | tee -a "$HISTORY_LOG"
+    echo "[!] Another instance of agy_schedule_runner is actively running (PID: $ACTIVE_PID, Lock: $LOCK_FILE)." | tee -a "$HISTORY_LOG"
+    echo "[*] Exiting cleanly with status 0 to preserve system integrity." | tee -a "$HISTORY_LOG"
+    echo "========================================================================" | tee -a "$HISTORY_LOG"
+    exit 0
+fi
+
+# Write current PID into lock file for tracking
+echo "$$" >&200
+
 echo "========================================================================" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 echo "[*] NaukariPro AGY Autonomous Cycle Started: $(date)" | tee -a "$RUN_LOG" "$HISTORY_LOG"
-echo "[*] Host: $(hostname) | Workspace: $WORKSPACE" | tee -a "$RUN_LOG" "$HISTORY_LOG"
+echo "[*] Host: $(hostname) | Workspace: $WORKSPACE | PID: $$" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 
-# 2. Environment Setup
+# ==============================================================================
+# 3. Environment Setup
+# ==============================================================================
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export PYTHONUNBUFFERED=1
 
@@ -31,7 +65,9 @@ fi
 
 cd "$WORKSPACE"
 
-# 3. Locate agy CLI binary
+# ==============================================================================
+# 4. Locate agy CLI binary
+# ==============================================================================
 AGY_BIN=""
 if [ -x "$HOME/.local/bin/agy" ]; then
     AGY_BIN="$HOME/.local/bin/agy"
@@ -39,7 +75,9 @@ elif command -v agy &>/dev/null; then
     AGY_BIN="$(command -v agy)"
 fi
 
-# 4. Formulate Agentic Execution Prompt for agy
+# ==============================================================================
+# 5. Formulate Agentic Execution Prompt for agy
+# ==============================================================================
 AGY_PROMPT='You are the autonomous AI career agent running for Lavkush Kumar (Azure Data Engineer, 2.5 YOE, ₹20 LPA target CTC, 30 days notice).
 Execute the complete scheduled career cycle in this workspace:
 1. Run `./naukariPro pro --headless --limit 15` to:
@@ -56,7 +94,9 @@ Execute the complete scheduled career cycle in this workspace:
    - Top 3 high-match roles applied
    - Any manual recruiter actions needed'
 
-# 5. Execute via agy CLI (with graceful fallback to direct ./naukariPro pro)
+# ==============================================================================
+# 6. Execute via agy CLI (with graceful fallback to direct ./naukariPro pro)
+# ==============================================================================
 if [ -n "$AGY_BIN" ]; then
     echo "[*] Executing autonomous cycle using agy CLI: $AGY_BIN" | tee -a "$RUN_LOG"
     set +e

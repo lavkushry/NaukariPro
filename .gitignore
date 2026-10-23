@@ -80,3 +80,6 @@ scroll_*.py
 # Office temporary files
 ~$*.docx
 ~$*.xlsx
+
+# Subagent internal scratch directories
+.agents/

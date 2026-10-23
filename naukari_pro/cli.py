@@ -7,6 +7,11 @@ Ground-truth metrics, real server entitlement inspection, and robust error handl
 import os
 import sys
 import argparse
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 from playwright.sync_api import sync_playwright
 
 from naukari_pro.session import get_stealth_context, ensure_authenticated, save_session_cookies, detect_challenge
@@ -169,9 +174,9 @@ def handle_resume_maker(jd=None):
     print("\n" + "=" * 65)
     print(f"  📋 ATS RESUME QUALITY SCORECARD — {score['overall_score']}/100")
     print("=" * 65)
-    print(f"  • ATS Layout Compliance:    {score['ats_compliance_score']}")
-    print(f"  • Quantified Metrics Ratio: {score['quantified_metrics_score']}")
-    print(f"  • Target Keyword Coverage:  {score['keyword_alignment_score']}")
+    print(f"  • ATS Layout Compliance:    {score.get('ats_compliance_display', score['ats_compliance_score'])}")
+    print(f"  • Quantified Metrics Ratio: {score.get('quantified_metrics_display', score['quantified_metrics_score'])}")
+    print(f"  • Target Keyword Coverage:  {score.get('keyword_alignment_display', score['keyword_alignment_score'])}")
     print(f"  • Key Matched Keywords:     {', '.join(score['matched_keywords'])}")
     print("  • Evaluator Recommendations:")
     for rec in score['recommendations']:
@@ -213,35 +218,30 @@ def handle_hiring_trends(headless=False):
             pass
     engine.display_market_report(live_data=live_samples)
 
-def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer", headless=False):
+def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer", jd="", headless=False, dry_run=False):
     filler = CareerPortalFiller()
     if not url:
-        print("\n" + "=" * 65)
-        print("  🌐 CAREER PORTAL AUTO-FILLER (Job-Apply Engine)")
-        print("  Supported: Greenhouse, Ashby, Lever, Workday, Rippling, Portals")
-        print("=" * 65)
-        url = input("Enter job application URL: ").strip()
-        if not url:
-            print("URL cannot be empty.")
-            return
-        c_in = input("Company name (optional, press Enter for auto): ").strip()
-        if c_in: company = c_in
-        r_in = input("Role title (optional, press Enter for 'Azure Data Engineer'): ").strip()
-        if r_in: role = r_in
+        if dry_run:
+            url = "https://boards.greenhouse.io/microsoft/jobs/123"
+        else:
+            print("\n" + "=" * 65)
+            print("  🌐 CAREER PORTAL AUTO-FILLER (Job-Apply Engine)")
+            print("  Supported: Greenhouse, Ashby, Lever, Workday, Rippling, Portals")
+            print("=" * 65)
+            url = input("Enter job application URL: ").strip()
+            if not url:
+                print("URL cannot be empty.")
+                return
+            c_in = input("Company name (optional, press Enter for auto): ").strip()
+            if c_in: company = c_in
+            r_in = input("Role title (optional, press Enter for 'Azure Data Engineer'): ").strip()
+            if r_in: role = r_in
 
-    import sys
-    if sys.platform == "darwin":
-        filler.fill_in_chrome(url, company=company, role=role)
-    else:
-        with sync_playwright() as p:
-            context = get_stealth_context(p, headless=headless)
-            page = context.pages[0] if context.pages else context.new_page()
-            filler.fill_in_playwright(page, url, company=company, role=role)
-            context.close()
+    return filler.fill(url, company=company, role=role, headless=headless, dry_run=dry_run, raw_jd=jd)
 
-def handle_multi_search():
+def handle_multi_search(dry_run=False):
     engine = UniversalJobSearchEngine()
-    engine.run_multi_search()
+    return engine.run_multi_search(dry_run=dry_run)
 
 def handle_daily_cycle(headless=False, dry_run=False, force=False):
     print("\n[*] Launching Complete Autonomous Daily Cycle...")
@@ -260,7 +260,7 @@ def handle_daily_cycle(headless=False, dry_run=False, force=False):
             print(f"[!] Profile sync notice: {e}. Executing standard recency bump...")
             handle_profile(headless=headless, force=force)
     else:
-        handle_profile(headless=headless, force=force)
+        print("  [DRY-RUN] Simulated profile headline & skills refresh (No browser opened).")
 
     # 2. Auto-apply
     print("\n[Step 2/3] Autonomous Auto-Apply on Naukri...")
@@ -268,7 +268,10 @@ def handle_daily_cycle(headless=False, dry_run=False, force=False):
 
     # 3. Alerts
     print("\n[Step 3/3] Scanning Instant High-Priority Alerts...")
-    handle_alerts(headless=headless)
+    if not dry_run:
+        handle_alerts(headless=headless)
+    else:
+        print("  [DRY-RUN] Simulated instant alerts scan: Found top vacancy 'Microsoft GCC hiring Lead Azure Data Engineer' (No browser opened).")
 
 def handle_auth():
     print("\n[*] Launching browser window for authentic Naukri login...")
@@ -425,10 +428,12 @@ def main():
         ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),
         ("performance", "Inspect Server-Side Entitlements & Profile Analytics"),
         ("auto-apply", "Auto-Apply to target vacancies"),
+        ("dry-run", "Execute offline dry-run simulation across multi-channel and 1-click apply"),
         ("alerts", "Scan instant hot alerts"),
         ("hidden-jobs", "Discover hidden/off-market jobs"),
         ("early-access", "Scan early access roles and NVites"),
         ("search-all", "Search across Naukri, LinkedIn, and Hacker News Who's Hiring"),
+        ("multi-search", "Search across Naukri, LinkedIn, and Hacker News Who's Hiring"),
         ("skill-insights", "In-demand skills intelligence"),
         ("hiring-trends", "Salary & GCC hiring report"),
         ("auth", "Authenticate session"),
@@ -449,9 +454,10 @@ def main():
     resume_parser.add_argument("--jd", type=str, help="Path to target Job Description text file or raw JD string for tailoring")
 
     portal_parser = subparsers.add_parser("portal-apply", help="Auto-fill external career portal application (Greenhouse, Ashby, Lever, Workday)", parents=[common_parser])
-    portal_parser.add_argument("--url", required=True, help="Job application URL")
+    portal_parser.add_argument("--url", default=None, nargs="?", help="Job application URL")
     portal_parser.add_argument("--company", default="Company", help="Company name")
     portal_parser.add_argument("--role", default="Azure Data Engineer", help="Role title")
+    portal_parser.add_argument("--jd", default="", help="Target job description or keywords")
 
     sched_parser = subparsers.add_parser("agy-schedule", help="Manage Linux AGY Autonomous Scheduler (systemd timer + agy CLI)", parents=[common_parser])
     sched_parser.add_argument("action", nargs="?", default="status", choices=["install", "run", "status", "logs"], help="Action to perform: install | run | status | logs")
@@ -468,6 +474,8 @@ def main():
         handle_agy_schedule(action=args.action)
     elif args.command == "auto-apply":
         handle_auto_apply(headless=args.headless, limit=args.limit, dry_run=args.dry_run)
+    elif args.command == "dry-run":
+        handle_auto_apply(headless=args.headless, limit=args.limit, dry_run=True)
     elif args.command == "alerts":
         handle_alerts(headless=args.headless)
     elif args.command == "bump":
@@ -476,8 +484,8 @@ def main():
         handle_hidden_jobs(headless=args.headless)
     elif args.command == "early-access":
         handle_early_access(headless=args.headless)
-    elif args.command == "search-all":
-        handle_multi_search()
+    elif args.command in ("search-all", "multi-search"):
+        handle_multi_search(dry_run=args.dry_run)
     elif args.command == "resume-maker":
         handle_resume_maker(jd=args.jd)
     elif args.command == "interview-prep":
@@ -489,7 +497,14 @@ def main():
     elif args.command == "daily":
         handle_daily_cycle(headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
     elif args.command == "portal-apply":
-        handle_portal_apply(url=args.url, company=args.company, role=args.role, headless=args.headless)
+        handle_portal_apply(
+            url=args.url,
+            company=args.company,
+            role=args.role,
+            jd=getattr(args, "jd", ""),
+            headless=args.headless,
+            dry_run=args.dry_run
+        )
     elif args.command == "auth":
         handle_auth()
     else:

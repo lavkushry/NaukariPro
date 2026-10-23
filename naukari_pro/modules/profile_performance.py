@@ -21,12 +21,53 @@ import re
 from datetime import datetime
 import logging
 import openpyxl
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List
 
 from naukari_pro.config import COOKIES_SEED_PATH, TRACKER_PATH, load_config, WORKSPACE_DIR
 
 logger = logging.getLogger("naukariPro.Performance")
 
 HISTORY_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "profile_performance_history.json")
+
+MONTHLY_SEARCH_BENCHMARK = 100_000
+DAILY_SEARCH_BENCHMARK = 3333.33
+
+@dataclass
+class BenchmarkPacing:
+    total_searches_30d: int
+    target_monthly: int = 100000
+    daily_target: float = 3333.33
+    current_daily_pace: float = 0.0
+    projected_monthly: int = 0
+    percent_attainment: float = 0.0
+    status: str = "DEFICIT"  # "ON_TRACK", "AHEAD", "DEFICIT"
+
+def compute_benchmark_pacing(appearances: int, days: int = 7, target_monthly: int = 100000) -> BenchmarkPacing:
+    """Computes daily pace, 30-day projected velocity, and target attainment against 100k monthly benchmark."""
+    safe_days = max(days, 1)
+    safe_apps = max(appearances, 0)
+    daily_pace = round(safe_apps / safe_days, 2)
+    daily_target = round(target_monthly / 30.0, 2)
+    projected_monthly = int(round(daily_pace * 30))
+    percent_attainment = round((projected_monthly / target_monthly) * 100, 2) if target_monthly > 0 else 0.0
+
+    if projected_monthly > target_monthly:
+        status = "AHEAD"
+    elif projected_monthly == target_monthly:
+        status = "ON_TRACK"
+    else:
+        status = "DEFICIT"
+
+    return BenchmarkPacing(
+        total_searches_30d=safe_apps,
+        target_monthly=target_monthly,
+        daily_target=daily_target,
+        current_daily_pace=daily_pace,
+        projected_monthly=projected_monthly,
+        percent_attainment=percent_attainment,
+        status=status
+    )
 
 # Verified Azure Data Engineer target keywords and spelling standards
 TARGET_DE_KEYWORDS = [
@@ -204,67 +245,115 @@ class ProfilePerformanceEngine:
 
         return metrics
 
-    def log_performance_snapshot(self, metrics):
-        """Persists the 5 live numbers to a historical JSON ledger and Excel tracker."""
-        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+    def compute_benchmark_pacing(self, appearances: int, days: int = 7, target_monthly: int = 100000) -> BenchmarkPacing:
+        """Calculates benchmark pacing against monthly search target."""
+        return compute_benchmark_pacing(appearances, days, target_monthly)
+
+    def log_performance_snapshot(self, metrics, tracker_path=None, history_file=None):
+        """Persists the 5 live numbers and benchmark pacing to historical JSON ledger and Excel tracker."""
+        h_file = history_file or HISTORY_FILE
+        t_path = tracker_path or TRACKER_PATH
+        os.makedirs(os.path.dirname(h_file), exist_ok=True)
         history = []
-        if os.path.exists(HISTORY_FILE):
+        if os.path.exists(h_file):
             try:
-                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                with open(h_file, "r", encoding="utf-8") as f:
                     history = json.load(f)
             except Exception:
                 history = []
 
+        apps = max(metrics.get("search_appearances", 0), 0)
+        views = max(metrics.get("profile_views", 0), 0)
+        downloads = max(metrics.get("resume_downloads", 0), 0)
+        contacts = max(metrics.get("contact_views", 0), 0)
+
+        pacing = compute_benchmark_pacing(appearances=apps, days=7, target_monthly=100000)
+        ctr = round((views / apps) * 100, 2) if apps > 0 else 0.0
+        contact_conv = round((contacts / views) * 100, 2) if views > 0 else 0.0
+
+        metrics["daily_pace"] = pacing.current_daily_pace
+        metrics["projected_monthly"] = pacing.projected_monthly
+        metrics["percent_attainment"] = pacing.percent_attainment
+        metrics["pacing_status"] = pacing.status
+        metrics["ctr_pct"] = ctr
+        metrics["contact_conv_pct"] = contact_conv
+
         history.append(metrics)
         try:
-            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            with open(h_file, "w", encoding="utf-8") as f:
                 json.dump(history, f, indent=2)
         except Exception as e:
             logger.warning("Could not save performance history JSON: %s", e)
 
         # Log to Excel Tracker under Recruiter_Performance_Log
         try:
-            wb = openpyxl.load_workbook(TRACKER_PATH)
-            sheet_name = "Recruiter_Performance_Log"
-            if sheet_name in wb.sheetnames:
-                ws = wb[sheet_name]
-            else:
-                ws = wb.create_sheet(title=sheet_name)
+            perf_headers_10 = [
+                "Timestamp",
+                "Search Appearances",
+                "Profile Views",
+                "Resume Downloads",
+                "Contact Views",
+                "CTR (%)",
+                "Contact Conv (%)",
+                "Daily Pace (req 3333)",
+                "Projected 30d Volume",
+                "Pacing Status"
+            ]
+            if not os.path.exists(t_path):
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Applications_Log"
                 ws.append([
-                    "Timestamp",
-                    "Search Appearances",
-                    "Profile Views",
-                    "Resume Downloads",
-                    "Contact Views",
-                    "Recruiter Search Terms",
-                    "CTR % (Views/Searches)",
-                    "Contact Conversion % (Contacts/Views)",
-                    "Data Source"
+                    "Application Date", "Company Name", "Job Title", "Match Score (%)",
+                    "Role Category", "Experience Required", "Location", "Application Type",
+                    "Status", "Job URL", "Recruiter Response"
                 ])
+                ws_perf = wb.create_sheet(title="Recruiter_Performance_Log")
+                ws_perf.append(perf_headers_10)
+            else:
+                wb = openpyxl.load_workbook(t_path)
+                sheet_name = "Recruiter_Performance_Log"
+                if sheet_name in wb.sheetnames:
+                    ws_perf = wb[sheet_name]
+                else:
+                    ws_perf = wb.create_sheet(title=sheet_name)
+                    ws_perf.append(perf_headers_10)
 
-            apps = metrics.get("search_appearances", 0)
-            views = metrics.get("profile_views", 0)
-            downloads = metrics.get("resume_downloads", 0)
-            contacts = metrics.get("contact_views", 0)
-            terms_str = ", ".join(metrics.get("search_terms", []))
+            headers = [cell.value for cell in ws_perf[1]] if ws_perf.max_row >= 1 else []
+            ctr_str = f"{ctr}%"
+            conv_str = f"{contact_conv}%"
 
-            ctr = f"{round((views / apps) * 100, 1)}%" if apps > 0 else "N/A"
-            contact_conv = f"{round((contacts / views) * 100, 1)}%" if views > 0 else "N/A"
-
-            ws.append([
-                metrics.get("timestamp", datetime.now().strftime("%Y-%m-%d")),
-                apps,
-                views,
-                downloads,
-                contacts,
-                terms_str,
-                ctr,
-                contact_conv,
-                metrics.get("data_source", "Portal")
-            ])
-            wb.save(TRACKER_PATH)
+            if len(headers) == 9 and "Recruiter Search Terms" in headers:
+                terms_str = ", ".join(metrics.get("search_terms", []))
+                ws_perf.append([
+                    metrics.get("timestamp", datetime.now().strftime("%Y-%m-%d")),
+                    apps,
+                    views,
+                    downloads,
+                    contacts,
+                    terms_str,
+                    ctr_str,
+                    conv_str,
+                    f"Benchmark Run Rate: {pacing.projected_monthly} ({pacing.status})"
+                ])
+            else:
+                ws_perf.append([
+                    metrics.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M")),
+                    apps,
+                    views,
+                    downloads,
+                    contacts,
+                    ctr_str,
+                    conv_str,
+                    pacing.current_daily_pace,
+                    pacing.projected_monthly,
+                    pacing.status
+                ])
+            wb.save(t_path)
+            return True
         except Exception as e:
             logger.warning("Could not append to Excel tracker: %s", e)
+            return False
 
     def generate_keyword_diff_report(self, live_search_terms=None):
         """
@@ -389,6 +478,26 @@ class ProfilePerformanceEngine:
         print("  [CONVERSION FUNNEL ANALYTICS]")
         print(f"  • Click-Through Rate (Views / Searches):       {ctr}%  (Target: > 8%)")
         print(f"  • Contact Conversion Rate (Contacts / Views):  {contact_rate}%  (Target: > 15%)")
+        print("-" * 75)
+
+        # 100k Benchmark Pacing Analytics
+        pacing = compute_benchmark_pacing(appearances=apps, days=7, target_monthly=100000)
+        print("  [100K MONTHLY SEARCH BENCHMARK PACING (TARGET: 100,000 / MONTH)]")
+        print(f"  • Required Daily Target:       {pacing.daily_target:>8.2f} appearances/day")
+        print(f"  • Current Daily Pace (7d):     {pacing.current_daily_pace:>8.2f} appearances/day")
+        print(f"  • Projected 30-Day Volume:     {pacing.projected_monthly:>8} searches")
+        print(f"  • Monthly Attainment:          {pacing.percent_attainment:>7.2f}%")
+        print(f"  • Benchmark Pacing Status:     {pacing.status}")
+        if pacing.status == "DEFICIT":
+            deficit = max(0, 100000 - pacing.projected_monthly)
+            daily_shortfall = max(0.0, pacing.daily_target - pacing.current_daily_pace)
+            print(f"  ⚠️ VELOCITY DEFICIT: {deficit:,} searches below 100k target ({daily_shortfall:.1f}/day shortfall)")
+            print("    Remedy: Trigger daily 09:15 AM active recency bump and verify Top 25 Azure DE keywords.")
+        elif pacing.status == "AHEAD":
+            surplus = pacing.projected_monthly - 100000
+            print(f"  🚀 AHEAD OF TARGET: +{surplus:,} searches above 100k benchmark velocity.")
+        else:
+            print("  ✓ ON TRACK: Exactly meeting 100k monthly search pace.")
         print("-" * 75)
 
         print("  [FUNNEL BOTTLENECK DIAGNOSTICS]")
