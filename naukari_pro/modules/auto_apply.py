@@ -537,6 +537,7 @@ class PlaywrightRunner:
             launch_kwargs = {
                 "user_data_dir": SESSION_DIR,
                 "headless": headless,
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
                 "args": [
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
@@ -554,6 +555,12 @@ class PlaywrightRunner:
                 launch_kwargs.pop("executable_path", None)
                 context = await p.chromium.launch_persistent_context(**launch_kwargs)
 
+            await context.add_init_script("""
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+window.navigator.chrome = { runtime: {} };
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'hi'] });
+""")
             page = context.pages[0] if context.pages else await context.new_page()
 
             # Load seed cookies if present
