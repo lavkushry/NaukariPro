@@ -47,6 +47,10 @@ def get_stealth_context(playwright, headless=False):
     Bypasses Akamai Bot Protection and maintains long-lived authenticated state.
     Seamlessly falls back to bundled Chromium if Google Chrome is not installed.
     """
+    # On Linux servers without an X11 display, automatically enforce headless mode
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        headless = True
+
     os.makedirs(SESSION_DIR, exist_ok=True)
 
     # Clean up stale lock files
