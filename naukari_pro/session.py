@@ -56,7 +56,7 @@ def get_stealth_context(playwright, headless=False):
     # Clean up stale lock files
     for lock_file in ["SingletonLock", "SingletonSocket", "SingletonCookie"]:
         lock_path = os.path.join(SESSION_DIR, lock_file)
-        if os.path.exists(lock_path) or os.path.islink(lock_path):
+        if os.path.lexists(lock_path) or os.path.islink(lock_path) or os.path.exists(lock_path):
             try:
                 os.unlink(lock_path)
             except Exception:

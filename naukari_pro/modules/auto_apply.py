@@ -523,9 +523,9 @@ class PlaywrightRunner:
 
         for lock_file in ["SingletonLock", "SingletonSocket", "SingletonCookie"]:
             lp = os.path.join(SESSION_DIR, lock_file)
-            if os.path.exists(lp):
+            if os.path.islink(lp) or os.path.lexists(lp) or os.path.exists(lp):
                 try:
-                    os.remove(lp)
+                    os.unlink(lp)
                 except Exception:
                     pass
 
@@ -555,8 +555,14 @@ class PlaywrightRunner:
             try:
                 context = await p.chromium.launch_persistent_context(**launch_kwargs)
             except Exception as e:
-                print(f"Launch notice ({e}); launching standard persistent context...")
-                launch_kwargs.pop("executable_path", None)
+                print(f"Launch notice ({e}); clearing stale locks and retrying...")
+                for lock_file in ["SingletonLock", "SingletonSocket", "SingletonCookie"]:
+                    lp = os.path.join(SESSION_DIR, lock_file)
+                    if os.path.islink(lp) or os.path.lexists(lp) or os.path.exists(lp):
+                        try:
+                            os.unlink(lp)
+                        except Exception:
+                            pass
                 context = await p.chromium.launch_persistent_context(**launch_kwargs)
 
             await context.add_init_script("""
