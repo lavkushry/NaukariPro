@@ -50,21 +50,31 @@ class ProfileEnhancerEngine:
         except Exception as e:
             logger.warning("Could not save session state: %s", e)
 
-    def bump_profile(self, page, force=False):
+    def bump_profile(self, page, force=False, cooldown_seconds=7200):
         """
         Micro-toggles the headline punctuation to force Naukri backend to update 'Last updated today'.
-        Enforces a once-a-day throttle: skips redundant edits if already bumped today unless force=True.
+        Enforces a cooldown throttle (default 2 hours / 7200s): skips redundant edits if bumped within
+        the cooldown period unless force=True, enabling 3x/day scheduled boosts.
+        Ensures the full 247-char Azure Data Engineer headline is persisted if missing or truncated.
         """
-        today = datetime.now().strftime("%Y-%m-%d")
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
         state = self._load_state()
 
-        if not force and state.get("last_bumped_date") == today:
-            logger.info("Profile was already touched today (%s). Status is 'Active Today'. Skipping redundant edit.", today)
-            print(f"  ℹ️ Profile was already touched today ({today}). Status is already 'Active Today'.")
-            print("     Skipping redundant edit to stay inside recruiter recency window without repetitive saves.")
-            return True
+        last_bumped_ts = state.get("last_bumped_timestamp")
+        if not force and last_bumped_ts:
+            try:
+                last_dt = datetime.fromisoformat(last_bumped_ts)
+                elapsed = (now - last_dt).total_seconds()
+                if 0 <= elapsed < cooldown_seconds:
+                    logger.info("Profile was recently touched %.1f minutes ago (< %d sec cooldown). Skipping redundant edit.", elapsed / 60, cooldown_seconds)
+                    print(f"  ℹ️ Profile was recently touched {elapsed/60:.1f} mins ago. Status is already 'Active Today'.")
+                    print("     Skipping redundant edit to stay inside recruiter recency window without repetitive saves.")
+                    return True
+            except Exception as e:
+                logger.warning("Could not parse last_bumped_timestamp '%s': %s", last_bumped_ts, e)
 
-        logger.info("Executing daily profile bump on Naukri...")
+        logger.info("Executing profile freshness boost on Naukri...")
         try:
             page.goto("https://www.naukri.com/mnjuser/profile", wait_until="domcontentloaded", timeout=30000)
             time.sleep(3)
@@ -94,18 +104,40 @@ class ProfileEnhancerEngine:
                     return False
 
                 curr_val = textarea.input_value().strip()
-                template = self.cfg.get("headline_template", curr_val)
+                default_target_headline = (
+                    "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
+                    "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | "
+                    "Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD"
+                )
+                template = self.cfg.get("headline_template", default_target_headline).strip()
+                if not template:
+                    template = default_target_headline
 
-                # Micro-toggle trailing period to create an authentic edit event
-                if curr_val.endswith("."):
+                # Overwrite full 247-char Azure Data Engineer headline if missing, truncated, or incomplete
+                core_keywords = ["Azure Data Engineer", "Databricks", "Delta Lake", "ADF"]
+                is_complete = len(curr_val) >= 200 and all(kw.lower() in curr_val.lower() for kw in core_keywords)
+
+                if not is_complete:
+                    logger.info("Headline missing or truncated (current len: %d). Overwriting with full %d-char Azure Data Engineer headline.", len(curr_val), len(template))
                     new_val = template.rstrip(".")
                 else:
-                    new_val = template.rstrip(".") + "."
+                    # Micro-toggle trailing period to create an authentic edit event
+                    if curr_val.endswith("."):
+                        new_val = template.rstrip(".")
+                    else:
+                        new_val = template.rstrip(".") + "."
 
+                textarea.click()
+                textarea.fill("")
+                time.sleep(0.3)
                 textarea.fill(new_val)
                 time.sleep(1)
 
-                save_btn = page.get_by_role("button", name="Save", exact=True)
+                save_btn = page.locator(
+                    '.resumeHeadline button:has-text("Save"), button.btn-dark-ot:has-text("Save"), button:has-text("Save")'
+                ).first
+                if save_btn.count() == 0 or not save_btn.is_visible():
+                    save_btn = page.get_by_role("button", name="Save", exact=True)
 
                 if save_btn.count() > 0 and save_btn.is_visible():
                     save_btn.click()
@@ -113,7 +145,7 @@ class ProfileEnhancerEngine:
                     state["last_bumped_date"] = today
                     state["last_bumped_timestamp"] = datetime.now().isoformat()
                     self._save_state(state)
-                    logger.info("SUCCESS: Profile timestamp touched! Status is 'Last updated today'.")
+                    logger.info("SUCCESS: Profile timestamp touched! Status is 'Last updated today'. Headline len: %d", len(new_val))
                     return True
                 else:
                     logger.warning("Save button not found for headline.")

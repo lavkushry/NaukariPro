@@ -1,140 +1,151 @@
-# Project: Autonomous Career Optimization Platform
+# Project: Autonomous Career Optimization Platform (Iteration 2: Live Conversion & 100k Search Fix)
 
 ## Architecture
-The platform is designed to maximize candidate visibility (100k+ recruiter search appearances/month), capture live Resdex search demand, and drive automated high-precision job applications for an Azure Data Engineer profile (2.5 YOE).
+The platform is an autonomous career optimization engine engineered to maximize live recruiter search appearances (targeting 100k+ monthly impressions on Naukri Resdex), capture high-intent recruiter demand, and execute automated high-precision job applications for an Azure Data Engineer profile (2.5 YOE).
 
-### Core Components & Data Flow
-1. **Profile & SEO Core (`naukri_system/config.json`, `NAUKRI_PROFILE_COMPLETE_UPDATE_DATA_ENGINEER.md`)**:
-   - Single source of truth containing verified candidate facts (AGENTS.md Section 9).
-   - Top 25 Azure Data Engineering industry keywords saturated across Headline, Skills, Summary, 4 Employment Roles, and 4 Lakehouse Projects.
-   - All 17 experience and project bullets formatted strictly to the 5-stage engineering formula with zero forbidden verbs.
-   - Strict 1-page ATS PDF generation engine (`AIResumeMaker`).
-2. **Analytics & Performance Tracking Engine (`naukari_pro/modules/profile_performance.py`)**:
-   - Extracts live recruiter search appearances, profile views, keyword hits, contact views, and resume downloads.
-   - Paces against the 100k monthly search benchmark (daily pace ~3,333/day, projected 30-day velocity, % attainment).
-   - Appends records to `Naukri_Live_Application_Tracker.xlsx` (`Recruiter_Performance_Log` and `Daily_Performance_Metrics`).
-3. **Application & Sourcing Engine (`naukari_pro/modules/auto_apply.py`, `career_portals.py`, `multi_search.py`)**:
-   - Slices Naukri 1-click apply feeds filtered by `calculate_match_score` threshold (>=70%).
-   - Auto-fills screening questionnaires (experience, notice period, CTC, work auth) with confirmation verification.
-   - External sourcing via Hacker News Who's Hiring and LinkedIn precision feeds.
-   - Multi-portal form filler (Greenhouse, Ashby, Lever, Workday, Rippling) operating under review-only safety mode.
-   - Structured `--dry-run` emitting validated `ApplicationPayload` objects without network dependencies or side-effects.
-   - Logs company, title, URL, match score, and status to `Naukri_Live_Application_Tracker.xlsx` (`Applications_Log`).
-4. **Cloud Daemon & Execution Resilience (`agy_schedule_runner.sh`, `systemd/`, `naukari_pro/session.py`)**:
-   - Headless execution 3x daily (03:45, 09:00, 12:30 UTC / 09:15, 14:30, 18:00 IST).
-   - Process-level mutual exclusion file lock (`flock`) preventing duplicate runs and Chromium singleton contention.
-   - Cookie refresh, session persistence, and proxy support (`NAUKRI_PROXY`) for Akamai WAF mitigation.
-   - Remote Linux cloud host (`ubuntu@141.148.195.233`) synchronization.
+### Core Components & Data Flow (Iteration 2)
+1. **Live Profile & Resdex Persistence Core (`scripts/sync_naukri_live_profile.py`, `naukri_system/config.json`)**:
+   - Manages authentic live Naukri profile state (`https://www.naukri.com/mnjuser/profile`).
+   - Syncs 15-day notice period (highest conversion tier) and all 7 top Tier-1 tech hubs (`Bengaluru`, `Hyderabad`, `Pune`, `Gurugram`, `Noida`, `Mumbai`, `Chennai`).
+   - Populates Key Skills tag cloud and Detailed IT Skills table (13 skills with versions and experience years).
+   - Enforces full 247-char Azure Data Engineer headline saturation.
+   - Eliminates once-per-day skip barriers across `profile_enhancer.py`, `sync_naukri_live_profile.py`, `pro_autopilot.py`, and `agy_schedule_runner.sh` to enable continuous 3x/day profile freshness boosting.
+   - Validates live DOM persistence via automated read-back verification script (`scripts/verify_naukri_live_profile_dom.py`).
+
+2. **High-Volume Application & Sourcing Engine (`naukari_pro/modules/auto_apply.py`)**:
+   - Executes multi-page search result pagination (removing `items.slice(0, 10)` hard truncation).
+   - Enforces freshness sorting (`&sortBy=date` / `&freshness=1`) across expanded Azure Data Engineering keywords and multiple locations.
+   - Harvests Naukri Recommended Jobs (`https://www.naukri.com/mnjuser/recommendedjobs`) and Recruiter NVites/Inbox directly in headless Playwright cloud runs.
+   - Solves multi-turn screening chatbots with affirmative semantic radio selection, dropdown selection (`<select>` and custom controls), checkboxes, and contextual text answers.
+   - Eliminates false-positive "Already Applied" submissions, validating authentic DOM confirmation (`Applied`, `Thank you for your responses`, etc.).
+   - Persists all submitted applications to canonical 11-column `Naukri_Live_Application_Tracker.xlsx`.
+
+3. **Live Authenticated Analytics Extraction (`naukari_pro/modules/profile_performance.py`)**:
+   - Extracts genuine live recruiter telemetry directly from `https://www.naukri.com/mnjuser/performance`:
+     - 90-day search appearances (baseline 621)
+     - 7-day search appearances (baseline 33, +31%)
+     - Recruiter actions (baseline 21: 7 profile views, 4 contact views [North Star ⭐], 2 resume downloads, 12 NVites, 1 bookmark)
+     - Recruiter search keywords (Kubernetes, AWS Cloud, Databricks, Pipeline, etc.)
+   - Fixes `cli.py display_report` crash and removes headless execution bypass.
+   - Logs real-time metrics alongside application tracker without offline mocks.
+
+4. **Resilient Cloud Infrastructure & Remote Sync (`ubuntu@141.148.195.233`, `scripts/sync_remote_cloud.sh`)**:
+   - Synchronizes codebase and tracking data between macOS workspace, GitHub (`origin/main`), and remote cloud host (`/home/ubuntu/Resume`).
+   - Fixes hardcoded paths and row assertions to achieve 100% test pass on both macOS and remote Linux ARM64 VM.
+   - Maintains systemd user timer `naukaripro-agy.timer` and `agy_schedule_runner.sh` with kernel `flock` mutual exclusion for automated 3x daily execution.
 
 ---
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | Top 25 Keyword Saturation | 100% saturation of Azure Data Engineering keywords across all candidate artifacts | M1 | Survey 1 (R1) |
-| 2 | 17 Bullets 5-Stage Formula | All 9 employment and 8 project bullets comply with 5-stage formula and 0 forbidden verbs | M1 | Survey 1 (R1) |
-| 3 | 1-Page ATS PDF Compilation | Single-page ATS-parseable PDF compiled without kerning splits or overflow | M1 | Survey 1 (R1) |
-| 4 | Naukri Metadata Instructions | Comprehensive update guide with all 4 Lakehouse projects, correct title, and daily recency strategy | M1 | Survey 1 (R1) |
-| 5 | ATS Keyword Map Modernization | Synchronize `04_ATS_KEYWORD_MAP.md` from legacy MLOps to Azure Data Engineering | M1 | Survey 1 (R1) |
-| 6 | Application Tracker Schema Fix | Update `Naukri_Live_Application_Tracker.xlsx` with canonical 11 columns including `Match Score (%)` | M2 | Survey 2/3 (R3) |
-| 7 | Application Logging Rectification | Update `log_to_excel()` and `log_portal_application()` to record `match_score` | M2 | Survey 2/3 (R3) |
-| 8 | 100k Recruiter Benchmark Pacing | Implement daily pace (~3,333/day), projected 30-day velocity, and deficit metrics in `profile_performance.py` | M2 | Survey 3 (R3) |
-| 9 | Performance Logging Persistence | Persist live recruiter metrics to JSON and `Naukri_Live_Application_Tracker.xlsx` | M2 | Survey 3 (R3) |
-| 10 | Match Scoring Gate (>=70%) | Integrate `calculate_match_score` into `auto_apply.py` to filter out non-matching vacancies | M3 | Survey 2 (R2) |
-| 11 | Structured Dry-Run Engine | Refactor `--dry-run` to output structured `ApplicationPayload` objects with offline capability | M3 | Survey 3 (R2) |
-| 12 | Career Portal Dry-Run Support | Add dry-run support to `CareerPortalFiller` in `career_portals.py` | M3 | Survey 3 (R2) |
-| 13 | Multi-Channel Sourcing Verification | Ensure HN Who's Hiring and LinkedIn feeds generate valid candidate payloads | M3 | Survey 2 (R2) |
-| 14 | Schedule Collision Resolution | Remove redundant crontab entry so only systemd timer `naukaripro-agy.timer` triggers schedule | M4 | Survey 2 (R4) |
-| 15 | Process-Level File Locking | Implement `flock` in `agy_schedule_runner.sh` and Python file lock to prevent Chromium singleton crashes | M4 | Survey 2 (R4) |
-| 16 | Headless Cloud Proxy Routing | Wire `NAUKRI_PROXY` into Playwright `launch_persistent_context` to bypass cloud datacenter WAF blocks | M4 | Survey 2 (R4) |
-| 17 | Remote VM Synchronization | Deploy and verify all fixes on remote Linux cloud host `ubuntu@141.148.195.233` | M4 | Survey 2 (R4) |
-| 18 | Offline Regression Test Suite | Implement Tiers 1-4 test cases in `tests/test_offline_suite.py` passing 100% on macOS and Linux | M5 | Survey 3 (Verif) |
-| 19 | Adversarial Coverage Hardening | Run Tier 5 adversarial stress testing and forensic audit for zero integrity violations | M5 | Project Pattern |
+| 1 | 15-Day Notice Period Sync | Configure Notice Period to `15 Days or less` / `Immediate` in config and automate in `#lazyEmployment` / `#lazyCareerProfile` | M1 | Survey 1 (R1) |
+| 2 | 7 Tier-1 Preferred Locations Sync | Enable all 7 hubs (`Bengaluru`, `Hyderabad`, `Pune`, `Gurugram`, `Noida`, `Mumbai`, `Chennai`) in config and `#lazyCareerProfile` | M1 | Survey 1 (R1) |
+| 3 | Key Skills Tag Cloud Sync | Automate population of top 25 industry keywords into `#lazyKeySkills` | M1 | Survey 1 (R1) |
+| 4 | Detailed IT Skills Table Sync | Automate table of 13 IT skills with versions, years, and last used into `#lazyItSkills` | M1 | Survey 1 (R1) |
+| 5 | Full 247-Char Headline Overwrite | Ensure complete Azure Data Engineer headline saturation in `bump_profile` rather than micro-toggling punctuation | M1 | Survey 1 (R1) |
+| 6 | Once-Per-Day Skip Barrier Removal | Remove date-equality throttles in `profile_enhancer.py`, `sync_naukri_live_profile.py`, `pro_autopilot.py`, and `agy_schedule_runner.sh` for continuous 3x/day boost | M1 | Survey 1 (R1) |
+| 7 | Live DOM Persistence Verification | Implement `scripts/verify_naukri_live_profile_dom.py` to read back and assert all fields on live Naukri DOM | M1 | Survey 1 (R1) |
+| 8 | Freshness-Sorted Search URLs | Add `&sortBy=date` / `&freshness=1` to search queries across expanded keywords (`Kafka`, `Snowflake`, `ADF`, `Medallion`) and iterate all locations | M2 | Survey 2 (R2) |
+| 9 | Multi-Page SRP Pagination | Remove `items.slice(0, 10)` hard-truncation; implement multi-page navigation to harvest all matching vacancies up to daily limit | M2 | Survey 2 (R2) |
+| 10 | Recommended Jobs & NVites Harvesting | Add automated harvesting of `/mnjuser/recommendedjobs` and `/mnjuser/inbox` in `PlaywrightRunner.run_async()` at >=70% score | M2 | Survey 2 (R2) |
+| 11 | Semantic Screening Chatbot Solver | Multi-turn solver with affirmative radio matching, dropdown `<select>` handling, checkbox selection, and contextual text answers | M2 | Survey 2 (R2) |
+| 12 | Live DOM Confirmation & Bug Fix | Fix "Already Applied" false positive; confirm authentic application submission and log to canonical 11-column Excel tracker | M2 | Survey 2 (R2) |
+| 13 | Authentic Performance Endpoint Fix | Update `profile_performance.py` from `/mnjuser/profile-performance` to `https://www.naukri.com/mnjuser/performance` | M3 | Survey 3 (R3) |
+| 14 | Real Live Telemetry DOM Extraction | Extract genuine 90d/7d search appearances, recruiter actions, profile views, contact views, downloads, NVites, and keywords from live DOM | M3 | Survey 3 (R3) |
+| 15 | CLI & Autopilot Analytics Wiring | Fix `cli.py` `AttributeError: display_report`, remove headless `page=None` bypass, and record live telemetry during autopilot runs | M3 | Survey 3 (R3) |
+| 16 | Zero Offline Mocks for Live Metrics | Remove synthetic mock fallbacks in performance reporting; log real before/after metrics in Excel tracker | M3 | Survey 3 (R3) |
+| 17 | Bidirectional Cloud Sync Tooling | Create `scripts/sync_remote_cloud.sh` to sync between local macOS, GitHub, and remote host `ubuntu@141.148.195.233` | M4 | Survey 3 (R4) |
+| 18 | Test Suite Platform Portability | Fix hardcoded paths and row count assertions across all 11 test files for 100% pass on both macOS and Linux ARM64 | M4 | Survey 3 (R4) |
+| 19 | Remote Live Execution Verification | Deploy fixes to remote VM and execute live end-to-end run confirming profile updates and live application harvesting | M4 | Survey 3 (R4) |
+| 20 | Remote Systemd Health Verification | Verify `naukaripro-agy.timer` and `agy_schedule_runner.sh` execute 3x daily without errors or lock collisions | M4 | Survey 3 (R4) |
+| 21 | Full Regression Test Verification | Run full test suite on macOS and Linux ARM64 VM (100% pass, 0 failures, 0 skips) | M5 | Acceptance Criteria |
+| 22 | Live High-Throughput Application Run | Verify >= 5 live applications submitted in a single run meeting >=70% match score | M5 | Acceptance Criteria |
+| 23 | Independent Forensic Victory Audit | Comprehensive integrity audit verifying authentic DOM persistence, genuine applications, and live telemetry | M5 | Acceptance Criteria |
 
 ---
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | SEO & Profile Ranking Optimization | Features 1, 2, 3, 4, 5 | None | DONE (148/148 tests pass, 100/100 ATS score, dual 1-page PDF verified) |
-| M2 | Recruiter Search Analytics & Application Tracker | Features 6, 7, 8, 9 | M1 | DONE (166/166 tests pass, 11-col schema & rows 108-111 verified, 100k benchmark verified, 180 repeat-write stress clean) |
-| M3 | Autonomous Multi-Channel Application Engine & Dry-Run | Features 10, 11, 12, 13 | M2 | DONE (Verified >=70% threshold gate, offline dry-run payload engine, career portal dry-run, HN/LinkedIn sourcing) |
-| M4 | Resilient Cloud Daemon & Remote Infrastructure Security | Features 14, 15, 16, 17 | M3 | IN_PROGRESS |
-| M5 | Final E2E Regression Suite & Adversarial Verification | Features 18, 19 | M1, M2, M3, M4, TEST_READY.md | PLANNED |
+| M1 | Live Profile DOM Persistence & 3x/Day Boost | Features 1, 2, 3, 4, 5, 6, 7 | None | DONE (Passed unanimous Gate Review Round 2, 215/215 tests pass, CLEAN audit) |
+| M2 | High-Volume Live Application & Recommended Jobs | Features 8, 9, 10, 11, 12 | M1 | DONE (Passed unanimous Gate Review Round 3, 213/213 tests pass, CLEAN audit) |
+| M3 | Live Authenticated Naukri Analytics Extraction | Features 13, 14, 15, 16 | M1, M2 | IN_PROGRESS |
+| M4 | End-to-End Remote Cloud Sync & Execution Proof | Features 17, 18, 19, 20 | M1, M2, M3 | PLANNED |
+| M5 | Final Victory Verification & Forensic Audit | Features 21, 22, 23 | M1, M2, M3, M4 | PLANNED |
 
 ---
 
 ## Interface Contracts
 
-### `naukari_pro/modules/job_alerts.py` ↔ `naukari_pro/modules/auto_apply.py`
+### `scripts/sync_naukri_live_profile.py` ↔ Live Naukri DOM (`/mnjuser/profile`)
 ```python
-def calculate_match_score(text: str) -> int:
+def sync_full_naukri_profile(page: Page, config: dict = None, force: bool = False) -> bool:
     """
-    Computes weighted keyword match score (0-100) based on Azure Data Engineering competencies.
-    Returns: integer score. Threshold >= 70 required to apply.
+    Synchronizes full Azure Data Engineer profile facts to live Naukri DOM:
+    1. Notice Period -> '15 Days or less' / 'Immediate'
+    2. Preferred Locations -> Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai
+    3. Key Skills -> Top 25 Azure Data Engineering keywords in #lazyKeySkills
+    4. IT Skills -> 13 skills with versions, years, last used in #lazyItSkills
+    5. Headline -> Full 247-char saturated headline
+    6. Profile Summary & 4 Employment Roles & 4 Lakehouse Projects
+    7. 1-Page ATS PDF Upload
+    8. Freshness Boost (runs every execution without once-per-day skip)
+    """
+
+def verify_live_profile_dom(page: Page, config: dict = None) -> dict:
+    """
+    Reads back saved profile fields from live DOM at https://www.naukri.com/mnjuser/profile
+    Returns verification dictionary asserting persistence of headline, summary, key skills,
+    notice period, preferred locations, and uploaded resume filename.
     """
 ```
 
-### `naukari_pro/modules/auto_apply.py` ↔ `Naukri_Live_Application_Tracker.xlsx`
+### `naukari_pro/modules/auto_apply.py` ↔ Naukri Job Search & Recommended Feeds
 ```python
-def log_to_excel(
-    title: str,
-    company: str,
-    status: str,
-    match_score: int,
-    app_type: str = "1-Click Apply",
-    salary: str = "N/A",
-    url: str = "N/A"
-) -> bool:
+async def harvest_and_apply_jobs(
+    page: Page,
+    keywords: list[str],
+    locations: list[str],
+    limit: int = 15,
+    min_score: int = 70
+) -> list[dict]:
     """
-    Appends 11-column record to Applications_Log:
-    [Application Date, Company Name, Job Title, Match Score (%), Role Category,
-     Experience Required, Location, Application Type, Status, Job URL, Recruiter Response]
+    1. Iterates multi-page SRP with &sortBy=date and &freshness=1
+    2. Navigates to https://www.naukri.com/mnjuser/recommendedjobs
+    3. Evaluates full JD match score (>=70%)
+    4. Solves multi-turn screening chatbots (affirmative radios, dropdowns, checkboxes, contextual text)
+    5. Validates authentic DOM confirmation (Applied, Thank you for your responses)
+    6. Appends to canonical 11-column Naukri_Live_Application_Tracker.xlsx
     """
 ```
 
-### `naukari_pro/modules/profile_performance.py` ↔ 100k Benchmark Model
+### `naukari_pro/modules/profile_performance.py` ↔ Live Naukri Analytics (`/mnjuser/performance`)
 ```python
-@dataclass
-class BenchmarkPacing:
-    total_searches_30d: int
-    target_monthly: int = 100000
-    daily_target: float = 3333.33
-    current_daily_pace: float
-    projected_monthly: int
-    percent_attainment: float
-    status: str  # "ON_TRACK", "AHEAD", "DEFICIT"
-```
-
-### `--dry-run` Application Payload Contract
-```python
-@dataclass
-class ApplicationPayload:
-    company: str
-    title: str
-    url: str
-    match_score: int
-    salary: str
-    answers: Dict[str, Any]
-    dry_run: bool = True
-    status: str = "VALIDATED_PAYLOAD"
+def extract_live_naukri_performance(page: Page) -> dict:
+    """
+    Navigates to https://www.naukri.com/mnjuser/performance and extracts:
+    - total_searches_90d: int (e.g. 621)
+    - searches_7d: int (e.g. 33)
+    - recruiter_actions: int (e.g. 21)
+    - profile_views: int (e.g. 7)
+    - contact_views: int (e.g. 4)
+    - resume_downloads: int (e.g. 2)
+    - nvites_received: int (e.g. 12)
+    - search_keywords: list[tuple[str, int]]
+    """
 ```
 
 ---
 
 ## Code Layout
-- `naukri_system/config.json`: Master candidate profile facts & technical competencies (Owned by M1)
-- `04_ATS_KEYWORD_MAP.md`: Azure Data Engineering keyword taxonomy (Owned by M1)
-- `NAUKRI_PROFILE_COMPLETE_UPDATE_DATA_ENGINEER.md`: Step-by-step Resdex SEO update guide (Owned by M1)
-- `Azure_Data_Engineer_Resume.tex` / `.md`: LaTeX resume source & 1-page PDF (Owned by M1)
-- `Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf`: Canonical 1-page ATS PDF (Owned by M1)
-- `Naukri_Live_Application_Tracker.xlsx`: Master job application & performance workbook (Owned by M2)
-- `naukari_pro/modules/profile_performance.py`: Recruiter metrics & 100k benchmark engine (Owned by M2)
-- `naukari_pro/modules/auto_apply.py`: Multi-engine job discovery & 1-click apply (Owned by M2 & M3)
-- `naukari_pro/modules/career_portals.py`: External portal form filler & tracker (Owned by M2 & M3)
-- `naukari_pro/modules/multi_search.py`: HN & LinkedIn multi-channel sourcing (Owned by M3)
-- `agy_schedule_runner.sh`: Cloud runner script with process lock (Owned by M4)
-- `systemd/`: Systemd service and timer units (Owned by M4)
-- `install_linux_schedule.sh`: Linux host deployment installer (Owned by M4)
-- `naukari_pro/session.py`: Browser session & proxy configuration (Owned by M4)
-- `tests/test_offline_suite.py`: Automated offline test suite covering Tiers 1-4 (Owned by E2E Testing Track)
+- `naukri_system/config.json`: Master candidate profile ground truth (Notice Period 15 days, 7 Tier-1 locations, skills, summary).
+- `scripts/sync_naukri_live_profile.py`: Playwright live profile sync automation and DOM persistence functions.
+- `scripts/verify_naukri_live_profile_dom.py`: Independent live DOM read-back assertion script.
+- `naukari_pro/modules/profile_enhancer.py`: Profile freshness bumper (3x/day boost logic, interval cooldown).
+- `naukari_pro/modules/pro_autopilot.py`: Autonomous orchestrator for scheduled runs (profile boost + apply + analytics).
+- `naukari_pro/modules/auto_apply.py`: Multi-page job search, recommended jobs harvester, chatbot solver, and live application execution.
+- `naukari_pro/modules/profile_performance.py`: Authenticated live performance analytics extractor and 100k pacing model.
+- `scripts/sync_remote_cloud.sh`: Bidirectional sync script for remote Linux VM (`ubuntu@141.148.195.233`).
+- `agy_schedule_runner.sh`: Remote shell wrapper with `flock` execution.
+- `tests/`: Automated regression and offline test suites.

@@ -22,7 +22,7 @@ import fcntl
 import subprocess
 import shutil
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
 from unittest.mock import patch, MagicMock
@@ -218,7 +218,7 @@ def test_config_single_source_of_truth():
     assert cand.get("email") == "lavkushry@gmail.com"
     assert "9122036484" in cand.get("phone", "")
     assert cand.get("total_experience_years") == 2.5
-    assert cand.get("notice_period_days") == 30
+    assert cand.get("notice_period_days") == 15
     assert cand.get("current_ctc_lakhs") == 12
     assert cand.get("expected_ctc_lakhs") == 20
 
@@ -402,7 +402,7 @@ def test_unified_title_and_ctc_calibration():
     assert cand.get("target_title") == "Azure Data Engineer"
     assert cand.get("current_designation") == "Azure Data Engineer"
     assert cand.get("expected_ctc_lakhs") == 20
-    assert cand.get("notice_period_days") == 30
+    assert cand.get("notice_period_days") == 15
 
 
 def test_keyword_diff_engine():
@@ -418,14 +418,27 @@ def test_keyword_diff_engine():
 
 
 def test_profile_bump_once_a_day_throttle(tmp_path):
-    """Verify once-a-day bump throttle skips redundant edits if already bumped today."""
+    """Verify cooldown throttle skips redundant edits if recently bumped within cooldown (2h), but allows scheduled boosts."""
     test_state_file = str(tmp_path / "test_session_state.json")
     engine = ProfileEnhancerEngine(state_file=test_state_file)
-    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
 
-    engine._save_state({"last_bumped_date": today, "last_bumped_timestamp": f"{today}T09:15:00"})
-    result = engine.bump_profile(None, force=False)
-    assert result is True
+    # 1. Bumped 10 minutes ago (< 2 hours cooldown) -> skips and returns True
+    recent_ts = (now - timedelta(minutes=10)).isoformat()
+    engine._save_state({"last_bumped_date": today, "last_bumped_timestamp": recent_ts})
+    result_recent = engine.bump_profile(None, force=False, cooldown_seconds=7200)
+    assert result_recent is True
+
+    # 2. Bumped 3 hours ago (> 2 hours cooldown) -> throttle allows scheduled boost
+    old_ts = (now - timedelta(hours=3)).isoformat()
+    engine._save_state({"last_bumped_date": today, "last_bumped_timestamp": old_ts})
+    result_old = engine.bump_profile(None, force=False, cooldown_seconds=7200)
+    assert result_old is False  # Passed throttle, attempted navigation on page=None
+
+    # 3. force=True bypasses throttle even if bumped recently
+    result_force = engine.bump_profile(None, force=True)
+    assert result_force is False
 
 
 def test_boosted_profile_summary_and_keywords():
@@ -723,10 +736,10 @@ def test_t1_f5_experience_screening_answer():
 
 
 def test_t1_f5_notice_period_screening_answer():
-    """F5: Notice period screening answer correctly reflects 30 days."""
+    """F5: Notice period screening answer correctly reflects 15 days."""
     cfg = load_config()
     answers = cfg.get("answers_to_common_questions", {})
-    assert "30" in answers.get("notice_period", "")
+    assert "15" in answers.get("notice_period", "")
 
 
 def test_t1_f5_ctc_screening_answers():
@@ -812,7 +825,7 @@ def test_t1_f6_applicant_profile_loader_defaults():
     assert prof["lastName"] == "Kumar"
     assert prof["email"] == "lavkushry@gmail.com"
     assert prof["experienceYears"] == "2.5"
-    assert prof["noticePeriodDays"] == "30"
+    assert prof["noticePeriodDays"] == "15"
 
 
 # --- F7: Structured Dry-Run Application Payload (R2 & R4) ---
@@ -1835,7 +1848,7 @@ def test_t4_scenario_1_full_offline_apply_cycle(tmp_path):
         cfg = load_config()
         answers = cfg.get("answers_to_common_questions", {})
         assert answers.get("experience") == "2.5"
-        assert answers.get("notice_period") == "30 days"
+        assert answers.get("notice_period") == "15 days"
 
         # Emit Structured ApplicationPayload
         payload = build_dry_run_payload(
@@ -2063,3 +2076,380 @@ def test_t4_scenario_5_cloud_daemon_singleton_lock_and_proxy_protection(tmp_path
         configured_proxy = os.getenv("NAUKRI_PROXY")
         assert configured_proxy == proxy_url
         assert configured_proxy.startswith("http://")
+
+
+# ==============================================================================
+# Iteration 2 R1: Live Profile DOM Persistence & 3x/Day Boost Unit Tests
+# ==============================================================================
+
+def test_config_notice_period_15_days_and_7_preferred_locations():
+    """Verify candidate config has 15 days notice period and all 7 Tier-1 preferred hubs."""
+    with open("naukri_system/config.json", "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    cand = cfg.get("candidate", {})
+
+    assert cand.get("notice_period_days") == 15
+    assert "15" in cand.get("notice_period", "")
+    assert "preferred_locations" in cand
+
+    expected_hubs = ["Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Mumbai", "Chennai"]
+    actual_hubs = cand.get("preferred_locations", [])
+    for hub in expected_hubs:
+        assert hub in actual_hubs, f"Hub '{hub}' missing from candidate.preferred_locations"
+
+    # Search locations coverage
+    search_locs = [loc.lower() for loc in cfg.get("search_settings", {}).get("locations", [])]
+    for hub in ["bengaluru", "hyderabad", "pune", "gurugram", "noida", "mumbai", "chennai"]:
+        assert hub in search_locs, f"Hub '{hub}' missing from search_settings.locations"
+
+    # Answers to common questions
+    answers = cfg.get("answers_to_common_questions", {})
+    assert "15" in answers.get("notice_period", "")
+    assert "preferred_locations" in answers
+
+
+def test_sync_naukri_live_profile_metadata_coverage():
+    """Verify live sync constants match 25 key skills, 7 tech hubs, and 13 IT skills."""
+    from scripts.sync_naukri_live_profile import (
+        DEFAULT_TOP_25_KEY_SKILLS,
+        DEFAULT_PREFERRED_LOCATIONS,
+        DEFAULT_IT_SKILLS
+    )
+
+    # Top 25 Key Skills
+    assert len(DEFAULT_TOP_25_KEY_SKILLS) == 25
+    core_expected = ["Azure Databricks", "PySpark", "Delta Lake", "Azure Data Factory (ADF)", "Apache Kafka", "Terraform"]
+    for skill in core_expected:
+        assert skill in DEFAULT_TOP_25_KEY_SKILLS
+
+    # 7 Preferred Locations
+    assert len(DEFAULT_PREFERRED_LOCATIONS) == 7
+    for hub in ["Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Mumbai", "Chennai"]:
+        assert hub in DEFAULT_PREFERRED_LOCATIONS
+
+    # 13 Detailed IT Skills
+    assert len(DEFAULT_IT_SKILLS) == 13
+    for item in DEFAULT_IT_SKILLS:
+        assert "skill" in item
+        assert "version" in item
+        assert "last_used" in item
+        assert "exp_years" in item
+        assert "exp_months" in item
+        assert item["last_used"] == "2026"
+
+
+def test_headline_template_length_and_saturation():
+    """Verify headline template is calibrated to 247/250 chars with 100% keyword density."""
+    cfg = load_config()
+    template = cfg.get("headline_template", "")
+    assert len(template) <= 250, f"Headline must not exceed 250 characters (got {len(template)})"
+    assert len(template) >= 200, f"Headline should be saturated (got {len(template)})"
+
+    core_kws = ["Azure Data Engineer", "Databricks", "PySpark", "Delta Lake", "ADF", "Kafka", "Terraform", "Medallion Architecture"]
+    for kw in core_kws:
+        assert kw.lower() in template.lower(), f"Core keyword '{kw}' missing from headline template"
+
+
+def test_verify_naukri_live_profile_dom_module():
+    """Verify scripts.verify_naukri_live_profile_dom imports and provides inspection utilities."""
+    from scripts.verify_naukri_live_profile_dom import (
+        TARGET_HUBS,
+        TOP_25_KEYWORDS,
+        format_terminal_report,
+        verify_live_profile_dom
+    )
+
+    assert len(TARGET_HUBS) == 7
+    assert len(TOP_25_KEYWORDS) == 25
+
+    mock_report = {
+        "timestamp": "2026-10-25T17:00:00",
+        "overall_status": "PASS",
+        "checks": {
+            "headline": {"status": "PASS", "length": 247, "target_length": 247, "preview": "Azure Data Engineer..."},
+            "profile_summary": {"status": "PASS", "length": 988, "matched_keywords": ["Azure Databricks", "Delta Lake", "ADF"]},
+            "key_skills": {"status": "PASS", "matched_top_keywords_count": 25, "target_keywords_count": 25, "total_extracted_chips": 25},
+            "notice_period": {"status": "PASS", "detected_value": "15 Days or less", "target": "15 Days or less"},
+            "preferred_locations": {"status": "PASS", "matched_hubs_count": 7, "total_target_hubs": 7, "found_hubs": TARGET_HUBS, "missing_hubs": []},
+            "attached_resume_pdf": {"status": "PASS", "detected_filename": "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"},
+            "current_designation": {"status": "PASS"}
+        }
+    }
+    formatted = format_terminal_report(mock_report)
+    assert "NAUKRI LIVE PROFILE DOM VERIFICATION REPORT" in formatted
+    assert "15 Days or less" in formatted
+    assert "247 chars" in formatted
+
+
+# ==============================================================================
+# SECTION: ITERATION 2 M2 SUITE (High-Volume Live Application & Sourcing)
+# ==============================================================================
+
+def test_m2_expanded_keywords_and_locations():
+    """Verify DEFAULT_KEYWORDS includes all 11 core technologies and LOCATIONS covers all 7 tech hubs."""
+    from naukari_pro.modules.auto_apply import DEFAULT_KEYWORDS, LOCATIONS, CANONICAL_LOCATIONS
+
+    required_keywords = [
+        "Azure Data Engineer",
+        "Azure Databricks",
+        "PySpark",
+        "Delta Lake",
+        "Azure Data Factory",
+        "Data Engineer",
+        "Kafka",
+        "Snowflake",
+        "ADF",
+        "Medallion Architecture",
+        "Data Lakehouse"
+    ]
+    for kw in required_keywords:
+        assert kw in DEFAULT_KEYWORDS, f"Required keyword '{kw}' missing from DEFAULT_KEYWORDS"
+
+    required_locs = ["hyderabad", "bengaluru", "pune", "gurugram", "noida", "mumbai", "chennai"]
+    for loc in required_locs:
+        assert loc in LOCATIONS, f"Required tech hub '{loc}' missing from LOCATIONS"
+        assert loc in CANONICAL_LOCATIONS
+
+
+def test_m2_screening_text_solver_accuracy():
+    """Verify solve_screening_text_question returns candidate ground truth and never defaults non-experience to 2.5."""
+    from naukari_pro.modules.auto_apply import solve_screening_text_question, _CANDIDATE
+
+    # Non-experience questions must NOT return "2.5"
+    assert solve_screening_text_question("What is your current organization/company?") == _CANDIDATE.get("current_company", "CGI India (PNC Bank GCC)")
+    assert solve_screening_text_question("Please enter your current designation") == _CANDIDATE.get("current_designation", "Azure Data Engineer")
+    assert solve_screening_text_question("Highest educational qualification") == "B.Tech in Computer Science and Engineering"
+    assert "Azure Databricks" in solve_screening_text_question("What are your primary skills?")
+    assert solve_screening_text_question("Current location/city?") == "Hyderabad"
+    assert solve_screening_text_question("Are you willing to relocate or work hybrid?") == "Yes"
+    assert solve_screening_text_question("Are you currently serving notice period?") == "No"
+    assert solve_screening_text_question("Please mention employee id or NA") == "NA"
+
+    # Experience questions return experience years
+    assert solve_screening_text_question("Total years of experience") == str(_CANDIDATE.get("total_experience_years", "2.5"))
+    assert solve_screening_text_question("How many years of experience in PySpark?") == str(_CANDIDATE.get("total_experience_years", "2.5"))
+
+    # CTC & notice period
+    assert solve_screening_text_question("Current CTC in lakhs") == str(_CANDIDATE.get("current_ctc_lakhs", "12"))
+    assert solve_screening_text_question("Expected CTC in lakhs") == str(_CANDIDATE.get("expected_ctc_lakhs", "20"))
+    assert solve_screening_text_question("What is your notice period in days?") == str(_CANDIDATE.get("notice_period_days", "15"))
+
+
+def test_m2_search_query_freshness_parameters_and_pagination():
+    """Verify search URL format invokes production build_search_url with freshness=1, sortBy=date, and pagination."""
+    from naukari_pro.modules.auto_apply import build_search_url, EXPERIENCE_PARAM
+
+    kw = "Azure Data Engineer"
+    loc = "bengaluru"
+
+    # Page 1
+    p1_url = build_search_url(kw, loc, page_num=1)
+    assert f"experience={EXPERIENCE_PARAM}" in p1_url
+    assert "jobAge=1" in p1_url
+    assert "freshness=1" in p1_url
+    assert "sortBy=date" in p1_url
+    assert "sortType=1" in p1_url
+    assert "pageNo" not in p1_url
+    assert "-1?" not in p1_url
+    assert "azure-data-engineer-jobs-in-bengaluru?" in p1_url
+
+    # Page 2+
+    p2_url = build_search_url(kw, loc, page_num=2)
+    assert "-2?" in p2_url
+    assert "pageNo=2" in p2_url
+    assert "sortBy=date" in p2_url
+
+    # Page 3+
+    p3_url = build_search_url(kw, loc, page_num=3)
+    assert "-3?" in p3_url
+    assert "pageNo=3" in p3_url
+
+
+def test_m2_already_applied_rejection_logic():
+    """Verify that 'Already Applied' button status explicitly avoids false-positive submission marking."""
+    import tempfile, shutil, os, asyncio
+    from unittest.mock import AsyncMock, patch
+    from naukari_pro.modules.auto_apply import PlaywrightRunner, make_job_id
+
+    # 1. Button classification logic verification
+    def classify_btn(txt):
+        t = (txt or "").lower().strip()
+        if "already applied" in t:
+            return {"type": "already_applied"}
+        return {"type": "apply"}
+
+    assert classify_btn("Already Applied")["type"] == "already_applied"
+    assert classify_btn("already applied")["type"] == "already_applied"
+    assert classify_btn("  Already applied on 23 Oct 2026")["type"] == "already_applied"
+
+    # 2. Authentic verification that apply_to_job_async skips and writes 0 Excel rows
+    temp_dir = tempfile.mkdtemp()
+    temp_excel = os.path.join(temp_dir, "test_tracker.xlsx")
+    try:
+        with patch("naukari_pro.modules.auto_apply.TRACKER_PATH", temp_excel), patch("naukari_pro.config.TRACKER_PATH", temp_excel):
+            runner = PlaywrightRunner(skip_list=set(), dry_run=False)
+            mock_tab = AsyncMock()
+            mock_tab.url = "https://www.naukri.com/sample-applied-job"
+            mock_tab.evaluate = AsyncMock(return_value={"type": "already_applied", "text": "Already Applied"})
+
+            mock_context = AsyncMock()
+            mock_context.new_page = AsyncMock(return_value=mock_tab)
+            runner.context = mock_context
+
+            ok, msg = asyncio.run(runner.apply_to_job_async(
+                mock_context,
+                job_url="https://www.naukri.com/sample-applied-job",
+                title="Azure Data Engineer",
+                company="Cognizant",
+                salary="18 LPA",
+                raw_jd="PySpark Azure Databricks Delta Lake",
+                match_score=85
+            ))
+
+            assert ok is False
+            assert "Already applied" in msg
+            # Confirm added to skip list
+            assert make_job_id("Azure Data Engineer", "Cognizant") in runner.skip_list
+            # Confirm zero false-positive Excel rows written
+            assert not os.path.exists(temp_excel)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_m2_screening_radio_solver_logic():
+    """Verify radio button JS evaluate correctly matches affirmative and rejects negative/disqualifying options."""
+    from playwright.sync_api import sync_playwright
+    from naukari_pro.modules.auto_apply import SCREENING_RADIO_JS
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        # Adversarial: "Not Comfortable" listed before "Comfortable"
+        page.set_content("""
+        <div class="chatbot_Drawer">
+            <div class="singleSelectRadioButton">
+                <label class="radio-label"><input type="radio" name="r" value="nc">Not Comfortable</label>
+                <label class="radio-label"><input type="radio" name="r" value="c">Comfortable</label>
+            </div>
+        </div>
+        """)
+        res = page.evaluate(SCREENING_RADIO_JS, "Are you comfortable with night shifts?")
+        assert res["handled"] is True
+        assert res["chosenText"] == "Comfortable"
+
+        # Disagree vs Agree
+        page.set_content("""
+        <div class="chatbot_Drawer">
+            <div class="singleSelectRadioButton">
+                <label class="radio-label"><input type="radio" name="r" value="d">Disagree</label>
+                <label class="radio-label"><input type="radio" name="r" value="a">Agree</label>
+            </div>
+        </div>
+        """)
+        res = page.evaluate(SCREENING_RADIO_JS, "Do you agree to company policies?")
+        assert res["handled"] is True
+        assert res["chosenText"] == "Agree"
+
+        # Disentangling check: .multicheckboxes-container must NOT be treated as radios
+        page.set_content("""
+        <div class="chatbot_Drawer">
+            <div class="multicheckboxes-container">
+                <label><input type="checkbox" name="skills" value="azure">Azure</label>
+                <label><input type="checkbox" name="skills" value="pyspark">PySpark</label>
+            </div>
+        </div>
+        """)
+        res = page.evaluate(SCREENING_RADIO_JS, "Select your primary skills")
+        assert res["handled"] is False
+
+        browser.close()
+
+
+def test_m2_screening_dropdown_native_and_custom_logic():
+    """Verify native select and custom dropdown solvers filter placeholders and reject negative options."""
+    from playwright.sync_api import sync_playwright
+    from naukari_pro.modules.auto_apply import SCREENING_DROPDOWN_JS
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        # Native select with placeholder and negative option
+        page.set_content("""
+        <div class="chatbot_Drawer">
+            <select id="sel">
+                <option value="">-- Select Notice Period --</option>
+                <option value="60">More than 30 days</option>
+                <option value="15">15 days</option>
+            </select>
+        </div>
+        """)
+        res = page.evaluate(SCREENING_DROPDOWN_JS)
+        assert res["handled"] is True
+        assert res["type"] == "native_select"
+        assert res["chosenText"] == "15 days"
+
+        # Custom dropdown with Disagree vs Agree
+        page.set_content("""
+        <div class="chatbot_Drawer">
+            <div class="custom-select" id="dd">Select</div>
+            <ul role="listbox">
+                <li role="option">Disagree</li>
+                <li role="option">Agree</li>
+            </ul>
+        </div>
+        """)
+        res = page.evaluate(SCREENING_DROPDOWN_JS)
+        assert res["handled"] is True
+        assert res["type"] == "custom_dropdown"
+        assert res["chosenText"] == "Agree"
+
+        browser.close()
+
+
+def test_m2_screening_checkbox_multi_select_logic():
+    """Verify multi-select checkbox solver targets relevant skills and checks them."""
+    from playwright.sync_api import sync_playwright
+    from naukari_pro.modules.auto_apply import SCREENING_CHECKBOX_JS
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        page.set_content("""
+        <div class="chatbot_Drawer">
+            <div class="multicheckboxes-container">
+                <label><input type="checkbox" id="cb1" value="azure"> Azure Databricks</label>
+                <label><input type="checkbox" id="cb2" value="pyspark"> Apache PySpark</label>
+                <label><input type="checkbox" id="cb3" value="cobol"> COBOL</label>
+            </div>
+        </div>
+        """)
+        res = page.evaluate(SCREENING_CHECKBOX_JS)
+        assert res["handled"] is True
+        assert res["clickedCount"] == 2
+
+        # Verify checkboxes 1 and 2 are checked, 3 is not
+        cb1_checked = page.evaluate("() => document.getElementById('cb1').checked")
+        cb2_checked = page.evaluate("() => document.getElementById('cb2').checked")
+        cb3_checked = page.evaluate("() => document.getElementById('cb3').checked")
+        assert cb1_checked is True
+        assert cb2_checked is True
+        assert cb3_checked is False
+
+        browser.close()
+
+
+def test_m2_hidden_jobs_and_early_access_enhancements():
+    """Verify HiddenJobsEngine and EarlyAccessEngine structured methods with match score evaluation."""
+    from naukari_pro.modules.hidden_jobs import HiddenJobsEngine
+    from naukari_pro.modules.early_access import EarlyAccessEngine
+
+    hj_engine = HiddenJobsEngine()
+    ea_engine = EarlyAccessEngine()
+
+    assert hasattr(hj_engine, "harvest_and_evaluate_opportunities")
+    assert hasattr(ea_engine, "scan_early_access")
+
+

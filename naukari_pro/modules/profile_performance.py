@@ -165,76 +165,213 @@ class ProfilePerformanceEngine:
 
     def fetch_live_performance(self, page):
         """
-        Navigates to Naukri Profile Performance (/mnjuser/profile-performance)
-        and extracts the 5 authentic live metrics.
+        Navigates to authentic live Naukri Profile Performance (https://www.naukri.com/mnjuser/performance)
+        and extracts 90d/7d search appearances, recruiter actions (profile views,
+        contact views, resume downloads, NVites, recruiter bookmarks), and search keywords.
         """
-        logger.info("Accessing live Naukri Profile Performance...")
+        logger.info("Accessing live Naukri Profile Performance at https://www.naukri.com/mnjuser/performance...")
         metrics = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "search_appearances": 0,
+            "search_appearances_90d": 0,
+            "search_appearances_7d": 0,
+            "recruiter_actions": 0,
             "profile_views": 0,
             "resume_downloads": 0,
             "contact_views": 0,
+            "nvites": 0,
+            "recruiter_bookmarks": 0,
             "search_terms": [],
             "data_source": "Live Naukri Portal"
         }
 
         try:
-            page.goto("https://www.naukri.com/mnjuser/profile-performance", wait_until="domcontentloaded", timeout=30000)
+            page.goto("https://www.naukri.com/mnjuser/performance", wait_until="domcontentloaded", timeout=30000)
             time.sleep(3)
 
-            if "login" in page.url:
+            if "login" in page.url.lower():
                 logger.warning("Session expired; redirected to login page.")
                 metrics["data_source"] = "Session Expired (Login Required)"
                 return metrics
 
-            body_text = page.locator("body").inner_text()
+            body_text = page.locator("body").inner_text() if page.locator("body").count() > 0 else ""
 
             # Helper to extract integer from selector or regex
             def extract_stat(selectors, regex_patterns):
                 for sel in selectors:
-                    el = page.locator(sel).first
-                    if el.count() > 0 and el.is_visible():
-                        txt = el.inner_text().strip()
-                        num_match = re.search(r'\b\d+\b', txt)
-                        if num_match:
-                            return int(num_match.group(0))
+                    try:
+                        el = page.locator(sel).first
+                        if el.count() > 0 and el.is_visible():
+                            txt = el.inner_text().strip()
+                            num_match = re.search(r'\b\d+\b', txt)
+                            if num_match:
+                                return int(num_match.group(0))
+                    except Exception:
+                        pass
                 for pat in regex_patterns:
                     m = re.search(pat, body_text, re.IGNORECASE)
                     if m:
-                        return int(m.group(1))
+                        for g in m.groups():
+                            if g and g.isdigit():
+                                return int(g)
                 return 0
 
-            # 1. Search appearances
-            metrics["search_appearances"] = extract_stat(
-                [".search-appearances", ".perf-count", "span[class*='searchAppCount']", "div[class*='searchApp']"],
-                [r'(\d+)\s*search appearance', r'appeared in\s*(\d+)\s*searches']
+            # 1. 90-day search appearances
+            search_90d = extract_stat(
+                [
+                    ".summary-card__search-appearance--value.typ-40Medium",
+                    ".summary-card__search-appearance--value",
+                    "[class*='search-appearance--value']",
+                    ".searchAppWrapper .count",
+                    ".search-appearances",
+                    ".perf-count",
+                    "span[class*='searchAppCount']",
+                    "div[class*='searchApp']"
+                ],
+                [
+                    r'(\d+)\s*search appearance[s]?\s*(?:in last 90 days)?',
+                    r'appeared in\s*(\d+)\s*searches',
+                    r'(\d+)\s*search appearances?'
+                ]
             )
 
-            # 2. Profile views
-            metrics["profile_views"] = extract_stat(
-                [".profile-views", "span[class*='profileViews']", "div[class*='profView']"],
-                [r'(\d+)\s*recruiter views?', r'(\d+)\s*profile views?']
+            # 2. 7-day search appearances
+            search_7d = extract_stat(
+                [
+                    ".search-appearances-droop",
+                    "span:has-text('Search appearances in last')",
+                    "[class*='recent-search-appearances']"
+                ],
+                [
+                    r'(\d+)\s*search appearance[s]?\s*in last\s*(?:7\s*days)?',
+                    r'last\s*7\s*days[:\s]+(\d+)\s*searches'
+                ]
             )
 
-            # 3. Resume downloads
-            metrics["resume_downloads"] = extract_stat(
-                ["span[class*='download']", "div[class*='downloadCount']", "div:has-text('download')"],
-                [r'(\d+)\s*resume downloads?', r'(\d+)\s*cv downloads?']
-            )
+            metrics["search_appearances_90d"] = search_90d
+            metrics["search_appearances_7d"] = search_7d
+            metrics["search_appearances"] = search_90d if search_90d > 0 else search_7d
 
-            # 4. Contact views (the ultimate North Star)
-            metrics["contact_views"] = extract_stat(
-                ["span[class*='contactView']", "div[class*='contactCount']", "div:has-text('contact')"],
-                [r'(\d+)\s*contact views?', r'(\d+)\s*contact details? viewed']
+            # 3. Cumulative Recruiter Actions (90 Days)
+            recruiter_actions = extract_stat(
+                [
+                    ".summary-card__recruiter-actions--value.typ-40Medium",
+                    ".summary-card__recruiter-actions--value",
+                    "[class*='recruiter-actions--value']",
+                    ".recActWrapper .count",
+                    ".recruiter-actions"
+                ],
+                [
+                    r'(\d+)\s*recruiter actions?',
+                    r'recruiter actions?[:\s]+(\d+)'
+                ]
             )
+            metrics["recruiter_actions"] = recruiter_actions
 
-            # 5. Search terms typed by recruiters
-            kw_els = page.locator(".keyword-chip, .keyword-pill, div[class*='keywordTag'], span[class*='keyword'], .chip").all()
-            for kw in kw_els[:15]:
-                t = kw.inner_text().strip()
-                if t and len(t) < 40 and t not in metrics["search_terms"]:
-                    metrics["search_terms"].append(t)
+            # 4. Recruiter Actions Breakdown (DOM: .ja-tag container and .ja-tag-count badge)
+            try:
+                tag_elements = page.locator(".ja-tag, [class*='ja-tag'], .action-tag").all()
+                for tag in tag_elements:
+                    txt = tag.inner_text().strip()
+                    txt_lower = txt.lower()
+                    count_val = None
+                    count_el = tag.locator(".ja-tag-count, [class*='tag-count']").first
+                    if count_el.count() > 0:
+                        c_text = count_el.inner_text().strip()
+                        m = re.search(r'\b\d+\b', c_text)
+                        if m:
+                            count_val = int(m.group(0))
+                    if count_val is None:
+                        m = re.search(r'\b\d+\b', txt)
+                        if m:
+                            count_val = int(m.group(0))
+
+                    if count_val is not None:
+                        if "profile viewed" in txt_lower:
+                            metrics["profile_views"] = count_val
+                        elif "contact viewed" in txt_lower:
+                            metrics["contact_views"] = count_val
+                        elif "resume downloaded" in txt_lower or "cv downloaded" in txt_lower:
+                            metrics["resume_downloads"] = count_val
+                        elif "nvite" in txt_lower:
+                            metrics["nvites"] = count_val
+                        elif "bookmarked" in txt_lower:
+                            metrics["recruiter_bookmarks"] = count_val
+            except Exception as tag_err:
+                logger.debug("Tag extraction notice: %s", tag_err)
+
+            # Fallbacks for specific actions if not caught by .ja-tag
+            if metrics["profile_views"] == 0:
+                metrics["profile_views"] = extract_stat(
+                    [".profile-views", "span[class*='profileViews']", "div[class*='profView']"],
+                    [r'(?:naukri\s*)?profile viewed\s*(\d+)', r'(\d+)\s*(?:naukri\s*)?profile views?']
+                )
+
+            if metrics["contact_views"] == 0:
+                metrics["contact_views"] = extract_stat(
+                    ["span[class*='contactView']", "div[class*='contactCount']"],
+                    [r'contact viewed\s*(\d+)', r'(\d+)\s*contact views?', r'(\d+)\s*contact details? viewed']
+                )
+
+            if metrics["resume_downloads"] == 0:
+                metrics["resume_downloads"] = extract_stat(
+                    ["span[class*='downloadCount']", "div[class*='downloadCount']", ".resume-download-count"],
+                    [r'resume downloaded\s*(\d+)', r'(\d+)\s*resume downloads?', r'(\d+)\s*cv downloads?']
+                )
+
+            if metrics["nvites"] == 0:
+                metrics["nvites"] = extract_stat(
+                    [".nvite-count", "[class*='nvite'] .count"],
+                    [r'nvites?\s*sent\s*(\d+)', r'(\d+)\s*nvites?']
+                )
+
+            if metrics["recruiter_bookmarks"] == 0:
+                metrics["recruiter_bookmarks"] = extract_stat(
+                    [".bookmark-count", "[class*='bookmark'] .count"],
+                    [r'profile bookmarked\s*(\d+)', r'(\d+)\s*bookmarks?']
+                )
+
+            # 5. Search terms typed by recruiters (.search-keyword-card)
+            try:
+                kw_cards = page.locator(".search-keyword-card, [class*='search-keyword-card'], .keyword-container").all()
+                for card in kw_cards[:15]:
+                    lbl = card.locator(".keyword-label, [class*='keyword-label']").first
+                    if lbl.count() > 0:
+                        t = lbl.inner_text().strip()
+                    else:
+                        raw_t = card.inner_text().strip()
+                        t = re.split(r'\d+\s*times?', raw_t, flags=re.IGNORECASE)[0].strip()
+                    if t and len(t) < 50 and t not in metrics["search_terms"]:
+                        metrics["search_terms"].append(t)
+            except Exception as kw_err:
+                logger.debug("Keyword card extraction notice: %s", kw_err)
+
+            if not metrics["search_terms"]:
+                kw_els = page.locator(".keyword-chip, .keyword-pill, div[class*='keywordTag'], span[class*='keyword'], .chip").all()
+                for kw in kw_els[:15]:
+                    t = kw.inner_text().strip()
+                    if t and len(t) < 40 and t not in metrics["search_terms"]:
+                        metrics["search_terms"].append(t)
+
+            # 6. Fallback to /mnjuser/homepage if search appearances is still 0
+            if metrics["search_appearances"] == 0 and "login" not in page.url.lower():
+                try:
+                    logger.info("Attempting homepage telemetry fallback at /mnjuser/homepage...")
+                    page.goto("https://www.naukri.com/mnjuser/homepage", wait_until="domcontentloaded", timeout=15000)
+                    time.sleep(2)
+                    app_el = page.locator(".searchAppWrapper .count").first
+                    if app_el.count() > 0 and app_el.is_visible():
+                        m = re.search(r'\b\d+\b', app_el.inner_text().strip())
+                        if m:
+                            metrics["search_appearances"] = int(m.group(0))
+                            metrics["search_appearances_90d"] = metrics["search_appearances"]
+                    rec_el = page.locator(".recActWrapper .count").first
+                    if rec_el.count() > 0 and rec_el.is_visible():
+                        m = re.search(r'\b\d+\b', rec_el.inner_text().strip())
+                        if m:
+                            metrics["recruiter_actions"] = int(m.group(0))
+                except Exception as hp_err:
+                    logger.debug("Homepage fallback notice: %s", hp_err)
 
             # Log snapshot to history
             self.log_performance_snapshot(metrics)
@@ -532,3 +669,29 @@ class ProfilePerformanceEngine:
         print(f"  👉 {diff['recommended_key_skills']}")
         print("=" * 75 + "\n")
         return metrics
+
+    def display_report(self, page=None):
+        """
+        Displays recruiter performance report and keyword diff.
+        Aliases to display_weekly_report for CLI and automation compatibility.
+        """
+        return self.display_weekly_report(page=page)
+
+    def generate_report(self, page=None):
+        """Generates performance report."""
+        return self.display_weekly_report(page=page)
+
+
+# Canonical alias for CLI and module compatibility
+ProfilePerformanceTracker = ProfilePerformanceEngine
+
+__all__ = [
+    "ProfilePerformanceEngine",
+    "ProfilePerformanceTracker",
+    "compute_benchmark_pacing",
+    "BenchmarkPacing",
+    "MONTHLY_SEARCH_BENCHMARK",
+    "DAILY_SEARCH_BENCHMARK",
+    "TARGET_DE_KEYWORDS"
+]
+

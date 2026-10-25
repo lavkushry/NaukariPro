@@ -390,7 +390,7 @@ def test_all_8_ats_portal_types_structural_and_candidate_fidelity(expected_ats, 
     assert "linkedin.com/in/lavkushry" in answers["linkedin"]
     assert "github.com/lavkushry" in answers["github"]
     assert answers["experience"] == "2.5"
-    assert answers["notice_period"] == "30"
+    assert answers["notice_period"] == "15"
     assert float(answers["current_ctc_lpa"]) == 12.0
     assert float(answers["expected_ctc_lpa"]) in [20.0, 25.0]
     assert answers["work_auth"] == "Yes"

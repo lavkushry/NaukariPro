@@ -28,7 +28,7 @@ from naukari_pro.modules.early_access import EarlyAccessEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
 from naukari_pro.modules.pro_autopilot import ProAutoPilotEngine
-from naukari_pro.modules.profile_performance import ProfilePerformanceEngine
+from naukari_pro.modules.profile_performance import ProfilePerformanceEngine, ProfilePerformanceTracker
 
 BANNER = r"""
 ========================================================================
@@ -71,9 +71,7 @@ def handle_pro(limit=10, headless=False, dry_run=False, force=False):
 
 def handle_performance(headless=False):
     engine = ProfilePerformanceEngine()
-    if headless:
-        engine.display_report()
-    else:
+    try:
         with sync_playwright() as p:
             context = get_stealth_context(p, headless=headless)
             page = context.pages[0] if context.pages else context.new_page()
@@ -82,12 +80,13 @@ def handle_performance(headless=False):
             else:
                 engine.display_report()
             context.close()
+    except Exception as e:
+        print(f"  [!] Notice launching browser for performance report: {e}")
+        engine.display_report()
 
 def handle_weekly_report(headless=False):
     engine = ProfilePerformanceEngine()
-    if headless:
-        engine.display_weekly_report()
-    else:
+    try:
         with sync_playwright() as p:
             context = get_stealth_context(p, headless=headless)
             page = context.pages[0] if context.pages else context.new_page()
@@ -96,6 +95,9 @@ def handle_weekly_report(headless=False):
             else:
                 engine.display_weekly_report()
             context.close()
+    except Exception as e:
+        print(f"  [!] Notice launching browser for weekly report: {e}")
+        engine.display_weekly_report()
 
 def handle_auto_apply(headless=False, limit=20, dry_run=False):
     print("\n[*] Starting Auto-Apply on Naukri...")

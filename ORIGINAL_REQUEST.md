@@ -92,3 +92,53 @@ Ensure headless execution, cookie refresh, browser singleton lock management, an
 ### Verification & Testing
 - [ ] Automated regression test suite (`tests/test_offline_suite.py`) passes 100% of test cases on both local macOS and remote Linux VM.
 - [ ] Dry-run mode (`--dry-run`) produces validated application payloads without side-effects.
+
+## 2026-10-25T16:28:18Z
+
+# Teamwork Project Prompt — Draft (Iteration 2: Live Conversion & 100k Search Fix)
+
+> Status: Launched
+> Goal: Launch full multi-agent teamwork system (Iteration 2)
+> Requested team: Full multi-agent engineering & optimization team
+
+Diagnose and fix all real-world bottlenecks preventing the candidate's live Naukri profile and autonomous cloud pipeline (`ubuntu@141.148.195.233`) from achieving 100k+ monthly recruiter search appearances and daily recruiter interview calls for Azure Data Engineer roles (2.5 YOE).
+
+Working directory: /Users/lavkushkumar/Desktop/Resume
+Integrity mode: development
+
+## Requirements
+
+### R1. Live Naukri Profile Audit, End-to-End Persistence & 3x/Day Active Boost
+Audit the candidate's actual live authenticated Naukri profile (`naukri.com/mnjuser/profile`) via headless Playwright—not just offline JSON configs—and verify that all high-conversion Resdex fields are truly persisted live on Naukri:
+- Live CV file uploaded (`Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf`)
+- Notice Period set to highest recruiter conversion tier (`15 Days or less` / `Immediate`)
+- All 7 top Tier-1 tech hubs enabled in Preferred Locations (`Bengaluru`, `Hyderabad`, `Pune`, `Gurugram`, `Noida`, `Mumbai`, `Chennai`)
+- Resume Headline, Profile Summary, Key Skills, IT Skills (with experience years), 4 Employment Roles, and 4 Lakehouse Projects verified on the live DOM
+- Continuous **every-run** profile freshness boost (removing once-per-day skip barriers so every morning, afternoon, and evening run refreshes live Resdex activity timestamp).
+
+### R2. High-Volume, High-Precision Live Application & Recommended Job Harvesting
+Fix low daily application volume by expanding live job discovery and submission across:
+- Freshness-sorted (`freshness=1` / last 1–3 days) multi-page search queries across all core Azure Data Engineering, Databricks, PySpark, Delta Lake, ADF, Kafka, and Snowflake keywords
+- Naukri Recommended Jobs (`/mnjuser/recommendedjobs`) and Recruiter NVites/Inbox opportunities
+- Full-page JD evaluation (`>=70%` match threshold), automated multi-turn screening chatbot completion (handling text inputs, radio buttons, checkboxes, and dropdowns), and 1-click direct submissions.
+
+### R3. Live Authenticated Naukri Analytics Extraction (No Offline Mocks)
+Extract real-time search appearances, recruiter profile views, and recruiter actions directly from the authenticated Naukri dashboard/performance endpoints during live runs, logging real before/after telemetry alongside the 11-column `Naukri_Live_Application_Tracker.xlsx`.
+
+### R4. End-to-End Remote Cloud Sync & Live Execution Proof
+Deploy all fixes to `ubuntu@141.148.195.233:/home/ubuntu/Resume`, execute a live end-to-end verification run on the remote Linux server, and verify that live applications and live profile updates succeed with zero errors.
+
+## Acceptance Criteria
+
+### Live Profile & Resdex Conversion Verification (No Offline-Only Self-Certification)
+- [ ] Live Playwright verification script reads back the authenticated Naukri profile DOM (`mnjuser/profile`) and confirms Headline, Summary, Key Skills, Notice Period, Preferred Locations, and uploaded Resume filename match the target Azure Data Engineer profile.
+- [ ] Profile freshness bumper executes on every scheduled window (3x/day) rather than skipping after the first run of the day, verified by live timestamp updates.
+
+### Live Job Application Throughput & Accuracy
+- [ ] Live Playwright run harvests across both Search Results (with freshness filter & pagination) and Recommended Jobs, achieving >= 5 verified live job applications in a single verification run at >=70% match score.
+- [ ] Screening chatbot solver handles text fields, radio options, checkboxes, and dropdowns on live Naukri job listings and confirms application submission via DOM state (`Applied` / `Thank you for your responses` / `saveApply`).
+- [ ] All newly submitted applications are persisted to `Naukri_Live_Application_Tracker.xlsx` and synced between `ubuntu@141.148.195.233`, local macOS workspace, and GitHub (`origin/main`).
+
+### Regression & Cloud Daemon Health
+- [ ] All automated test suites (`pytest tests/test_*.py`) pass 100% on both local macOS and remote Linux (`ubuntu@141.148.195.233`).
+- [ ] `naukaripro-agy.timer` and `agy_schedule_runner.sh` remain active and error-free on `ubuntu@141.148.195.233`.

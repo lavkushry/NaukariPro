@@ -8,8 +8,18 @@
     "current_ctc_lakhs": 12,
     "expected_ctc_lakhs": 20,
     "total_experience_years": 2.5,
-    "notice_period_days": 30,
+    "notice_period_days": 15,
+    "notice_period": "15 Days or less",
     "primary_location": "Hyderabad, India",
+    "preferred_locations": [
+      "Bengaluru",
+      "Hyderabad",
+      "Pune",
+      "Gurugram",
+      "Noida",
+      "Mumbai",
+      "Chennai"
+    ],
     "target_title": "Azure Data Engineer",
     "linkedin": "linkedin.com/in/lavkushry",
     "github": "github.com/lavkushry",
@@ -31,10 +41,15 @@
       "Data Engineer"
     ],
     "locations": [
-      "hyderabad",
-      "bangalore",
       "bengaluru",
+      "bangalore",
+      "hyderabad",
       "pune",
+      "gurugram",
+      "gurgaon",
+      "noida",
+      "mumbai",
+      "chennai",
       "remote"
     ],
     "max_experience": 4,
@@ -184,7 +199,9 @@
     "sql_experience": "2.5",
     "kubernetes_experience": "2.5",
     "terraform_experience": "2",
-    "notice_period": "30 days",
+    "notice_period": "15 days",
+    "notice_period_detail": "15 Days or less",
+    "preferred_locations": "Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai",
     "current_location": "Hyderabad",
     "relocation": "Yes"
   },

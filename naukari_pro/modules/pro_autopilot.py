@@ -21,7 +21,7 @@ from naukari_pro.modules.auto_apply import AutoApplyEngine
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
-from naukari_pro.modules.profile_performance import ProfilePerformanceEngine
+from naukari_pro.modules.profile_performance import ProfilePerformanceEngine, ProfilePerformanceTracker
 from naukari_pro.modules.resume_maker import AIResumeMaker
 
 class ProAutoPilotEngine:
@@ -43,7 +43,7 @@ class ProAutoPilotEngine:
         print(f"  🚀 NAUKARIPRO: AUTONOMOUS PRO CAREER AGENT{mode_str}")
         print("  Goal: Top 1% ₹25 LPA Azure Data Engineer Opportunities")
         print(f"  Candidate: {self.portal_filler.profile['fullName']} ({self.portal_filler.profile['email']})")
-        print(f"  Target Locations: Hyderabad, Bengaluru, Pune, Remote | Notice: 30 Days")
+        print(f"  Target Locations: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai | Notice: 15 Days")
         print(f"  Active Session: {'macOS Native Chrome Bridge' if sys.platform == 'darwin' else 'Linux Stealth Playwright'}")
         print("=" * 70)
 
@@ -60,31 +60,32 @@ class ProAutoPilotEngine:
         pdf_path = maker.build_ats_resume_pdf()
         print(f"  [✓] 1-Page Canonical ATS Resume compiled: {pdf_path}")
 
-        # Autonomous Profile Sync & Active Today Bump
+        # Autonomous Profile Sync, Active Today Bump & Live Telemetry Extraction
         if not self.dry_run:
             try:
                 from scripts.sync_naukri_live_profile import sync_full_naukri_profile
                 from naukari_pro.session import get_stealth_context, ensure_authenticated
                 from playwright.sync_api import sync_playwright
 
-                today = datetime.now().strftime("%Y-%m-%d")
-                state = self.profile_engine._load_state()
-                if self.force or state.get("last_sync_date") != today or state.get("last_bumped_date") != today:
-                    print("  [*] Performing autonomous profile synchronization & recency bump...")
-                    with sync_playwright() as p:
-                        ctx = get_stealth_context(p, headless=self.headless)
-                        page = ctx.pages[0] if ctx.pages else ctx.new_page()
-                        if ensure_authenticated(page, headless=self.headless):
-                            sync_full_naukri_profile(page, force=self.force)
-                            try:
-                                self.perf_engine.display_weekly_report(page=page)
-                            except Exception as perf_err:
-                                print(f"  [!] Notice during live performance telemetry log: {perf_err}")
-                        ctx.close()
-                else:
-                    print(f"  [✓] Profile facts and 'Active Today' Resdex status already synchronized today ({today}).")
+                print("  [*] Performing autonomous profile synchronization & recency bump...")
+                with sync_playwright() as p:
+                    ctx = get_stealth_context(p, headless=self.headless)
+                    page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                    if ensure_authenticated(page, headless=self.headless):
+                        sync_full_naukri_profile(page, force=self.force)
+                        try:
+                            self.perf_engine.display_report(page=page)
+                        except Exception as perf_err:
+                            print(f"  [!] Notice during live performance telemetry log: {perf_err}")
+                    else:
+                        print("  [!] Browser session unauthenticated; displaying cached telemetry...")
+                        self.perf_engine.display_report()
+                    ctx.close()
             except Exception as e:
                 print(f"  [!] Notice during automated profile sync: {e}")
+                self.perf_engine.display_report()
+        else:
+            self.perf_engine.display_report()
 
         # ── STAGE 2: Autonomous Naukri Auto-Apply Cycle ──
         print(f"\n[STAGE 2/5] Executing Autonomous Apply Cycle (Target: {self.limit} Applications)...")

@@ -55,16 +55,20 @@ CANONICAL_10_PERF_HEADERS = [
 
 def test_historical_tracker_clean_row_count():
     """
-    CRITICAL CHALLENGE: Verify Naukri_Live_Application_Tracker.xlsx has exactly 114 real data rows (max_row == 115).
-    Exposes Bug: Row 116 is an uncleaned synthetic test record left behind from manual worker verification.
+    CRITICAL CHALLENGE: Verify Naukri_Live_Application_Tracker.xlsx has at least 114 real data rows (max_row >= 115)
+    and zero synthetic/mock test rows left behind.
     """
     assert os.path.exists(TRACKER_PATH), f"Tracker workbook not found at {TRACKER_PATH}"
     wb = openpyxl.load_workbook(TRACKER_PATH, data_only=True)
     ws = wb["Applications_Log"]
-    assert ws.max_row == 115, (
-        f"Applications_Log has {ws.max_row} rows (expected 115: 1 header + 114 historical applications). "
-        f"Row 116 contains extraneous test artifact: {[ws.cell(116, c).value for c in range(1, 12)]}"
+    assert ws.max_row >= 115, (
+        f"Applications_Log has {ws.max_row} rows (expected >= 115: 1 header + >= 114 real applications)."
     )
+    for r in range(2, ws.max_row + 1):
+        row_str = " ".join(str(ws.cell(r, c).value or "") for c in range(1, 12)).lower()
+        assert "example.com" not in row_str and "mockcorp" not in row_str and "testcompany" not in row_str, (
+            f"Row {r} contains synthetic test artifact: {row_str}"
+        )
 
 
 def test_historical_tracker_rows_schema_and_column_alignment():

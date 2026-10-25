@@ -31,6 +31,12 @@ from naukari_pro.modules.career_portals import (
 from naukari_pro.modules.multi_search import (
     UniversalJobSearchEngine
 )
+from naukari_pro.modules.profile_performance import (
+    ProfilePerformanceEngine,
+    ProfilePerformanceTracker,
+    compute_benchmark_pacing
+)
+from naukari_pro.modules.pro_autopilot import ProAutoPilotEngine
 
 
 # ==============================================================================
@@ -193,7 +199,7 @@ def test_f12_career_portal_fill_dry_run():
     assert payload.dry_run is True
     assert payload.answers["first_name"] == "Lavkush"
     assert payload.answers["experience"] == "2.5"
-    assert payload.answers["notice_period"] == "30"
+    assert payload.answers["notice_period"] == "15"
 
 
 def test_f12_career_portal_unified_fill_dry_run():
@@ -318,4 +324,187 @@ def test_f12_sub_threshold_match_score_gate_without_raw_jd():
     )
     assert payload.match_score == 0
     assert payload.status == "REJECTED_BELOW_THRESHOLD"
+
+
+# ==============================================================================
+# FEATURE 14: LIVE AUTHENTICATED NAUKRI ANALYTICS EXTRACTION
+# ==============================================================================
+
+def test_f14_profile_performance_tracker_alias_and_methods():
+    """Validates ProfilePerformanceTracker alias and display_report / generate_report methods."""
+    assert ProfilePerformanceTracker is ProfilePerformanceEngine
+    tracker = ProfilePerformanceTracker()
+    assert hasattr(tracker, "display_report")
+    assert hasattr(tracker, "generate_report")
+    report = tracker.display_report()
+    assert isinstance(report, dict)
+    assert "search_appearances" in report
+    assert "data_source" in report
+
+
+def test_f14_fetch_live_performance_targets_correct_url_and_extracts_metrics():
+    """Validates fetch_live_performance visits https://www.naukri.com/mnjuser/performance and parses DOM."""
+    import re
+    engine = ProfilePerformanceEngine()
+    mock_page = MagicMock()
+    mock_page.url = "https://www.naukri.com/mnjuser/performance"
+
+    class MockElement:
+        def __init__(self, text, count=1, visible=True):
+            self._text = text
+            self._count = count
+            self._visible = visible
+        def count(self):
+            return self._count
+        def is_visible(self):
+            return self._visible
+        def inner_text(self):
+            return self._text
+        @property
+        def first(self):
+            return self
+        def all(self):
+            return [self] if self._count > 0 else []
+        def locator(self, sel):
+            if "tag-count" in sel or "ja-tag-count" in sel:
+                m = re.search(r'\b\d+\b', self._text)
+                return MockElement(m.group(0) if m else "0")
+            elif "keyword-label" in sel:
+                return MockElement(self._text)
+            return MockElement("")
+
+    def mock_locator(selector):
+        sel_lower = selector.lower()
+        if "summary-card__search-appearance--value" in sel_lower:
+            return MockElement("621")
+        elif "search-appearances-droop" in sel_lower:
+            return MockElement("33 Search appearances in last")
+        elif "summary-card__recruiter-actions--value" in sel_lower:
+            return MockElement("21")
+        elif "ja-tag" in sel_lower:
+            tags = [
+                MockElement("Naukri profile viewed 7"),
+                MockElement("Contact viewed 4"),
+                MockElement("Resume downloaded 2"),
+                MockElement("NVite sent 12"),
+                MockElement("Profile bookmarked 1")
+            ]
+            m_list = MagicMock()
+            m_list.all.return_value = tags
+            return m_list
+        elif "search-keyword-card" in sel_lower:
+            keywords = [
+                MockElement("Kubernetes"),
+                MockElement("Aws Cloud Or Chennai"),
+                MockElement("Databricks"),
+                MockElement("Pipeline"),
+                MockElement("Qa/qc Engineer")
+            ]
+            m_list = MagicMock()
+            m_list.all.return_value = keywords
+            return m_list
+        elif "body" in sel_lower:
+            return MockElement(
+                "621 Search appearances 21 Recruiter actions "
+                "33 Search appearances in last 7 days "
+                "Profile viewed 7 Contact viewed 4 Resume downloaded 2 NVite sent 12 Profile bookmarked 1"
+            )
+        return MockElement("", count=0, visible=False)
+
+    mock_page.locator.side_effect = mock_locator
+
+    with patch.object(engine, "log_performance_snapshot") as mock_log:
+        metrics = engine.fetch_live_performance(mock_page)
+
+    mock_page.goto.assert_called_once()
+    target_url = mock_page.goto.call_args[0][0]
+    assert target_url == "https://www.naukri.com/mnjuser/performance"
+    assert "/profile-performance" not in target_url
+
+    assert metrics["search_appearances_90d"] == 621
+    assert metrics["search_appearances_7d"] == 33
+    assert metrics["search_appearances"] == 621
+    assert metrics["recruiter_actions"] == 21
+    assert metrics["profile_views"] == 7
+    assert metrics["contact_views"] == 4
+    assert metrics["resume_downloads"] == 2
+    assert metrics["nvites"] == 12
+    assert metrics["recruiter_bookmarks"] == 1
+    assert "Kubernetes" in metrics["search_terms"]
+    assert "Databricks" in metrics["search_terms"]
+    mock_log.assert_called_once_with(metrics)
+
+
+# ==============================================================================
+# FEATURE 15: RECRUITER PERFORMANCE LOG CANONICAL 10-COLUMN SCHEMA
+# ==============================================================================
+
+def test_f15_recruiter_performance_log_canonical_10_column_persistence(tmp_path):
+    """Validates Recruiter_Performance_Log logs with canonical 10-column schema."""
+    import openpyxl
+    tracker_file = str(tmp_path / "test_tracker.xlsx")
+    json_file = str(tmp_path / "test_history.json")
+
+    engine = ProfilePerformanceEngine()
+    sample_metrics = {
+        "timestamp": "2026-10-25 18:00",
+        "search_appearances": 621,
+        "search_appearances_90d": 621,
+        "search_appearances_7d": 33,
+        "recruiter_actions": 21,
+        "profile_views": 7,
+        "resume_downloads": 2,
+        "contact_views": 4,
+        "nvites": 12,
+        "recruiter_bookmarks": 1,
+        "search_terms": ["Kubernetes", "Databricks"],
+        "data_source": "Live Naukri Portal"
+    }
+
+    ok = engine.log_performance_snapshot(sample_metrics, tracker_path=tracker_file, history_file=json_file)
+    assert ok is True
+
+    wb = openpyxl.load_workbook(tracker_file)
+    assert "Recruiter_Performance_Log" in wb.sheetnames
+    ws = wb["Recruiter_Performance_Log"]
+    headers = [cell.value for cell in ws[1]]
+    assert len(headers) == 10
+    expected_headers = [
+        "Timestamp",
+        "Search Appearances",
+        "Profile Views",
+        "Resume Downloads",
+        "Contact Views",
+        "CTR (%)",
+        "Contact Conv (%)",
+        "Daily Pace (req 3333)",
+        "Projected 30d Volume",
+        "Pacing Status"
+    ]
+    assert headers == expected_headers
+
+    row2 = [cell.value for cell in ws[2]]
+    assert row2[0] == "2026-10-25 18:00"
+    assert row2[1] == 621
+    assert row2[2] == 7
+    assert row2[3] == 2
+    assert row2[4] == 4
+    assert row2[9] in ["DEFICIT", "ON_TRACK", "AHEAD"]
+
+
+# ==============================================================================
+# FEATURE 16: AUTOPILOT & CLI LIVE TELEMETRY INTEGRATION
+# ==============================================================================
+
+def test_f16_pro_autopilot_telemetry_wiring():
+    """Validates that ProAutoPilotEngine initializes with perf_engine and runs dry_run cleanly."""
+    autopilot = ProAutoPilotEngine(limit=2, dry_run=True)
+    assert isinstance(autopilot.perf_engine, ProfilePerformanceEngine)
+    assert hasattr(autopilot.perf_engine, "display_report")
+
+    summary = autopilot.run_full_pipeline()
+    assert isinstance(summary, dict)
+    assert "applied_count" in summary
+    assert "total_tracked" in summary
+
 

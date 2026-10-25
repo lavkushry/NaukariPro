@@ -10,6 +10,8 @@ from naukari_pro.config import load_config
 
 logger = logging.getLogger("naukariPro.EarlyAccess")
 
+from naukari_pro.modules.auto_apply import calculate_match_score, MATCH_SCORE_THRESHOLD
+
 class EarlyAccessEngine:
     def __init__(self):
         self.cfg = load_config()
@@ -21,6 +23,7 @@ class EarlyAccessEngine:
         """
         logger.info("Scanning for authentic Early Access roles and NVite recruiter invitations...")
         early_roles = []
+        early_vacancies = []
         nvites = []
         profile_status = "Not detected on page"
 
@@ -55,6 +58,16 @@ class EarlyAccessEngine:
                 txt = c.inner_text().strip().replace("\n", " | ")
                 if txt and txt not in early_roles:
                     early_roles.append(txt)
+                    link_el = c.locator("a[href*='job-listings'], a[href*='naukri.com'], a").first
+                    href = link_el.get_attribute("href") if link_el.count() > 0 else ""
+                    score = calculate_match_score(txt)
+                    early_vacancies.append({
+                        "title": txt[:60],
+                        "company": "Early Access Employer",
+                        "url": href,
+                        "match_score": score,
+                        "raw_text": txt
+                    })
 
         except Exception as e:
             logger.warning("Homepage scan notice: %s", e)
@@ -65,10 +78,20 @@ class EarlyAccessEngine:
             time.sleep(2)
             if "login" not in page.url:
                 msg_cards = page.locator(".msg-card, .inbox-tuple, div[class*='messageTuple'], div[class*='inboxCard']").all()
-                for mc in msg_cards[:5]:
+                for mc in msg_cards:
                     txt = mc.inner_text().strip().replace("\n", " | ")
                     if txt and txt not in nvites:
                         nvites.append(f"Inbox Inquiry: {txt}")
+                        link_el = mc.locator("a[href*='job-listings'], a[href*='naukri.com'], a").first
+                        href = link_el.get_attribute("href") if link_el.count() > 0 else "https://www.naukri.com/mnjuser/inbox"
+                        score = calculate_match_score(txt)
+                        early_vacancies.append({
+                            "title": txt[:60],
+                            "company": "Direct Recruiter NVite",
+                            "url": href,
+                            "match_score": score,
+                            "raw_text": txt
+                        })
         except Exception as e:
             logger.debug("Inbox check notice: %s", e)
 
@@ -76,6 +99,7 @@ class EarlyAccessEngine:
         return {
             "early_roles_detected": len(early_roles),
             "early_roles": early_roles,
+            "early_vacancies": early_vacancies,
             "nvites": nvites,
             "profile_status": profile_status
         }
