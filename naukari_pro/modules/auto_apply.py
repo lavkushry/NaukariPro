@@ -676,64 +676,112 @@ class PlaywrightRunner:
 
     async def handle_chatbot(self, page):
         """
-        Handles the screening chatbot questions.
-        Returns True ONLY if an unequivocal submission confirmation is observed.
+        Handles the screening chatbot questions using native Playwright keyboard events.
+        Returns True ONLY if an unequivocal submission confirmation or redirect is observed.
         """
         has_drawer = False
-        for _ in range(5):
-            await page.wait_for_timeout(300)
+        for _ in range(12):
+            await page.wait_for_timeout(450)
+            if "saveapply" in page.url.lower() or "myapply" in page.url.lower():
+                return True
             has_drawer = await page.evaluate("() => !!document.querySelector('.chatbot_Drawer, [class*=\"chatbot_Drawer\"]')")
             if has_drawer:
                 break
 
         if not has_drawer:
-            # Check if button changed to Applied or a success toast appeared
             is_confirmed = await page.evaluate("""() => {
-                const toast = document.querySelector('.apply-message, .success-msg, [class*="applySuccess"], [class*="applied-msg"]');
+                if (window.location.href.toLowerCase().includes('saveapply') || window.location.href.toLowerCase().includes('myapply')) return true;
+                const toast = document.querySelector('.apply-message, .success-msg, [class*="applySuccess"], [class*="applied-msg"], [class*="apply-status"]');
                 const btn = document.querySelector('button#apply-button, .styles_apply-button__uJI3A, button.apply-button');
                 const btnTxt = btn ? (btn.innerText || '').toLowerCase() : '';
-                return !!toast || btnTxt.includes('applied');
+                const bodyTxt = (document.body ? document.body.innerText : '').toLowerCase();
+                return !!toast || btnTxt.includes('applied') || bodyTxt.includes('successfully applied');
             }""")
             return is_confirmed
 
         print("  💬 Screening Chatbot detected — auto-answering questions...")
-        for _ in range(8):
-            await page.wait_for_timeout(400)
-            status = await page.evaluate("""() => {
-                const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
-                if (!drawer) return { isApplied: false };
-                const txt = drawer.innerText.toLowerCase();
-                return { isApplied: txt.includes('submitted') || txt.includes('sent') || txt.includes('applied') };
-            }""")
-            if status.get("isApplied"):
+        for _ in range(10):
+            await page.wait_for_timeout(900)
+            if "saveapply" in page.url.lower() or "myapply" in page.url.lower():
                 return True
 
-            await page.evaluate(f"""() => {{
+            status = await page.evaluate("""() => {
                 const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
-                if (!drawer) return;
-                const radios = Array.from(drawer.querySelectorAll('.ssrc__label, label'));
-                if (radios.length > 0) {{
-                    radios[0].click();
-                }}
-                const txt = drawer.querySelector('div.textArea[contenteditable="true"], input[type="text"], textarea');
-                if (txt) {{
-                    txt.focus();
-                    txt.innerText = '{EXPERIENCE_YEARS}';
-                    txt.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                }}
-                const send = drawer.querySelector('.sendMsg, .send, button[type="submit"]');
-                if (send) send.click();
-            }}""")
+                if (!drawer) return { closed: true, isApplied: false, qText: '' };
+                const txt = drawer.innerText.toLowerCase();
+                const items = Array.from(drawer.querySelectorAll('li.botItem, .botMsg'));
+                const lastQ = items.length ? items[items.length - 1].innerText.trim() : '';
+                const done = (
+                    txt.includes('thank you for your responses') ||
+                    txt.includes('successfully applied') ||
+                    txt.includes('application submitted') ||
+                    lastQ.toLowerCase().includes('thank you for your responses')
+                );
+                return { closed: false, isApplied: done, qText: lastQ };
+            }""")
+            if status.get("isApplied"):
+                await page.wait_for_timeout(1000)
+                return True
+            if status.get("closed"):
+                if "saveapply" in page.url.lower() or "myapply" in page.url.lower():
+                    return True
+                break
 
-        # Final confirmation check
+            q_lower = (status.get("qText") or "").lower()
+            clicked_radio = await page.evaluate("""() => {
+                const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
+                if (!drawer) return false;
+                const radios = Array.from(drawer.querySelectorAll('.ssrc__label, .multicheckboxes-container label, .singleSelectRadioButton label, input[type="radio"] + label')).filter(e => e.offsetWidth > 0);
+                if (radios.length > 0) {
+                    radios[0].click();
+                    return true;
+                }
+                return false;
+            }""")
+
+            if not clicked_radio:
+                try:
+                    inp = page.locator('.chatbot_Drawer div.textArea, .chatbot_Drawer input[type="text"], .chatbot_Drawer textarea').first
+                    if await inp.count() > 0 and await inp.is_visible():
+                        await inp.click(timeout=2000)
+                        if "mention na" in q_lower or "employee id" in q_lower or "ex-" in q_lower:
+                            ans = "NA"
+                        elif "current" in q_lower and ("ctc" in q_lower or "salary" in q_lower):
+                            ans = str(CURRENT_CTC)
+                        elif "expected" in q_lower and ("ctc" in q_lower or "salary" in q_lower):
+                            ans = str(EXPECTED_CTC)
+                        elif "notice" in q_lower:
+                            ans = str(NOTICE_PERIOD)
+                        elif "location" in q_lower or "city" in q_lower:
+                            ans = "Hyderabad"
+                        else:
+                            ans = str(EXPERIENCE_YEARS)
+                        await page.keyboard.press("Control+A")
+                        await page.keyboard.press("Backspace")
+                        await page.keyboard.type(ans, delay=30)
+                except Exception:
+                    pass
+
+            await page.wait_for_timeout(250)
+            await page.evaluate("""() => {
+                const send = document.querySelector('.chatbot_Drawer .sendMsg:not(.disabled), .chatbot_Drawer .send:not(.disabled), .chatbot_Drawer button[type="submit"]:not([disabled])');
+                if (send && send.offsetWidth > 0) send.click();
+            }""")
+
+        await page.wait_for_timeout(1200)
+        if "saveapply" in page.url.lower() or "myapply" in page.url.lower():
+            return True
+
         final_check = await page.evaluate("""() => {
+            if (window.location.href.toLowerCase().includes('saveapply') || window.location.href.toLowerCase().includes('myapply')) return true;
             const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
             if (drawer) {
                 const t = drawer.innerText.toLowerCase();
-                if (t.includes('submitted') || t.includes('sent') || t.includes('applied')) return true;
+                if (t.includes('thank you for your responses') || t.includes('submitted') || t.includes('successfully applied')) return true;
             }
             const toast = document.querySelector('.apply-message, .success-msg, [class*="applySuccess"]');
-            return !!toast;
+            const bodyTxt = (document.body ? document.body.innerText : '').toLowerCase();
+            return !!toast || bodyTxt.includes('successfully applied') || bodyTxt.includes('apply confirmation');
         }""")
         return final_check
 
@@ -772,8 +820,12 @@ class PlaywrightRunner:
 
             apply_btn = await job_tab.query_selector("button#apply-button, .styles_apply-button__uJI3A, button.apply-button")
             if apply_btn:
-                await apply_btn.click()
-                await job_tab.wait_for_timeout(2000)
+                await job_tab.evaluate("""() => {
+                    for (const b of document.querySelectorAll('button#apply-button, .styles_apply-button__uJI3A, button.apply-button')) {
+                        if (b.offsetWidth > 0) b.click();
+                    }
+                }""")
+                await job_tab.wait_for_timeout(2500)
                 confirmed = await self.handle_chatbot(job_tab)
                 if confirmed:
                     print(f"    ✓ Successfully applied to {title} @ {company}!")
@@ -935,7 +987,13 @@ class PlaywrightRunner:
                                         await detail_tab.wait_for_timeout(1800)
                                         full_body = await detail_tab.evaluate("() => document.body ? document.body.innerText : ''")
                                         if full_body:
-                                            raw_jd = f"{raw_jd} {full_body}".strip()
+                                            fb_low = full_body.lower()
+                                            synonym_tags = []
+                                            if any(k in fb_low for k in ("adf", "data factory", "synapse", "fabric", "azure")):
+                                                synonym_tags.append("azure")
+                                            if any(k in fb_low for k in ("delta", "lakehouse", "medallion", "parquet", "etl", "data pipeline")):
+                                                synonym_tags.append("delta lake")
+                                            raw_jd = f"{raw_jd} {full_body} {' '.join(synonym_tags)}".strip()
                                             is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
                                     except Exception:
                                         pass
