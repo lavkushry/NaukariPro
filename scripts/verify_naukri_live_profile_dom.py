@@ -175,8 +175,8 @@ def verify_live_profile_dom(page, cfg=None):
     # ── 4. Notice Period ──
     np_text = ""
     try:
-        emp_text = page.locator("#lazyEmployment").inner_text() if page.locator("#lazyEmployment").count() > 0 else ""
-        cp_text = page.locator("#lazyCareerProfile, .desiredProfile").inner_text() if page.locator("#lazyCareerProfile, .desiredProfile").count() > 0 else ""
+        emp_text = page.locator("#lazyEmployment").first.inner_text() if page.locator("#lazyEmployment").count() > 0 else ""
+        cp_text = page.locator("#lazyCareerProfile, .desiredProfile").first.inner_text() if page.locator("#lazyCareerProfile, .desiredProfile").count() > 0 else ""
         np_combined = f"{emp_text} {cp_text}"
         if "15 day" in np_combined.lower() or "15 days" in np_combined.lower() or "immediate" in np_combined.lower():
             np_text = "15 Days or less / 15 days"

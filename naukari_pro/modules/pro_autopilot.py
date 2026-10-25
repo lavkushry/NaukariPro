@@ -72,7 +72,9 @@ class ProAutoPilotEngine:
                     ctx = get_stealth_context(p, headless=self.headless)
                     page = ctx.pages[0] if ctx.pages else ctx.new_page()
                     if ensure_authenticated(page, headless=self.headless):
-                        sync_full_naukri_profile(page, force=self.force)
+                        sync_full_naukri_profile(page, force=False)
+                        if self.force:
+                            self.profile_engine.bump_profile(page, force=True)
                         try:
                             self.perf_engine.display_report(page=page)
                         except Exception as perf_err:

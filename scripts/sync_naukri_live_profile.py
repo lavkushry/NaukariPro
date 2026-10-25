@@ -463,8 +463,17 @@ def sync_notice_period(page, target_notice="15 Days or less"):
                 edit_btn.click()
                 time.sleep(2)
 
+                np_for = page.locator('#noticePeriodFor').first
                 np_loc = page.locator('#noticePeriod, select[name="noticePeriod"], [name="noticePeriod"], .noticePeriod select').first
-                if np_loc.count() > 0 and np_loc.is_visible():
+                if np_for.count() > 0 and np_for.is_visible():
+                    np_for.click()
+                    time.sleep(1)
+                    opt = page.locator('#ul_noticePeriod li:has-text("15 Days"), ul.droope-list li:has-text("15 Days"), .droope-list a:has-text("15 Days")').first
+                    if opt.count() > 0 and opt.is_visible():
+                        opt.click()
+                        logger.info("Selected 15 Days or less via #noticePeriodFor.")
+                        time.sleep(0.5)
+                elif np_loc.count() > 0 and np_loc.is_visible():
                     try:
                         options = np_loc.locator('option').all_inner_texts()
                         match_opt = next((o for o in options if "15" in o), None)
@@ -582,8 +591,9 @@ def sync_preferred_locations(page, locations=None):
         except Exception as e:
             logger.warning("Could not add location %s: %s", loc, e)
 
-    save_btn = page.locator('#submitDesiredProfile, #submitCareerProfile, button:has-text("Save")').first
+    save_btn = page.locator('#saveDesiredProfile, #submitDesiredProfile, #submitCareerProfile, button:has-text("Save")').first
     if save_btn.count() > 0 and save_btn.is_visible():
+        save_btn.scroll_into_view_if_needed()
         save_btn.click()
         time.sleep(4)
         logger.info("Successfully updated Preferred Locations in Career Profile.")
@@ -649,8 +659,9 @@ def sync_key_skills(page, keywords=None):
         except Exception as e:
             logger.warning("Could not add skill %s: %s", skill, e)
 
-    save_btn = page.locator('#submitKeySkills, button:has-text("Save"), .saveKeySkills').first
+    save_btn = page.locator('#saveKeySkills, #submitKeySkills, button:has-text("Save"), .saveKeySkills').first
     if save_btn.count() > 0 and save_btn.is_visible():
+        save_btn.scroll_into_view_if_needed()
         save_btn.click()
         time.sleep(4)
         logger.info("Successfully updated Key Skills.")
