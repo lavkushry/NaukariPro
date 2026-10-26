@@ -74,7 +74,7 @@ def print_menu():
     print("  [9] Early Access & NVites (Scrape Homepage & Inbox NVites)")
     print("  [S] Multi-Source Job Hunter (Search Naukri + LinkedIn + Hacker News)")
     print("  [C] Career Portal Auto-Filler (Greenhouse / Ashby / Lever / Workday)")
-    print("  [D] Run Complete Daily Autonomous Cycle (Bump + Scan + Apply + Log)")
+    print("  [D] Run Complete Daily Autonomous Cycle (Unified Naukri + LinkedIn 8-Stage Cycle)")
     print("  [G] AGY Autonomous Scheduler (Linux systemd & agy CLI schedule)")
     print("  [A] Authenticate Session (One-time Login & Cookie Persistence)")
     print("  [V] LinkedIn Session Diagnostic (Verify li_at cookie & Identity)")
@@ -85,7 +85,7 @@ def print_menu():
 
 def handle_pro(limit=10, headless=False, dry_run=False, force=False):
     engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run, force=force)
-    engine.run_full_pipeline()
+    return engine.run_full_pipeline()
 
 def handle_performance(headless=False):
     engine = ProfilePerformanceEngine()
@@ -263,35 +263,10 @@ def handle_multi_search(dry_run=False):
     engine = UniversalJobSearchEngine()
     return engine.run_multi_search(dry_run=dry_run)
 
-def handle_daily_cycle(headless=False, dry_run=False, force=False):
-    print("\n[*] Launching Complete Autonomous Daily Cycle...")
-    # 1. Profile Synchronization & Active Today Bump
-    print("\n[Step 1/3] Full Profile Synchronization & Resdex Recency Touch...")
-    if not dry_run:
-        try:
-            from scripts.sync_naukri_live_profile import sync_full_naukri_profile
-            with sync_playwright() as p:
-                context = get_stealth_context(p, headless=headless)
-                page = context.pages[0] if context.pages else context.new_page()
-                if ensure_authenticated(page, headless=headless):
-                    sync_full_naukri_profile(page, force=force)
-                context.close()
-        except Exception as e:
-            print(f"[!] Profile sync notice: {e}. Executing standard recency bump...")
-            handle_profile(headless=headless, force=force)
-    else:
-        print("  [DRY-RUN] Simulated profile headline & skills refresh (No browser opened).")
-
-    # 2. Auto-apply
-    print("\n[Step 2/3] Autonomous Auto-Apply on Naukri...")
-    handle_auto_apply(headless=headless, limit=20, dry_run=dry_run)
-
-    # 3. Alerts
-    print("\n[Step 3/3] Scanning Instant High-Priority Alerts...")
-    if not dry_run:
-        handle_alerts(headless=headless)
-    else:
-        print("  [DRY-RUN] Simulated instant alerts scan: Found top vacancy 'Microsoft GCC hiring Lead Azure Data Engineer' (No browser opened).")
+def handle_daily_cycle(headless=False, dry_run=False, force=False, limit=20):
+    print("\n[*] Launching Complete Autonomous Daily Cycle (Unified Naukri + LinkedIn 8-Stage Pipeline)...")
+    engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run, force=force)
+    return engine.run_full_pipeline()
 
 def handle_auth():
     print("\n[*] Launching browser window for authentic Naukri login...")
@@ -848,7 +823,7 @@ def main():
     elif args.command == "hiring-trends":
         handle_hiring_trends(headless=args.headless)
     elif args.command == "daily":
-        handle_daily_cycle(headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
+        handle_daily_cycle(headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False), limit=getattr(args, "limit", 20))
     elif args.command == "portal-apply":
         handle_portal_apply(
             url=args.url,
