@@ -14,12 +14,21 @@ Provides:
 import os
 import re
 import json
+import time
+import shutil
 import inspect
 import logging
+import threading
+import copy
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Union, Tuple, Set
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 logger = logging.getLogger("naukariPro.LinkedInSearch")
 
@@ -384,6 +393,7 @@ class JobDeduplicator:
         self.applied_file = applied_file
         self.seen_file = seen_file
         self.tracker_path = tracker_path
+        self._lock = threading.Lock()
 
         self._applied_ids: Set[str] = set()
         self._applied_records: Dict[str, Dict[str, Any]] = {}
@@ -401,68 +411,91 @@ class JobDeduplicator:
         if seen_dir:
             os.makedirs(seen_dir, exist_ok=True)
 
-        # Load applied jobs
-        if os.path.exists(self.applied_file):
-            try:
-                with open(self.applied_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        self._applied_ids = {str(item).strip() for item in data}
-                    elif isinstance(data, dict):
-                        self._applied_ids = {str(item).strip() for item in data.get("applied_job_ids", [])}
-                        self._applied_records = data.get("records", {})
-            except Exception as e:
-                logger.warning("Error reading applied_jobs.json: %s", e)
+        with self._lock:
+            # Load applied jobs
+            if os.path.exists(self.applied_file):
+                try:
+                    with open(self.applied_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            self._applied_ids = {str(item).strip() for item in data}
+                        elif isinstance(data, dict):
+                            self._applied_ids = {str(item).strip() for item in data.get("applied_job_ids", [])}
+                            self._applied_records = data.get("records", {})
+                except Exception as e:
+                    logger.warning("Error reading applied_jobs.json: %s", e)
+                    corrupt_path = f"{self.applied_file}.corrupt.{int(time.time())}"
+                    try:
+                        shutil.copy2(self.applied_file, corrupt_path)
+                        logger.warning("Quarantined corrupted applied cache to %s", corrupt_path)
+                    except Exception as ce:
+                        logger.error("Failed to quarantine %s: %s", self.applied_file, ce)
+                    self._applied_ids = set()
+                    self._applied_records = {}
 
-        # Load seen jobs
-        if os.path.exists(self.seen_file):
-            try:
-                with open(self.seen_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        self._seen_ids = {str(item).strip() for item in data}
-                    elif isinstance(data, dict):
-                        self._seen_ids = {str(item).strip() for item in data.get("seen_job_ids", [])}
-                        self._seen_records = data.get("records", {})
-            except Exception as e:
-                logger.warning("Error reading seen_jobs.json: %s", e)
+            # Load seen jobs
+            if os.path.exists(self.seen_file):
+                try:
+                    with open(self.seen_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            self._seen_ids = {str(item).strip() for item in data}
+                        elif isinstance(data, dict):
+                            self._seen_ids = {str(item).strip() for item in data.get("seen_job_ids", [])}
+                            self._seen_records = data.get("records", {})
+                except Exception as e:
+                    logger.warning("Error reading seen_jobs.json: %s", e)
+                    corrupt_path = f"{self.seen_file}.corrupt.{int(time.time())}"
+                    try:
+                        shutil.copy2(self.seen_file, corrupt_path)
+                        logger.warning("Quarantined corrupted seen cache to %s", corrupt_path)
+                    except Exception as ce:
+                        logger.error("Failed to quarantine %s: %s", self.seen_file, ce)
+                    self._seen_ids = set()
+                    self._seen_records = {}
 
     def is_applied(self, job_id: str) -> bool:
         """Returns True if job_id was already applied to in this or any prior run."""
         clean_id = str(job_id).strip()
-        return clean_id in self._applied_ids
+        with self._lock:
+            return clean_id in self._applied_ids
 
     def is_seen(self, job_id: str) -> bool:
         """Returns True if job_id was already evaluated during search harvesting."""
         clean_id = str(job_id).strip()
-        return clean_id in self._seen_ids or clean_id in self._applied_ids
+        with self._lock:
+            return clean_id in self._seen_ids or clean_id in self._applied_ids
 
     def mark_applied(self, job_id: str, job_info: Optional[Dict[str, Any]] = None) -> None:
         """Records an authentic application into in-memory set and flushes atomically to disk."""
         clean_id = str(job_id).strip()
-        self._applied_ids.add(clean_id)
-        info = dict(job_info or {})
-        info["applied_at"] = datetime.now(timezone.utc).isoformat()
-        self._applied_records[clean_id] = info
-        self._atomic_save(self.applied_file, {
-            "applied_job_ids": sorted(list(self._applied_ids)),
-            "records": self._applied_records,
-            "last_updated": datetime.now(timezone.utc).isoformat()
-        })
+        with self._lock:
+            self._applied_ids.add(clean_id)
+            info = dict(job_info or {})
+            info["applied_at"] = datetime.now(timezone.utc).isoformat()
+            self._applied_records[clean_id] = info
+            data_to_save = {
+                "applied_job_ids": sorted(list(self._applied_ids)),
+                "records": copy.deepcopy(self._applied_records),
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+        self._atomic_save(self.applied_file, data_to_save)
 
     def mark_seen(self, job_id: str, job_info: Optional[Dict[str, Any]] = None, status: str = "EVALUATED") -> None:
         """Records a job as seen/evaluated with its status (e.g. SKIPPED_LOW_MATCH)."""
         clean_id = str(job_id).strip()
-        self._seen_ids.add(clean_id)
-        info = dict(job_info or {})
-        info["status"] = status
-        info["seen_at"] = datetime.now(timezone.utc).isoformat()
-        self._seen_records[clean_id] = info
-        self._atomic_save(self.seen_file, {
-            "seen_job_ids": sorted(list(self._seen_ids)),
-            "records": self._seen_records,
-            "last_updated": datetime.now(timezone.utc).isoformat()
-        })
+        with self._lock:
+            self._seen_ids.add(clean_id)
+            info = dict(job_info or {})
+            info["status"] = status
+            info["seen_at"] = datetime.now(timezone.utc).isoformat()
+            self._seen_records[clean_id] = info
+            data_to_save = {
+                "seen_job_ids": sorted(list(self._seen_ids)),
+                "records": copy.deepcopy(self._seen_records),
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+        self._atomic_save(self.seen_file, data_to_save)
 
     def get_unseen(self, job_ids: List[str]) -> List[str]:
         """Returns subset of job_ids that are not yet seen or applied."""
@@ -533,27 +566,82 @@ class JobDeduplicator:
                 new_records[jid] = rec
                 new_ids.add(jid)
         if pruned_count > 0:
-            self._seen_records = new_records
-            self._seen_ids = new_ids
-            self._atomic_save(self.seen_file, {
-                "seen_job_ids": sorted(list(self._seen_ids)),
-                "records": self._seen_records,
-                "last_updated": datetime.now(timezone.utc).isoformat()
-            })
+            with self._lock:
+                self._seen_records = new_records
+                self._seen_ids = new_ids
+                data_to_save = {
+                    "seen_job_ids": sorted(list(self._seen_ids)),
+                    "records": copy.deepcopy(self._seen_records),
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                }
+            self._atomic_save(self.seen_file, data_to_save)
         return pruned_count
 
     def _atomic_save(self, file_path: str, data: Dict[str, Any]) -> None:
-        """Writes to a temporary file and atomically renames to target file."""
-        tmp_path = f"{file_path}.tmp"
+        """Writes to a unique temporary file and atomically renames to target file with file locking."""
+        dir_name = os.path.dirname(os.path.abspath(file_path))
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+
+        lock_path = f"{file_path}.lock"
+        tmp_path = f"{file_path}.tmp.{os.getpid()}.{threading.get_ident()}.{time.time_ns()}"
+
+        lock_fd = None
         try:
+            if fcntl is not None:
+                lock_fd = open(lock_path, "w")
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+
+            # Merge any concurrent on-disk updates before writing
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as existing_f:
+                        disk_data = json.load(existing_f)
+                        if isinstance(disk_data, dict):
+                            if "applied_job_ids" in data:
+                                disk_ids = set(str(x).strip() for x in disk_data.get("applied_job_ids", []))
+                                merged_ids = disk_ids.union(data["applied_job_ids"])
+                                disk_records = disk_data.get("records", {})
+                                merged_records = dict(disk_records)
+                                merged_records.update(data.get("records", {}))
+                                data["applied_job_ids"] = sorted(list(merged_ids))
+                                data["records"] = merged_records
+                                with self._lock:
+                                    self._applied_ids.update(merged_ids)
+                                    self._applied_records.update(merged_records)
+                            elif "seen_job_ids" in data:
+                                disk_ids = set(str(x).strip() for x in disk_data.get("seen_job_ids", []))
+                                merged_ids = disk_ids.union(data["seen_job_ids"])
+                                disk_records = disk_data.get("records", {})
+                                merged_records = dict(disk_records)
+                                merged_records.update(data.get("records", {}))
+                                data["seen_job_ids"] = sorted(list(merged_ids))
+                                data["records"] = merged_records
+                                with self._lock:
+                                    self._seen_ids.update(merged_ids)
+                                    self._seen_records.update(merged_records)
+                except Exception as e:
+                    logger.debug("Could not merge existing file %s: %s", file_path, e)
+
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+                json.dump(data, f, indent=2, default=str)
+                f.flush()
+                os.fsync(f.fileno())
+
             os.replace(tmp_path, file_path)
         except Exception as e:
             logger.error("Failed atomic write to %s: %s", file_path, e)
             if os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
+                except Exception:
+                    pass
+        finally:
+            if lock_fd is not None:
+                try:
+                    if fcntl is not None:
+                        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+                    lock_fd.close()
                 except Exception:
                     pass
 
@@ -586,7 +674,8 @@ class JobMatchScorer:
     NEGATIVE_TITLE_PATTERNS: List[str] = [
         r"\b(frontend|front-end|react|angular|vue|ui[/-]ux|designer|web developer)\b",
         r"\b(android|ios|swift|flutter|mobile developer)\b",
-        r"\b(sales|marketing|account executive|business development|recruiter|talent acquisition|hr executive|content writer)\b",
+        r"\b(hr|human\s+resources|recruiter|recruiting|sourcing|talent\s+acquisition|headhunter)\b",
+        r"\b(financial|finance|accounting|auditor|compliance|legal|sales|marketing|account\s+manager|account\s+executive|business\s+development|content\s+writer|copywriter|wordpress)\b",
         r"\b(director|vp|vice president|head of data|engineering manager|principal|staff engineer|chief architect)\b",
         r"\b(embedded|firmware|hardware|mechanical|civil)\b",
     ]
@@ -623,19 +712,171 @@ class JobMatchScorer:
         r"\bsoftware\s+engineer\s*-\s*data\b",
     ]
 
+    def _evaluate_title(self, job_title: str) -> Tuple[float, float, bool, List[str]]:
+        """
+        Evaluates title alignment against engineering taxonomy and negative patterns.
+        Returns: (title_score, penalty, disqualified, reasons)
+        """
+        title_clean = str(job_title or "").strip()
+        title_lower = title_clean.lower()
+        reasons: List[str] = []
+        title_score = 0.0
+        penalty = 0.0
+        disqualified = False
+
+        # Evaluate NEGATIVE_TITLE_PATTERNS FIRST
+        for pat in self.NEGATIVE_TITLE_PATTERNS:
+            m = re.search(pat, title_lower)
+            if m:
+                title_score = 0.0
+                penalty = 50.0
+                disqualified = True
+                reasons.append(
+                    f"DISQUALIFIED_TITLE: Title '{title_clean}' matched negative pattern '{m.group(0)}' (-50pt penalty)"
+                )
+                return title_score, penalty, disqualified, reasons
+
+        # Positive Title Tiers
+        if any(re.search(pat, title_lower) for pat in self.TIER1_TITLE_PATTERNS):
+            title_score = 35.0
+            reasons.append("TITLE_MATCH_TIER1: Direct title alignment with Azure Data Engineer profile (35.0/35.0)")
+        elif any(re.search(pat, title_lower) for pat in self.TIER2_TITLE_PATTERNS):
+            title_score = 26.25
+            reasons.append("TITLE_MATCH_TIER2: General Data Engineering title alignment (26.25/35.0)")
+        elif any(re.search(pat, title_lower) for pat in self.TIER3_TITLE_PATTERNS):
+            title_score = 14.0
+            reasons.append("TITLE_MATCH_TIER3: Adjacent technical title alignment (14.0/35.0)")
+        elif re.search(r"\b(software\s+engineer|data\s+analyst|bi\s+analyst|business\s+intelligence\s+analyst|etl\s+developer|data\s+consultant)\b", title_lower):
+            title_score = 5.25
+            reasons.append("TITLE_MATCH_TIER4: Generic technical title (5.25/35.0)")
+        else:
+            title_score = 0.0
+            reasons.append("TITLE_MATCH_NONE: Title did not match data engineering taxonomy (0.0/35.0)")
+
+        return title_score, penalty, disqualified, reasons
+
+    def _extract_experience(self, jd_text: str, title_text: str = "") -> Tuple[float, Optional[str], float, List[str]]:
+        """
+        Extracts and scores required experience with ReDoS-bounded regexes.
+        Returns: (exp_score, extracted_exp, exp_penalty, reasons)
+        """
+        jd_lower = str(jd_text or "").lower()
+        title_lower = str(title_text or "").lower()
+        reasons: List[str] = []
+        exp_score = 0.0
+        exp_penalty = 0.0
+        extracted_exp = None
+
+        # Bounded quantifiers preventing ReDoS catastrophic backtracking
+        range_match = re.search(
+            r"\b(\d{1,2}(?:\.\d+)?)\s*(?:-|to)\s*(\d{1,2}(?:\.\d+)?)\s*(?:\+)?\s*(?:years|yrs|year|yr)\b",
+            jd_lower
+        )
+        plus_match = re.search(
+            r"(?:min|minimum|at least)?\s*(\d{1,2}(?:\.\d+)?)\s*\+\s*(?:years|yrs|year|yr)\b",
+            jd_lower
+        )
+        single_match = re.search(
+            r"\b(\d{1,2}(?:\.\d+)?)\s*(?:\+)?\s*(?:years|yrs|year|yr)\b",
+            jd_lower
+        )
+
+        if range_match:
+            min_y = float(range_match.group(1))
+            max_y = float(range_match.group(2))
+            extracted_exp = f"{min_y}-{max_y} YOE"
+            if min_y >= 7.0 or max_y >= 8.0:
+                exp_score = 0.0
+                exp_penalty = 20.0
+                reasons.append(f"EXP_DISQUALIFIED: Required {extracted_exp} exceeds 2.5 YOE (-20pt penalty)")
+            elif 1.0 <= min_y <= 4.0 and max_y <= 5.0:
+                exp_score = 20.0
+                reasons.append(f"EXP_MATCH_IDEAL: Required {extracted_exp} matches candidate's 2.5 YOE (20.0/20.0)")
+            elif min_y <= 3.0 and max_y <= 4.0:
+                exp_score = 18.0
+                reasons.append(f"EXP_MATCH_ENTRY: Required {extracted_exp}, candidate is well-qualified (18.0/20.0)")
+            elif 3.0 <= min_y <= 5.0 and max_y <= 6.0:
+                exp_score = 12.0
+                reasons.append(f"EXP_MATCH_STRETCH: Required {extracted_exp} is a moderate stretch (12.0/20.0)")
+            elif 5.0 <= min_y <= 7.0 and max_y <= 8.0:
+                exp_score = 5.0
+                reasons.append(f"EXP_MATCH_HIGH: Required {extracted_exp} is a high stretch (5.0/20.0)")
+            else:
+                exp_score = 14.0
+                reasons.append(f"EXP_MATCH_GENERAL: Range {extracted_exp} evaluated at baseline (14.0/20.0)")
+        elif plus_match:
+            req_y = float(plus_match.group(1))
+            extracted_exp = f"{req_y}+ YOE"
+            if req_y >= 7.0:
+                exp_score = 0.0
+                exp_penalty = 20.0
+                reasons.append(f"EXP_DISQUALIFIED: Required {extracted_exp} exceeds 2.5 YOE (-20pt penalty)")
+            elif req_y <= 3.0:
+                exp_score = 20.0
+                reasons.append(f"EXP_MATCH_IDEAL: Required {extracted_exp} matches candidate (20.0/20.0)")
+            elif req_y <= 5.0:
+                exp_score = 12.0
+                reasons.append(f"EXP_MATCH_STRETCH: Required {extracted_exp} is a moderate stretch (12.0/20.0)")
+            else:
+                exp_score = 5.0
+                reasons.append(f"EXP_MATCH_HIGH: Required {extracted_exp} is high for 2.5 YOE (5.0/20.0)")
+        elif single_match:
+            req_y = float(single_match.group(1))
+            extracted_exp = f"{req_y} YOE"
+            if req_y >= 7.0:
+                exp_score = 0.0
+                exp_penalty = 20.0
+                reasons.append(f"EXP_DISQUALIFIED: Required {extracted_exp} exceeds 2.5 YOE (-20pt penalty)")
+            elif 1.0 <= req_y <= 4.0:
+                exp_score = 20.0
+                reasons.append(f"EXP_MATCH_IDEAL: Required {extracted_exp} matches candidate (20.0/20.0)")
+            elif req_y < 1.0:
+                exp_score = 18.0
+                reasons.append(f"EXP_MATCH_ENTRY: Required {extracted_exp}, candidate is well-qualified (18.0/20.0)")
+            elif req_y <= 6.0:
+                exp_score = 12.0
+                reasons.append(f"EXP_MATCH_STRETCH: Required {extracted_exp} is a moderate stretch (12.0/20.0)")
+            else:
+                exp_score = 5.0
+                reasons.append(f"EXP_MATCH_HIGH: Required {extracted_exp} is a high stretch (5.0/20.0)")
+        else:
+            # Imputed default from title
+            if "senior" in title_lower:
+                exp_score = 10.0
+                reasons.append("EXP_DEFAULT_SENIOR: Imputed 10.0/20.0 for Senior role without explicit JD YOE")
+            elif "junior" in title_lower or "associate" in title_lower:
+                exp_score = 18.0
+                reasons.append("EXP_DEFAULT_JUNIOR: Imputed 18.0/20.0 for Associate/Junior role")
+            else:
+                exp_score = 14.0
+                reasons.append("EXP_DEFAULT_NEUTRAL: Imputed 14.0/20.0 baseline for unspecified YOE")
+
+        return exp_score, extracted_exp, exp_penalty, reasons
+
     def evaluate(
         self,
-        job_title: str,
-        job_description: str,
-        candidate_skills: Optional[List[str]] = None
+        job_title: Any,
+        job_description: Any,
+        candidate_skills: Optional[List[Any]] = None
     ) -> MatchScoreResult:
         """
         Evaluates match score for a job posting.
         Returns MatchScoreResult with score, passed, breakdown, and audit reasons.
         """
-        title_lower = (job_title or "").lower().strip()
-        jd_lower = (job_description or "").lower().strip()
+        # Defensive input validation
+        job_title_str = str(job_title or "").strip()
+        job_description_str = str(job_description or "").strip()
+        title_lower = job_title_str.lower()
+        jd_lower = job_description_str.lower()
         full_text = f"{title_lower} {jd_lower}"
+
+        clean_candidate_skills: List[str] = []
+        if candidate_skills:
+            clean_candidate_skills = [
+                str(s).strip().lower()
+                for s in candidate_skills
+                if s is not None and str(s).strip()
+            ]
 
         reasons: List[str] = []
         penalty: float = 0.0
@@ -643,35 +884,9 @@ class JobMatchScorer:
         # ---------------------------------------------------------
         # 1. TITLE ALIGNMENT SCORE (35.0 pts max)
         # ---------------------------------------------------------
-        title_score = 0.0
-        disqualified_title = False
-        for pat in self.NEGATIVE_TITLE_PATTERNS:
-            m = re.search(pat, title_lower)
-            if m:
-                title_score = 0.0
-                penalty += 50.0
-                disqualified_title = True
-                reasons.append(
-                    f"DISQUALIFIED_TITLE: Title '{job_title}' matched negative pattern '{m.group(0)}' (-50pt penalty)"
-                )
-                break
-
-        if not disqualified_title:
-            if any(re.search(pat, title_lower) for pat in self.TIER1_TITLE_PATTERNS):
-                title_score = 35.0
-                reasons.append("TITLE_MATCH_TIER1: Direct title alignment with Azure Data Engineer profile (35.0/35.0)")
-            elif any(re.search(pat, title_lower) for pat in self.TIER2_TITLE_PATTERNS):
-                title_score = 26.25
-                reasons.append("TITLE_MATCH_TIER2: General Data Engineering title alignment (26.25/35.0)")
-            elif any(re.search(pat, title_lower) for pat in self.TIER3_TITLE_PATTERNS):
-                title_score = 14.0
-                reasons.append("TITLE_MATCH_TIER3: Adjacent technical title alignment (14.0/35.0)")
-            elif re.search(r"\b(software engineer|developer|consultant|analyst)\b", title_lower):
-                title_score = 5.25
-                reasons.append("TITLE_MATCH_TIER4: Generic technical title (5.25/35.0)")
-            else:
-                title_score = 0.0
-                reasons.append("TITLE_MATCH_NONE: Title did not match data engineering taxonomy (0.0/35.0)")
+        title_score, title_penalty, disqualified_title, title_reasons = self._evaluate_title(job_title_str)
+        penalty += title_penalty
+        reasons.extend(title_reasons)
 
         # ---------------------------------------------------------
         # 2. CORE TECH STACK SCORE (45.0 pts max)
@@ -734,9 +949,8 @@ class JobMatchScorer:
             c5_score = 0.0
 
         # If candidate_skills are provided explicitly, allow them to augment matched competencies
-        if candidate_skills:
-            for skill in candidate_skills:
-                s_clean = skill.strip().lower()
+        if clean_candidate_skills:
+            for s_clean in clean_candidate_skills:
                 if s_clean in full_text and s_clean not in distinct_ops:
                     distinct_ops.add(s_clean)
 
@@ -767,72 +981,21 @@ class JobMatchScorer:
         # ---------------------------------------------------------
         # 3. EXPERIENCE RANGE SCORE (20.0 pts max)
         # ---------------------------------------------------------
-        exp_score = 0.0
-        extracted_exp = None
-
-        range_match = re.search(
-            r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:years|yrs|year|yr)",
-            jd_lower
-        )
-        plus_match = re.search(
-            r"(?:min|minimum|at least)?\s*(\d+(?:\.\d+)?)\s*\+\s*(?:years|yrs)",
-            jd_lower
-        )
-
-        if range_match:
-            min_y = float(range_match.group(1))
-            max_y = float(range_match.group(2))
-            extracted_exp = f"{min_y}-{max_y} YOE"
-            if min_y <= 2.5 <= max_y or (min_y <= 4.0 and max_y <= 5.0):
-                exp_score = 20.0
-                reasons.append(f"EXP_MATCH_IDEAL: Required {extracted_exp} matches candidate's 2.5 YOE (20.0/20.0)")
-            elif min_y <= 2.0 and max_y <= 3.0:
-                exp_score = 18.0
-                reasons.append(f"EXP_MATCH_ENTRY: Required {extracted_exp}, candidate is well-qualified (18.0/20.0)")
-            elif 3.0 <= min_y <= 5.0 and max_y <= 7.0:
-                exp_score = 12.0
-                reasons.append(f"EXP_MATCH_STRETCH: Required {extracted_exp} is a moderate stretch (12.0/20.0)")
-            elif min_y >= 7.0 or max_y >= 10.0:
-                exp_score = 0.0
-                penalty += 20.0
-                reasons.append(f"EXP_DISQUALIFIED: Required {extracted_exp} exceeds 2.5 YOE (-20pt penalty)")
-            else:
-                exp_score = 14.0
-                reasons.append(f"EXP_MATCH_GENERAL: Range {extracted_exp} evaluated at baseline (14.0/20.0)")
-        elif plus_match:
-            req_y = float(plus_match.group(1))
-            extracted_exp = f"{req_y}+ YOE"
-            if req_y <= 3.0:
-                exp_score = 20.0
-                reasons.append(f"EXP_MATCH_IDEAL: Required {extracted_exp} matches candidate (20.0/20.0)")
-            elif req_y <= 5.0:
-                exp_score = 12.0
-                reasons.append(f"EXP_MATCH_STRETCH: Required {extracted_exp} is a moderate stretch (12.0/20.0)")
-            elif req_y >= 7.0:
-                exp_score = 0.0
-                penalty += 20.0
-                reasons.append(f"EXP_DISQUALIFIED: Required {extracted_exp} exceeds 2.5 YOE (-20pt penalty)")
-            else:
-                exp_score = 5.0
-                reasons.append(f"EXP_MATCH_HIGH: Required {extracted_exp} is high for 2.5 YOE (5.0/20.0)")
-        else:
-            # Imputed default from title
-            if "senior" in title_lower:
-                exp_score = 10.0
-                reasons.append("EXP_DEFAULT_SENIOR: Imputed 10.0/20.0 for Senior role without explicit JD YOE")
-            elif "junior" in title_lower or "associate" in title_lower:
-                exp_score = 18.0
-                reasons.append("EXP_DEFAULT_JUNIOR: Imputed 18.0/20.0 for Associate/Junior role")
-            else:
-                exp_score = 14.0
-                reasons.append("EXP_DEFAULT_NEUTRAL: Imputed 14.0/20.0 baseline for unspecified YOE")
+        exp_score, extracted_exp, exp_penalty, exp_reasons = self._extract_experience(jd_lower, title_lower)
+        penalty += exp_penalty
+        reasons.extend(exp_reasons)
 
         # ---------------------------------------------------------
         # 4. FINAL AGGREGATION & HARD GATE EVALUATION
         # ---------------------------------------------------------
-        raw_total = title_score + tech_score + exp_score - penalty
-        final_score = round(max(0.0, min(100.0, raw_total)), 1)
-        passed = (final_score >= 70.0)
+        if disqualified_title:
+            raw_total = 0.0
+            final_score = 0.0
+            passed = False
+        else:
+            raw_total = title_score + tech_score + exp_score - penalty
+            final_score = round(max(0.0, min(100.0, raw_total)), 1)
+            passed = (final_score >= 70.0)
 
         if not passed:
             reasons.append(f"GATE_REJECTED: Final score {final_score}% < 70.0% threshold")
@@ -850,7 +1013,7 @@ class JobMatchScorer:
                 "penalty": round(penalty, 2),
                 "total": final_score
             },
-            job_title=job_title,
+            job_title=job_title_str,
             extracted_experience=extracted_exp,
             matched_skills=matched_skills_list
         )
@@ -1155,7 +1318,7 @@ class LinkedInJobCardParser:
                 if await safe_count(loc) > 0:
                     first_loc = loc.first if hasattr(loc, "first") else loc
                     text = await safe_inner_text(first_loc)
-                    if text and len(text) > 2 and not text.lower().startswith("view"):
+                    if text and len(text) > 2 and not re.match(r"^view\s+(?:job|details|role|more)\b", text, re.I):
                         cleaned = text.split("\n")[0].strip()
                         return cleaned
         return ""
@@ -1227,18 +1390,28 @@ class LinkedInJobCardParser:
     async def check_already_applied(self, card: Any) -> bool:
         """Determines if the card indicates already applied status."""
         if hasattr(card, "locator"):
-            for sel in [
+            footer_selectors = [
                 "span.job-card-container__footer-job-state",
-                "li.job-card-container__footer-item:has-text('Applied')",
-            ]:
+                "li.job-card-container__footer-item",
+                "div.job-card-container__footer-item",
+            ]
+            for sel in footer_selectors:
                 loc = card.locator(sel)
-                if await safe_count(loc) > 0:
-                    first_loc = loc.first if hasattr(loc, "first") else loc
-                    text = await safe_inner_text(first_loc)
-                    if "applied" in text.lower():
-                        return True
+                count = await safe_count(loc)
+                if count > 0:
+                    for idx in range(count):
+                        nth_loc = loc.nth(idx) if hasattr(loc, "nth") else loc
+                        text = (await safe_inner_text(nth_loc)).strip()
+                        if re.search(r"\bApplied\b", text, re.I):
+                            return True
+
+        # Anchored pattern on card text to prevent false positive on company names like 'Applied Materials'
         card_text = await safe_inner_text(card)
-        return bool(re.search(r"\bApplied\b", card_text, re.I))
+        return bool(re.search(
+            r"\bApplied\s+\d+\s+(?:day|hour|week|month|minute)s?\s+ago\b|\bApplied\s+on\b|\bStatus:\s*Applied\b",
+            card_text,
+            re.I
+        ))
 
     async def extract_time_posted(self, card: Any) -> str:
         """Extracts relative posting date string (e.g. 1 day ago)."""
@@ -1439,7 +1612,7 @@ class LinkedInSearchEngine:
                 )
 
                 card["match_score"] = match_res.score
-                card["match_result"] = match_res
+                card["match_result"] = asdict(match_res)
 
                 if match_res.score >= min_match_score:
                     self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")

@@ -113,13 +113,13 @@ if [ -n "$AGY_BIN" ]; then
         echo "[✓] agy CLI autonomous cycle completed successfully." | tee -a "$RUN_LOG" "$HISTORY_LOG"
     else
         echo "[!] agy CLI exited with status $AGY_STATUS. Triggering autonomous fallback..." | tee -a "$RUN_LOG" "$HISTORY_LOG"
-        ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG"
+        ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG" || true
         ./naukariPro linkedin-apply --headless --limit 25 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
         echo "[✓] Fallback pipeline completed." | tee -a "$RUN_LOG" "$HISTORY_LOG"
     fi
 else
     echo "[!] agy CLI not found in PATH or ~/.local/bin/agy. Running direct Pro pipeline..." | tee -a "$RUN_LOG" "$HISTORY_LOG"
-    ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG"
+    ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG" || true
     ./naukariPro linkedin-apply --headless --limit 25 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
 fi
 

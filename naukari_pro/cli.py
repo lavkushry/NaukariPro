@@ -537,6 +537,7 @@ def handle_linkedin_verify(args=None, headless: bool = True) -> int:
 def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min_score=70.0, keyword=None, location=None):
     """
     Executes autonomous LinkedIn Easy Apply workflow across target hubs and keywords.
+    When dry_run=True, executes 100% offline without launching browser or opening network sockets.
     Strictly gates jobs by score (>= 70.0%) and handles multi-step screening forms.
     """
     if args:
@@ -555,41 +556,69 @@ def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min
         if hasattr(args, "location") and args.location:
             location = args.location
 
-    print("\n" + "=" * 72)
+    # Parse comma-delimited keywords and locations into clean lists
+    keywords_list = None
+    if keyword:
+        keywords_list = [k.strip() for k in str(keyword).split(",") if k.strip()]
+
+    locations_list = None
+    if location:
+        locations_list = [l.strip() for l in str(location).split(",") if l.strip()]
+
+    print("\n" + "=" * 76)
     print("   LINKEDIN AUTONOMOUS EASY APPLY ENGINE")
-    print("=" * 72)
-    mode_str = "DRY-RUN SIMULATION (NO SUBMISSIONS)" if dry_run else "LIVE AUTONOMOUS SUBMISSIONS"
+    print("=" * 76)
+    mode_str = "DRY-RUN OFFLINE SIMULATION (NO SUBMISSIONS)" if dry_run else "LIVE AUTONOMOUS SUBMISSIONS"
     print(f"  • Execution Mode:        {mode_str}")
     print(f"  • Daily Cycle Limit:     {limit} applications")
     print(f"  • Minimum Match Gate:    {min_score}%")
-    print(f"  • Browser Mode:          {'Headless' if headless else 'Visible GUI'}")
-    if keyword:
-        print(f"  • Keyword Filter:        {keyword}")
-    if location:
-        print(f"  • Location Filter:       {location}")
-    print("=" * 72)
+    print(f"  • Browser Mode:          {'Offline (No Browser)' if dry_run else ('Headless' if headless else 'Visible GUI')}")
+    if keywords_list:
+        print(f"  • Keyword Filter:        {', '.join(keywords_list)}")
+    if locations_list:
+        print(f"  • Location Filter:       {', '.join(locations_list)}")
+    print("=" * 76)
 
     from naukari_pro.modules.linkedin_apply import LinkedInApplyEngine
     apply_engine = LinkedInApplyEngine(min_score=min_score)
 
-    keywords_list = [keyword] if keyword else None
-    locations_list = [location] if location else None
-
     try:
-        stats = asyncio.run(apply_engine.run_apply_cycle(
-            keywords=keywords_list,
-            locations=locations_list,
-            limit=limit,
-            dry_run=dry_run,
-            headless=headless
-        ))
+        if dry_run:
+            # 100% Offline execution path
+            stats = apply_engine.run_offline_dry_run(
+                keywords=keywords_list,
+                locations=locations_list,
+                limit=limit,
+                min_score=min_score
+            )
+        else:
+            # Live execution path
+            stats = asyncio.run(apply_engine.run_apply_cycle(
+                keywords=keywords_list,
+                locations=locations_list,
+                limit=limit,
+                dry_run=False,
+                headless=headless
+            ))
     except Exception as e:
         print(f"\n[!] Execution error during LinkedIn apply cycle: {e}")
         return 1
 
-    print("\n" + "=" * 72)
+    # Formatted Vacancy Results Table
+    jobs = stats.get("jobs", [])
+    if jobs:
+        print("\n" + "-" * 76)
+        print(f"  {'#':<3} {'Job ID':<12} {'Company':<20} {'Match':<8} {'Status':<18} {'Steps'}")
+        print("-" * 76)
+        for idx, j in enumerate(jobs, 1):
+            score_val = j.get('score', 0)
+            score_str = f"{score_val:.1f}%" if isinstance(score_val, (int, float)) else str(score_val)
+            print(f"  {idx:<3} {j.get('job_id', 'N/A'):<12} {j.get('company', 'Unknown')[:18]:<20} {score_str:<8} {j.get('status', 'N/A'):<18} {j.get('steps', 0)}")
+        print("-" * 76)
+
+    print("\n" + "=" * 76)
     print("   LINKEDIN APPLY CYCLE RESULTS SUMMARY")
-    print("=" * 72)
+    print("=" * 76)
     print(f"  • Vacancies Discovered:  {stats.get('discovered', 0)}")
     print(f"  • Passed Match Gate:     {stats.get('scored_above_threshold', 0)}")
     if dry_run:
@@ -600,7 +629,7 @@ def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min
     print(f"  • Errors / Stalled:      {stats.get('failed', 0)}")
     print("  • Excel Tracker:         Naukri_Live_Application_Tracker.xlsx")
     print("  • Tracker Worksheet:     LinkedIn_Applications_Log")
-    print("=" * 72 + "\n")
+    print("=" * 76 + "\n")
     return 0
 
 def interactive_loop():
@@ -709,8 +738,9 @@ def main():
     apply_parser = subparsers.add_parser("linkedin-apply", help="Run autonomous LinkedIn Easy Apply engine across target vacancies", parents=[common_parser])
     apply_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
     apply_parser.add_argument("--min-score", type=float, default=70.0, help="Minimum job match score cutoff (default: 70.0)")
-    apply_parser.add_argument("--keyword", type=str, default=None, help="Override search keyword (e.g. 'Azure Data Engineer')")
-    apply_parser.add_argument("--location", type=str, default=None, help="Override search location (e.g. 'Bengaluru' or 'Remote')")
+    apply_parser.add_argument("--keyword", "--keywords", dest="keyword", type=str, default=None, help="Override search keyword(s), comma-separated (e.g. 'Azure Data Engineer,Databricks')")
+    apply_parser.add_argument("--location", "--locations", dest="location", type=str, default=None, help="Override search location(s), comma-separated (e.g. 'Bengaluru,Hyderabad')")
+    apply_parser.set_defaults(limit=25)
 
     args = parser.parse_args()
 

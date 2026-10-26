@@ -66,9 +66,9 @@ The LinkedIn Career & Easy Apply Engine is an enterprise-grade autonomous job ap
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
 | M1 | LinkedIn Stealth Session & Cookie Architecture | Features 1, 2, 3, 4 (`linkedin_session.py`, `linkedin-verify`) | None | DONE (Passed Iter 3 Gate: 49/49 tests, 2 Reviewers APPROVE, 2 Challengers APPROVE, Auditor CLEAN) |
-| M2 | High-Yield Precision Job Discovery Across 7 Tech Hubs & Remote | Features 5, 6, 7, 8 (`linkedin_search.py`, match scoring >=70%) | M1 | IN_PROGRESS |
-| M3 | SOTA Multi-Step "Easy Apply" Bot (Open-Source Heuristics) | Features 9, 10, 11, 12, 13, 14, 15 (`linkedin_bot.py`) | M1, M2 | PLANNED |
-| M4 | Unified Tracking, Dry-Run, Regression Suite & Cloud Deployment | Features 16, 17, 18, 19, 20, 21, 22 (`linkedin_apply.py`, tracker, tests, cloud) | M1, M2, M3 | PLANNED |
+| M2 | High-Yield Precision Job Discovery Across 7 Tech Hubs & Remote | Features 5, 6, 7, 8 (`linkedin_search.py`, match scoring >=70%) | M1 | DONE (Passed Iter 3 Gate: 108/108 tests, 2 Reviewers APPROVE, 2 Challengers APPROVE, Auditor CLEAN) |
+| M3 | SOTA Multi-Step "Easy Apply" Bot (Open-Source Heuristics) | Features 9, 10, 11, 12, 13, 14, 15 (`linkedin_bot.py`) | M1, M2 | DONE (Passed Iter 2 Gate: 143/143 tests, 2 Reviewers APPROVE, 2 Challengers APPROVE, Auditor CLEAN) |
+| M4 | Unified Tracking, Dry-Run, Regression Suite & Cloud Deployment | Features 16, 17, 18, 19, 20, 21, 22 (`linkedin_apply.py`, tracker, tests, cloud) | M1, M2, M3 | DONE (Passed Gate: 151/151 tests, 788 repo tests, remote cloud sync verified on ubuntu@141.148.195.233) |
 
 ---
 

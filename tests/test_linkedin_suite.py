@@ -34,10 +34,18 @@ from naukari_pro.modules.linkedin_apply import (
     LinkedInEasyApplyNavigator,
     LinkedInApplicationTracker,
     LinkedInApplyEngine,
+    LinkedInApplyRunner,
     LinkedInApplyError,
     LinkedInModalNotFoundError,
     LinkedInSubmissionFailedError,
-    get_candidate_profile
+    get_candidate_profile,
+    LinkedInEasyApplyBot,
+    LinkedInResumeManager,
+    LinkedInCircuitBreaker,
+    LinkedInCircuitBreakerError,
+    ModalState,
+    EasyApplySelectors,
+    ResumeSelectionResult
 )
 from naukari_pro.cli import handle_linkedin_verify, handle_linkedin_apply
 import asyncio
@@ -1525,8 +1533,25 @@ async def test_tier3_url_to_search_to_scoring_pipeline(tmp_path):
     assert len(qualified) == 1
     assert qualified[0]["job_id"] == "4159823401"
     assert qualified[0]["match_score"] >= 70.0
+    assert isinstance(qualified[0]["match_result"], dict)
     assert dedup.is_seen("4159823401") is True
     assert dedup.is_seen("4159823402") is True
+
+    # Assert seen.json is physically persisted to disk
+    assert os.path.exists(seen_f) is True, "seen.json was not written to disk"
+    with open(seen_f, "r", encoding="utf-8") as f:
+        on_disk_data = json.load(f)
+    assert "4159823401" in on_disk_data["seen_job_ids"]
+    assert "4159823402" in on_disk_data["seen_job_ids"]
+    assert on_disk_data["records"]["4159823401"]["status"] == "QUALIFIED"
+    assert on_disk_data["records"]["4159823401"]["match_result"]["score"] >= 70.0
+    assert on_disk_data["records"]["4159823402"]["status"] == "SKIPPED_LOW_MATCH"
+
+    # Assert new deduplicator instance loads state from disk
+    reloaded = JobDeduplicator(applied_file=applied_f, seen_file=seen_f)
+    assert reloaded.is_seen("4159823401") is True
+    assert reloaded.is_seen("4159823402") is True
+    assert len(reloaded._seen_ids) == 2
 
 
 @run_async
@@ -1703,6 +1728,101 @@ async def test_screening_solver_solve_step_inputs():
     mock_input.fill.assert_called_with("2")
 
 
+def test_screening_solver_tech_experience_12_skills():
+    """Milestone 3 (Feature 12): Evaluates calibrated numeric experience across 12 tech skills."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.get_numeric_experience_for_skill("Years of experience with PySpark:") == "2"
+    assert solver.get_numeric_experience_for_skill("Experience in Azure Databricks?") == "2"
+    assert solver.get_numeric_experience_for_skill("Azure Data Factory (ADF) experience") == "2"
+    assert solver.get_numeric_experience_for_skill("How many years of SQL experience?") == "2.5"
+    assert solver.get_numeric_experience_for_skill("Python data engineering experience:") == "2.5"
+    assert solver.get_numeric_experience_for_skill("Delta Lake lakehouse experience") == "2"
+    assert solver.get_numeric_experience_for_skill("Kafka stream processing experience") == "1.5"
+    assert solver.get_numeric_experience_for_skill("Total years of data engineering experience") == "2.5"
+    assert solver.get_numeric_experience_for_skill("Medallion architecture experience") == "2"
+    assert solver.get_numeric_experience_for_skill("Docker containerization experience") == "2"
+    assert solver.get_numeric_experience_for_skill("CI/CD pipeline automation experience") == "2"
+    assert solver.get_numeric_experience_for_skill("Terraform infrastructure-as-code experience") == "1.5"
+
+
+def test_screening_solver_contact_info_variations():
+    """Milestone 3 (Feature 10): Solves multiple phrasings of contact and identity questions."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.determine_text_answer("Please enter your mobile phone number:") == "9122036484"
+    assert solver.determine_text_answer("What is your primary phone number?") == "9122036484"
+    assert solver.determine_text_answer("Country phone code:") == "+91"
+    assert solver.determine_text_answer("Email address for notifications:") == "lavkushry@gmail.com"
+    assert solver.determine_text_answer("First Name") == "Lavkush"
+    assert solver.determine_text_answer("Last Name") == "Kumar"
+    assert solver.determine_text_answer("Full Name") == "Lavkush Kumar"
+
+
+def test_screening_solver_notice_period_days_and_text():
+    """Milestone 3 (Feature 12): Differentiates numeric notice days vs descriptive text."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.determine_text_answer("What is your notice period (in days)?") == "15"
+    assert solver.determine_text_answer("Official notice period in days") == "15"
+    assert solver.determine_text_answer("Notice period duration") == "15 Days or less"
+    assert solver.determine_text_answer("How soon can you join our organization?") == "15 Days or less"
+
+
+def test_screening_solver_ctc_lpa_and_inr():
+    """Milestone 3 (Feature 12): Differentiates LPA vs INR salary questions."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.determine_text_answer("Current CTC in LPA") == "12"
+    assert solver.determine_text_answer("Expected CTC (in LPA)") == "20"
+    assert solver.determine_text_answer("Current annual salary in INR") == "1200000"
+    assert solver.determine_text_answer("Expected annual compensation (INR)") == "2000000"
+
+
+def test_screening_solver_relocation_and_commute_affirmative():
+    """Milestone 3 (Feature 12): Returns affirmative for mobility and work arrangement questions."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.determine_radio_answer("Are you willing to relocate to Bengaluru?") is True
+    assert solver.determine_radio_answer("Are you open to hybrid work (3 days in office, 2 days remote)?") is True
+    assert solver.determine_radio_answer("Can you commute to our Hyderabad campus?") is True
+    assert solver.determine_radio_answer("Are you comfortable with travel or on-site client visits?") is True
+
+
+def test_screening_solver_work_auth_and_sponsorship_binary():
+    """Milestone 3 (Feature 12): Enforces work authorization True, visa sponsorship False, and negative guards."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.determine_radio_answer("Are you legally authorized to work in India?") is True
+    assert solver.determine_radio_answer("Do you have the legal right to work in the country of employment?") is True
+    assert solver.determine_radio_answer("Will you now or in the future require visa sponsorship?") is False
+    assert solver.determine_radio_answer("Do you require employer sponsorship for a work authorization/visa?") is False
+    # Negative guards for disqualifying questions
+    assert solver.determine_radio_answer("Have you ever been convicted of a criminal offense or felony?") is False
+    assert solver.determine_radio_answer("Are you bound by an active non-compete agreement with your previous employer?") is False
+    assert solver.determine_radio_answer("Have you ever been subject to disciplinary action or terminated for cause?") is False
+
+
+def test_screening_solver_education_degree_and_university():
+    """Milestone 3 (Feature 12): Maps degree and university credentials."""
+    solver = LinkedInScreeningSolver()
+    
+    assert solver.determine_text_answer("What is your highest degree completed?") == "Bachelor's Degree"
+    assert solver.determine_text_answer("Name of university or institution attended:") == "Maharishi Dayanand University (MDU)"
+    assert solver.determine_text_answer("Year of graduation or completion:") == "2023"
+
+
+def test_screening_solver_dropdown_language_proficiency():
+    """Milestone 3 (Feature 12): Selects appropriate English proficiency option."""
+    solver = LinkedInScreeningSolver()
+    
+    opts = ["Select proficiency", "Basic", "Conversational", "Professional Working", "Native or Bilingual"]
+    assert solver.find_best_dropdown_option(opts, "What is your English language proficiency level?") == "Professional Working"
+    
+    opts2 = ["--", "Beginner", "Intermediate", "Fluent"]
+    assert solver.find_best_dropdown_option(opts2, "English proficiency:") == "Fluent"
+
+
 # ==============================================================================
 # SECTION 12: MILESTONE 3 — EASY APPLY MODAL NAVIGATOR TESTS
 # ==============================================================================
@@ -1872,12 +1992,567 @@ async def test_easy_apply_live_submission_workflow(tmp_path):
     assert submit_btn.first.click.called
 
 
+@run_async
+async def test_resume_attachment_new_file_set_input_files(tmp_path):
+    """Milestone 3 (Feature 11): Uploads new resume file via input[type='file']."""
+    dummy_pdf = tmp_path / "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
+    dummy_pdf.write_text("Dummy Resume Content", encoding="utf-8")
+    
+    mgr = LinkedInResumeManager(primary_resume_path=str(dummy_pdf))
+    
+    mock_file_input = MagicMock()
+    mock_file_input.set_input_files = AsyncMock(return_value=None)
+    
+    file_loc = MagicMock()
+    file_loc.count = AsyncMock(return_value=1)
+    file_loc.first = mock_file_input
+    
+    modal = MagicMock()
+    def modal_loc(sel):
+        if "input[type='file']" in sel:
+            return file_loc
+        return make_mock_locator(count=0, visible=False)
+    modal.locator = MagicMock(side_effect=modal_loc)
+    
+    res = await mgr.attach_or_select_resume(modal, resume_path=str(dummy_pdf))
+    assert res.success is True
+    assert res.method == "FILE_UPLOADED"
+    assert "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf" in res.filename
+    mock_file_input.set_input_files.assert_called_once_with(str(dummy_pdf))
+
+
+@run_async
+async def test_resume_attachment_pre_existing_card_selected():
+    """Milestone 3 (Feature 11): Selects pre-existing resume card without uploading file."""
+    mgr = LinkedInResumeManager()
+    
+    mock_radio = MagicMock()
+    mock_radio.is_checked = AsyncMock(return_value=False)
+    mock_radio.check = AsyncMock(return_value=None)
+    
+    mock_card = MagicMock()
+    mock_card.inner_text = AsyncMock(return_value="Lavkush Kumar Azure Data Engineer Resume.pdf")
+    mock_card.locator = MagicMock(return_value=mock_radio)
+    
+    card_loc = MagicMock()
+    card_loc.count = AsyncMock(return_value=1)
+    card_loc.nth = MagicMock(return_value=mock_card)
+    card_loc.first = mock_card
+    
+    mock_file_input = MagicMock()
+    mock_file_input.set_input_files = AsyncMock(return_value=None)
+    file_loc = make_mock_locator(count=1, visible=True)
+    file_loc.first = mock_file_input
+    
+    modal = MagicMock()
+    def modal_loc(sel):
+        if "jobs-document-upload" in sel:
+            return card_loc
+        if "input[type='file']" in sel:
+            return file_loc
+        return make_mock_locator(count=0, visible=False)
+    modal.locator = MagicMock(side_effect=modal_loc)
+    
+    res = await mgr.attach_or_select_resume(modal, resume_path="Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf")
+    assert res.success is True
+    assert res.method == "CARD_SELECTED"
+    mock_radio.check.assert_called_once()
+    mock_file_input.set_input_files.assert_not_called()
+
+
+@run_async
+async def test_resume_attachment_fallback_to_mlops_pdf(tmp_path):
+    """Milestone 3 (Feature 11): Falls back to MLOps PDF when primary resume is missing."""
+    fallback_pdf = tmp_path / "Lavkush_Kumar_MLOps_Resume.pdf"
+    fallback_pdf.write_text("Fallback MLOps Content", encoding="utf-8")
+    non_existent = str(tmp_path / "nonexistent_resume.pdf")
+    
+    mgr = LinkedInResumeManager(
+        primary_resume_path=non_existent,
+        fallback_resume_path=str(fallback_pdf)
+    )
+    
+    mock_file_input = MagicMock()
+    mock_file_input.set_input_files = AsyncMock(return_value=None)
+    file_loc = MagicMock()
+    file_loc.count = AsyncMock(return_value=1)
+    file_loc.first = mock_file_input
+    
+    modal = MagicMock()
+    def modal_loc(sel):
+        if "input[type='file']" in sel:
+            return file_loc
+        return make_mock_locator(count=0, visible=False)
+    modal.locator = MagicMock(side_effect=modal_loc)
+    
+    res = await mgr.attach_or_select_resume(modal, resume_path=non_existent)
+    assert res.success is True
+    assert res.method == "FILE_UPLOADED"
+    assert "Lavkush_Kumar_MLOps_Resume.pdf" in res.filename
+    mock_file_input.set_input_files.assert_called_once_with(str(fallback_pdf))
+
+
+@run_async
+async def test_resume_attachment_missing_files_graceful(tmp_path):
+    """Milestone 3 (Feature 11): Returns SKIPPED_NOT_FOUND gracefully when no files or cards exist."""
+    mgr = LinkedInResumeManager(
+        primary_resume_path=str(tmp_path / "missing1.pdf"),
+        fallback_resume_path=str(tmp_path / "missing2.pdf")
+    )
+    modal = MagicMock()
+    modal.locator = MagicMock(return_value=make_mock_locator(count=0, visible=False))
+    
+    res = await mgr.attach_or_select_resume(modal, resume_path=str(tmp_path / "missing1.pdf"))
+    assert res.success is False
+    assert res.method == "SKIPPED_NOT_FOUND"
+
+
+@run_async
+async def test_modal_navigation_multi_step_sequence():
+    """Milestone 3 (Feature 9): Verifies progression through multi-step dialog."""
+    bot = LinkedInEasyApplyBot()
+    
+    next_btn = make_mock_locator(count=1, visible=True, text="Next")
+    next_btn.first.click = AsyncMock(return_value=None)
+    
+    review_btn = make_mock_locator(count=1, visible=True, text="Review")
+    review_btn.first.click = AsyncMock(return_value=None)
+    
+    # Step 1: Has Next button
+    modal_step1 = MagicMock()
+    modal_step1.locator = MagicMock(side_effect=lambda s: next_btn if "Next" in s else make_mock_locator(count=0, visible=False))
+    advanced, btn_type = await bot.advance_step(modal_step1)
+    assert advanced is True
+    assert btn_type == "NEXT"
+    next_btn.first.click.assert_called_once()
+    
+    # Step 2: Has Review button
+    modal_step2 = MagicMock()
+    modal_step2.locator = MagicMock(side_effect=lambda s: review_btn if "Review" in s else make_mock_locator(count=0, visible=False))
+    advanced2, btn_type2 = await bot.advance_step(modal_step2)
+    assert advanced2 is True
+    assert btn_type2 == "REVIEW"
+    review_btn.first.click.assert_called_once()
+
+
+@run_async
+async def test_uncheck_follow_company_when_checked():
+    """Milestone 3 (Feature 13): Unchecks follow company checkbox when currently checked."""
+    bot = LinkedInEasyApplyBot()
+    
+    mock_chk = MagicMock()
+    mock_chk.is_checked = AsyncMock(return_value=True)
+    mock_chk.uncheck = AsyncMock(return_value=None)
+    
+    chk_loc = MagicMock()
+    chk_loc.count = AsyncMock(return_value=1)
+    chk_loc.nth = MagicMock(return_value=mock_chk)
+    
+    modal = MagicMock()
+    modal.locator = MagicMock(return_value=chk_loc)
+    
+    res = await bot.uncheck_follow_company(modal)
+    assert res is True
+    mock_chk.uncheck.assert_called_once()
+
+
+@run_async
+async def test_uncheck_follow_company_when_already_unchecked():
+    """Milestone 3 (Feature 13): Performs no action when follow company is already unchecked."""
+    bot = LinkedInEasyApplyBot()
+    
+    mock_chk = MagicMock()
+    mock_chk.is_checked = AsyncMock(return_value=False)
+    mock_chk.uncheck = AsyncMock(return_value=None)
+    
+    chk_loc = MagicMock()
+    chk_loc.count = AsyncMock(return_value=1)
+    chk_loc.nth = MagicMock(return_value=mock_chk)
+    
+    modal = MagicMock()
+    modal.locator = MagicMock(return_value=chk_loc)
+    
+    res = await bot.uncheck_follow_company(modal)
+    assert res is False
+    mock_chk.uncheck.assert_not_called()
+
+
+@run_async
+async def test_submission_confirmation_detection_and_done_click():
+    """Milestone 3 (Feature 14): Detects 'Application submitted' banner and clicks 'Done' button."""
+    bot = LinkedInEasyApplyBot()
+    
+    confirm_banner = make_mock_locator(count=1, visible=True, text="Application submitted")
+    done_btn = make_mock_locator(count=1, visible=True, text="Done")
+    done_btn.first.click = AsyncMock(return_value=None)
+    
+    page = MagicMock()
+    def page_loc(sel):
+        if "Application submitted" in sel:
+            return confirm_banner
+        if "Done" in sel:
+            return done_btn
+        return make_mock_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    confirmed = await bot.verify_and_dismiss_submission(page)
+    assert confirmed is True
+    done_btn.first.click.assert_called_once()
+
+
+@run_async
+async def test_submission_confirmation_alternate_banner_text():
+    """Milestone 3 (Feature 14): Detects 'Your application was sent to' confirmation banner."""
+    bot = LinkedInEasyApplyBot()
+    
+    confirm_banner = make_mock_locator(count=1, visible=True, text="Your application was sent to Tech Corp")
+    done_btn = make_mock_locator(count=1, visible=True, text="Done")
+    done_btn.first.click = AsyncMock(return_value=None)
+    
+    page = MagicMock()
+    def page_loc(sel):
+        if "Your application was sent to" in sel:
+            return confirm_banner
+        if "Done" in sel:
+            return done_btn
+        return make_mock_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    confirmed = await bot.verify_and_dismiss_submission(page)
+    assert confirmed is True
+    done_btn.first.click.assert_called_once()
+
+
+@run_async
+async def test_easy_apply_dry_run_verifies_submit_visible_never_clicks(tmp_path):
+    """Milestone 3 (Feature 17): Asserts Submit button presence in dry-run, never clicks it, and safely discards."""
+    bot = LinkedInEasyApplyBot()
+    
+    dummy_pdf = tmp_path / "resume.pdf"
+    dummy_pdf.write_text("Resume", encoding="utf-8")
+    
+    apply_btn = make_mock_locator(count=1, visible=True, text="Easy Apply")
+    apply_btn.first.click = AsyncMock(return_value=None)
+    
+    submit_btn = make_mock_locator(count=1, visible=True, text="Submit application")
+    submit_btn.first.click = AsyncMock(return_value=None)
+    
+    dismiss_btn = make_mock_locator(count=1, visible=True, text="Dismiss")
+    dismiss_btn.first.click = AsyncMock(return_value=None)
+    
+    modal_elem = MagicMock()
+    def modal_loc(sel):
+        if "submit" in sel.lower():
+            return submit_btn
+        return make_mock_locator(count=0, visible=False)
+    modal_elem.locator = MagicMock(side_effect=modal_loc)
+    
+    modal_page = make_mock_locator(count=1, visible=True)
+    modal_page.first = modal_elem
+    
+    page = MagicMock()
+    def page_loc(sel):
+        if "jobs-apply-button" in sel:
+            return apply_btn
+        if "jobs-easy-apply-modal" in sel or "[data-test-modal]" in sel:
+            return modal_page
+        if "dismiss" in sel.lower():
+            return dismiss_btn
+        return make_mock_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    job_info = {"job_id": "410001", "title": "Azure Data Engineer", "company": "Target Corp"}
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()):
+        result = await bot.execute_easy_apply(page, job_info, resume_path=str(dummy_pdf), dry_run=True)
+    
+    assert result["success"] is True
+    assert result["status"] == "DRY_RUN_VERIFIED"
+    submit_btn.first.click.assert_not_called()
+    assert dismiss_btn.first.click.called
+
+
+def test_circuit_breaker_trips_on_three_consecutive_errors():
+    """Milestone 3 (Feature 15): Circuit breaker trips after 3 consecutive failures."""
+    cb = LinkedInCircuitBreaker(max_consecutive_errors=3)
+    assert cb.is_tripped is False
+    
+    cb.record_failure("Error 1")
+    assert cb.is_tripped is False
+    assert cb.consecutive_errors == 1
+    
+    cb.record_failure("Error 2")
+    assert cb.is_tripped is False
+    assert cb.consecutive_errors == 2
+    
+    tripped = cb.record_failure("Error 3")
+    assert tripped is True
+    assert cb.is_tripped is True
+    assert cb.trip_reason == "CONSECUTIVE_ERRORS"
+    assert cb.consecutive_errors == 3
+
+
+def test_circuit_breaker_counter_resets_on_success():
+    """Milestone 3 (Feature 15): Success resets consecutive error counter."""
+    cb = LinkedInCircuitBreaker(max_consecutive_errors=3)
+    cb.record_failure("Failure 1")
+    cb.record_failure("Failure 2")
+    assert cb.consecutive_errors == 2
+    
+    cb.record_success()
+    assert cb.consecutive_errors == 0
+    assert cb.is_tripped is False
+    assert cb.total_applied == 1
+    
+    # Next failure should not trip
+    cb.record_failure("Failure after success")
+    assert cb.consecutive_errors == 1
+    assert cb.is_tripped is False
+
+
+@run_async
+async def test_circuit_breaker_security_checkpoint_immediate_halt():
+    """Milestone 3 (Feature 15): Trips immediately upon detecting security challenge or CAPTCHA."""
+    cb = LinkedInCircuitBreaker()
+    
+    # 1. URL pattern checkpoint
+    page_checkpoint = MagicMock()
+    page_checkpoint.url = "https://www.linkedin.com/checkpoint/challenge/AgF_token"
+    tripped_url = await cb.check_security_checkpoint(page_checkpoint)
+    assert tripped_url is True
+    assert cb.is_tripped is True
+    assert cb.trip_reason == "SECURITY_CHECKPOINT"
+    
+    # 2. Reset and test DOM selector CAPTCHA
+    cb.reset()
+    captcha_loc = make_mock_locator(count=1, visible=True)
+    page_captcha = make_mock_page(locators={"input#captcha": captcha_loc})
+    tripped_dom = await cb.check_security_checkpoint(page_captcha)
+    assert tripped_dom is True
+    assert cb.is_tripped is True
+    assert cb.trip_reason == "SECURITY_CHECKPOINT"
+
+
+@run_async
+async def test_circuit_breaker_daily_rate_limit_banner_immediate_halt():
+    """Milestone 3 (Feature 15): Trips immediately upon detecting daily application limit banner."""
+    cb = LinkedInCircuitBreaker()
+    
+    limit_banner = make_mock_locator(count=1, visible=True, text="reached your application limit for today")
+    modal = MagicMock()
+    modal.locator = MagicMock(side_effect=lambda s: limit_banner if "reached your application limit for today" in s else make_mock_locator(count=0, visible=False))
+    
+    tripped = await cb.check_daily_rate_limit(modal)
+    assert tripped is True
+    assert cb.is_tripped is True
+    assert cb.trip_reason == "DAILY_LIMIT_REACHED"
+
+
+@run_async
+async def test_circuit_breaker_throttling_delays_invoked():
+    """Milestone 3 (Feature 15): Throttling methods calculate and invoke valid delay windows."""
+    cb = LinkedInCircuitBreaker()
+    
+    delay_records = []
+    async def mock_delay(min_ms, max_ms, page=None):
+        delay_records.append((min_ms, max_ms))
+        
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", side_effect=mock_delay):
+        await cb.throttle_field()
+        await cb.throttle_step()
+        await cb.throttle_inter_application()
+    
+    assert len(delay_records) == 3
+    # Field: 150ms - 400ms
+    assert 150 <= delay_records[0][0] <= 400
+    # Step: 1200ms - 2800ms
+    assert 1200 <= delay_records[1][0] <= 2800
+    # Job: 3000ms - 7000ms
+    assert 3000 <= delay_records[2][0] <= 7000
+
+
+@run_async
+async def test_bot_apply_to_job_interface_contract(tmp_path):
+    """Milestone 3 (Feature 9): apply_to_job conforms to PROJECT.md interface contract."""
+    resume_file = tmp_path / "resume.pdf"
+    resume_file.write_text("Dummy Resume Content", encoding="utf-8")
+    
+    apply_btn = make_mock_locator(count=1, visible=True, text="Easy Apply")
+    apply_btn.first.click = AsyncMock(return_value=None)
+    submit_btn = make_mock_locator(count=1, visible=True, text="Submit application")
+    dismiss_btn = make_mock_locator(count=1, visible=True, text="Dismiss")
+    dismiss_btn.first.click = AsyncMock(return_value=None)
+    
+    modal_elem = MagicMock()
+    modal_elem.locator = MagicMock(side_effect=lambda s: submit_btn if "submit" in s.lower() else make_mock_locator(count=0, visible=False))
+    modal_loc = make_mock_locator(count=1, visible=True)
+    modal_loc.first = modal_elem
+    
+    page = MagicMock()
+    page.goto = AsyncMock(return_value=None)
+    def page_loc(s):
+        if "jobs-apply-button" in s:
+            return apply_btn
+        if "jobs-easy-apply-modal" in s or "[data-test-modal]" in s:
+            return modal_loc
+        if "dismiss" in s.lower():
+            return dismiss_btn
+        return make_mock_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    bot = LinkedInEasyApplyBot(page=page, resume_path=str(resume_file))
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()):
+        res = await bot.apply_to_job("https://www.linkedin.com/jobs/view/410009999/", dry_run=True)
+    
+    assert isinstance(res, dict)
+    assert res["success"] is True
+    assert res["status"] == "DRY_RUN_VERIFIED"
+    assert res["job_id"] == "410009999"
+    assert "steps" in res
+    assert "answers" in res
+
+
+def test_bot_solve_question_direct_helper():
+    """Milestone 3 (Feature 12): solve_question direct helper conforms to PROJECT.md interface contract."""
+    bot = LinkedInEasyApplyBot()
+    
+    # 1. Text input
+    assert bot.solve_question("Email address", input_type="text") == "lavkushry@gmail.com"
+    # 2. Numeric input
+    assert bot.solve_question("How many years of PySpark experience do you have?", input_type="number") == "2"
+    # 3. Radio input
+    assert bot.solve_question("Are you legally authorized to work in India?", input_type="radio") is True
+    assert bot.solve_question("Do you require visa sponsorship?", input_type="radio") is False
+    # 4. Dropdown input
+    opts = ["Immediate", "15 days or less", "30 days"]
+    assert bot.solve_question("Notice period", input_type="select", options=opts) == "15 days or less"
+    # 5. Checkbox input
+    assert bot.solve_question("I consent to data processing", input_type="checkbox") is True
+
+
+@run_async
+async def test_bot_auto_discard_persistent_inline_feedback_error(tmp_path):
+    """Milestone 3 (Feature 14): Auto-discards modal on persistent inline validation error."""
+    resume_file = tmp_path / "resume.pdf"
+    resume_file.write_text("Dummy Resume Content", encoding="utf-8")
+    
+    apply_btn = make_mock_locator(count=1, visible=True, text="Easy Apply")
+    apply_btn.first.click = AsyncMock(return_value=None)
+    dismiss_btn = make_mock_locator(count=1, visible=True, text="Dismiss")
+    dismiss_btn.first.click = AsyncMock(return_value=None)
+    
+    err_loc = make_mock_locator(count=1, visible=True, text="Please enter a valid numeric value")
+    
+    modal_elem = MagicMock()
+    def modal_loc(s):
+        if "artdeco-inline-feedback--error" in s:
+            return err_loc
+        return make_mock_locator(count=0, visible=False)
+    modal_elem.locator = MagicMock(side_effect=modal_loc)
+    
+    modal_page = make_mock_locator(count=1, visible=True)
+    modal_page.first = modal_elem
+    
+    page = MagicMock()
+    page.goto = AsyncMock(return_value=None)
+    def page_loc(s):
+        if "jobs-apply-button" in s:
+            return apply_btn
+        if "jobs-easy-apply-modal" in s or "[data-test-modal]" in s:
+            return modal_page
+        if "dismiss" in s.lower():
+            return dismiss_btn
+        return make_mock_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    bot = LinkedInEasyApplyBot(page=page, resume_path=str(resume_file))
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()):
+        res = await bot.execute_easy_apply(
+            page=page,
+            job_info={"job_id": "415555", "title": "Data Engineer", "company": "Corp"},
+            dry_run=False
+        )
+    
+    assert res["success"] is False
+    assert res["status"] == "DISCARDED_UNRESOLVABLE"
+    assert dismiss_btn.first.click.called
+
+
+def test_bot_empty_options_dropdown_fallback():
+    """Milestone 3 (Feature 12): Selects first non-placeholder option when prompt does not match keywords."""
+    bot = LinkedInEasyApplyBot()
+    opts = ["-- Please Select --", "Engineering Division", "Operations Division"]
+    selected = bot.solver.find_best_dropdown_option(opts, "Select your primary department/division:")
+    assert selected == "Engineering Division"
+
+
+@run_async
+async def test_bot_full_cycle_integration_with_circuit_breaker(tmp_path):
+    """Milestone 3 (Feature 15): End-to-end integration test with bot, resume manager, solver, and circuit breaker."""
+    resume_file = tmp_path / "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
+    resume_file.write_text("Dummy Resume Content", encoding="utf-8")
+    
+    cb = LinkedInCircuitBreaker(max_consecutive_errors=3)
+    
+    apply_btn = make_mock_locator(count=1, visible=True, text="Easy Apply")
+    apply_btn.first.click = AsyncMock(return_value=None)
+    submit_btn = make_mock_locator(count=1, visible=True, text="Submit application")
+    submit_btn.first.click = AsyncMock(return_value=None)
+    confirm_banner = make_mock_locator(count=1, visible=True, text="Application submitted")
+    done_btn = make_mock_locator(count=1, visible=True, text="Done")
+    done_btn.first.click = AsyncMock(return_value=None)
+    
+    modal_elem = MagicMock()
+    modal_elem.locator = MagicMock(side_effect=lambda s: submit_btn if "submit" in s.lower() else make_mock_locator(count=0, visible=False))
+    modal_page = make_mock_locator(count=1, visible=True)
+    modal_page.first = modal_elem
+    
+    page = MagicMock()
+    page.goto = AsyncMock(return_value=None)
+    def page_loc(s):
+        if "jobs-apply-button" in s:
+            return apply_btn
+        if "jobs-easy-apply-modal" in s or "[data-test-modal]" in s:
+            return modal_page
+        if "Application submitted" in s:
+            return confirm_banner
+        if "Done" in s:
+            return done_btn
+        return make_mock_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    bot = LinkedInEasyApplyBot(
+        page=page,
+        resume_path=str(resume_file),
+        circuit_breaker=cb
+    )
+    
+    job_info = {
+        "job_id": "4199998888",
+        "title": "Lead Azure Data Engineer",
+        "company": "Top Tier GCC",
+        "url": "https://www.linkedin.com/jobs/view/4199998888/"
+    }
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()):
+        result = await bot.execute_easy_apply(page=page, job_info=job_info, dry_run=False)
+        
+    assert result["success"] is True
+    assert result["status"] == "APPLIED"
+    assert cb.total_applied == 1
+    assert cb.consecutive_errors == 0
+    assert cb.is_tripped is False
+    assert done_btn.first.click.called
+
+
 # ==============================================================================
 # SECTION 13: MILESTONE 4 — TRACKER LOGGING & DEDUPLICATION TESTS
 # ==============================================================================
 
 def test_tracker_excel_sheet_creation_and_logging(tmp_path):
-    """Milestone 4: Confirms Excel logging to LinkedIn_Applications_Log and JSON sync."""
+    """Milestone 4: Confirms Excel logging to LinkedIn_Applications_Log and JSON sync with canonical 10 columns."""
     excel_path = str(tmp_path / "Test_Tracker.xlsx")
     json_path = str(tmp_path / "linkedin_applications_log.json")
     skip_path = str(tmp_path / "skip_list_linkedin.json")
@@ -1904,12 +2579,17 @@ def test_tracker_excel_sheet_creation_and_logging(tmp_path):
     assert "LinkedIn_Applications_Log" in wb.sheetnames
     ws = wb["LinkedIn_Applications_Log"]
     assert ws.max_row == 2
+    assert ws.max_column == 10
     row_vals = [cell.value for cell in ws[2]]
-    assert row_vals[1] == "Cloud GCC"
-    assert row_vals[2] == "Azure Data Engineer"
-    assert row_vals[3] == "88%"
-    assert row_vals[6] == "LinkedIn Easy Apply"
-    assert row_vals[7] == "APPLIED"
+    assert row_vals[0] == "4188880001"
+    assert row_vals[1] == "LinkedIn Easy Apply"
+    assert row_vals[2] == "Cloud GCC"
+    assert row_vals[3] == "Azure Data Engineer"
+    assert row_vals[4] == "Bengaluru, Karnataka, India"
+    assert row_vals[5] == "88%"
+    assert row_vals[6] == "APPLIED"
+    assert row_vals[7] == 3
+    assert row_vals[9] == "https://www.linkedin.com/jobs/view/4188880001/"
     
     # 2. Verify JSON log
     assert os.path.exists(json_path)
@@ -1922,6 +2602,139 @@ def test_tracker_excel_sheet_creation_and_logging(tmp_path):
     # 3. Verify Skip List
     assert tracker.is_applied("4188880001") is True
     assert tracker.is_applied("nonexistent_id") is False
+
+
+def test_tracker_canonical_10_columns_and_styling(tmp_path):
+    """Milestone 4: Confirms canonical 10-column schema, LinkedIn Blue #0A66C2 styling, and freeze panes."""
+    excel_path = str(tmp_path / "Test_Canonical_Tracker.xlsx")
+    json_path = str(tmp_path / "linkedin_applications_log.json")
+    skip_path = str(tmp_path / "skip_list_linkedin.json")
+    
+    tracker = LinkedInApplicationTracker(
+        excel_path=excel_path,
+        json_log_path=json_path,
+        skip_file_path=skip_path
+    )
+    
+    job_sample = {
+        "job_id": "4188880001",
+        "title": "Azure Data Engineer",
+        "company": "Cloud GCC",
+        "location": "Bengaluru, Karnataka, India",
+        "url": "https://www.linkedin.com/jobs/view/4188880001/"
+    }
+    
+    tracker.log_application(job_sample, "APPLIED", match_score=88.5, steps=3)
+    
+    import openpyxl
+    wb = openpyxl.load_workbook(excel_path)
+    assert "LinkedIn_Applications_Log" in wb.sheetnames
+    ws = wb["LinkedIn_Applications_Log"]
+    assert ws.max_row == 2
+    assert ws.max_column == 10
+    
+    # Verify 10 canonical headers
+    expected_headers = [
+        "Job ID", "Platform", "Company", "Job Title", "Location",
+        "Match Score", "Status", "Steps Completed", "Applied Timestamp", "Job URL"
+    ]
+    header_vals = [cell.value for cell in ws[1]]
+    assert header_vals == expected_headers
+    
+    # Verify header styling: LinkedIn Blue #0A66C2, white bold text
+    c1 = ws.cell(1, 1)
+    assert c1.fill.start_color.rgb in ("000A66C2", "0A66C2")
+    assert c1.font.bold is True
+    assert c1.font.color.rgb in ("00FFFFFF", "FFFFFF")
+    assert ws.freeze_panes == "A2"
+    
+    # Verify canonical row values
+    row_vals = [cell.value for cell in ws[2]]
+    assert row_vals[0] == "4188880001"
+    assert row_vals[1] == "LinkedIn Easy Apply"
+    assert row_vals[2] == "Cloud GCC"
+    assert row_vals[3] == "Azure Data Engineer"
+    assert row_vals[4] == "Bengaluru, Karnataka, India"
+    assert row_vals[5] == "88%"
+    assert row_vals[6] == "APPLIED"
+    assert row_vals[7] == 3
+    assert row_vals[9] == "https://www.linkedin.com/jobs/view/4188880001/"
+
+
+def test_tracker_fallback_to_applications_log(tmp_path):
+    """Milestone 4: Confirms safe fallback append to Applications_Log if LinkedIn sheet write fails."""
+    excel_path = str(tmp_path / "Tracker_With_App_Log.xlsx")
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Applications_Log"
+    ws.append(["Application Date", "Company Name", "Job Title", "Match Score (%)", "Role Category", "Experience Required", "Location", "Application Type", "Status", "Job URL", "Recruiter Response"])
+    wb.save(excel_path)
+    
+    # Simulate missing LinkedIn sheet by patching _ensure_excel_sheet to do nothing
+    with patch.object(LinkedInApplicationTracker, "_ensure_excel_sheet"):
+        tracker = LinkedInApplicationTracker(excel_path=excel_path)
+        job = {"job_id": "4199990001", "company": "Infosys", "title": "PySpark Dev", "url": "https://linkedin.com/jobs/view/4199990001/"}
+        tracker.log_application(job, "APPLIED", match_score=75.0, steps=2)
+        
+    wb_after = openpyxl.load_workbook(excel_path)
+    ws_after = wb_after["Applications_Log"]
+    assert ws_after.max_row == 2
+    assert ws_after.cell(2, 2).value == "Infosys"
+    assert ws_after.cell(2, 8).value == "LinkedIn Easy Apply"
+
+
+def test_tracker_emergency_csv_fallback(tmp_path):
+    """Milestone 4: Confirms emergency CSV fallback when Excel fails entirely."""
+    excel_path = str(tmp_path / "Corrupt.xlsx")
+    csv_fallback = str(tmp_path / "fallback.csv")
+    with open(excel_path, "w") as f:
+        f.write("NOT_A_VALID_EXCEL_ZIP_FILE")
+        
+    tracker = LinkedInApplicationTracker(
+        excel_path=excel_path,
+        fallback_csv_path=csv_fallback
+    )
+    job = {"job_id": "4122223333", "company": "TCS", "title": "Databricks Engineer", "url": "https://linkedin.com/jobs/view/4122223333/"}
+    result = tracker.log_application(job, "APPLIED", match_score=82.0, steps=1)
+    assert result is True
+    assert os.path.exists(csv_fallback)
+    with open(csv_fallback, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert "4122223333" in content
+        assert "TCS" in content
+
+
+def test_tracker_get_applied_job_ids_aggregation(tmp_path):
+    """Milestone 4: Confirms get_applied_job_ids aggregates across Excel, CSV, JSON, and skip list."""
+    excel_path = str(tmp_path / "Tracker.xlsx")
+    json_path = str(tmp_path / "log.json")
+    skip_path = str(tmp_path / "skip.json")
+    csv_path = str(tmp_path / "fallback.csv")
+    
+    with open(skip_path, "w") as f:
+        json.dump(["1001", "1002"], f)
+    with open(json_path, "w") as f:
+        json.dump([{"job_id": "1003", "status": "APPLIED"}], f)
+    with open(csv_path, "w") as f:
+        f.write("Job ID,Platform,Company,Job Title,Location,Match Score,Status,Steps Completed,Applied Timestamp,Job URL\n")
+        f.write("1004,LinkedIn,Comp,Title,Loc,80%,APPLIED,1,2026-10-26,https://linkedin.com/jobs/view/1004/\n")
+        
+    tracker = LinkedInApplicationTracker(
+        excel_path=excel_path,
+        json_log_path=json_path,
+        skip_file_path=skip_path,
+        fallback_csv_path=csv_path
+    )
+    # Log one to Excel
+    tracker.log_application({"job_id": "1005", "company": "Wipro", "title": "ADF Lead"}, "APPLIED")
+    
+    ids = tracker.get_applied_job_ids()
+    assert {"1001", "1002", "1003", "1004", "1005"}.issubset(ids)
+    assert tracker.is_applied("1001") is True
+    assert tracker.is_applied("1004") is True
+    assert tracker.is_applied("1005") is True
+    assert tracker.is_applied("9999") is False
 
 
 # ==============================================================================
@@ -2015,6 +2828,45 @@ async def test_apply_engine_run_cycle_dry_run(tmp_path, monkeypatch):
     assert session_mgr.get_lock()._acquired is False
 
 
+def test_linkedin_apply_offline_dry_run_pure_sockets_blocked(tmp_path):
+    """
+    Feature 17: Verifies run_offline_dry_run executes 100% offline with ZERO socket calls.
+    enforce_offline_isolation fixture will raise BlockedNetworkError if any socket is opened.
+    """
+    excel_path = str(tmp_path / "tracker.xlsx")
+    json_path = str(tmp_path / "log.json")
+    skip_path = str(tmp_path / "skip.json")
+
+    tracker = LinkedInApplicationTracker(
+        excel_path=excel_path,
+        json_log_path=json_path,
+        skip_file_path=skip_path
+    )
+    engine = LinkedInApplyEngine(tracker=tracker, min_score=70.0)
+
+    stats = engine.run_offline_dry_run(limit=5)
+
+    assert stats["discovered"] >= 5
+    assert stats["scored_above_threshold"] >= 3
+    assert stats["dry_run_verified"] >= 3
+    assert stats["skipped"] >= 2  # Oracle 12-15 YOE & Swiggy React gated out
+    assert stats["failed"] == 0
+
+    # Verify Excel sheet contains LinkedIn_Applications_Log rows
+    import openpyxl
+    wb = openpyxl.load_workbook(excel_path)
+    assert "LinkedIn_Applications_Log" in wb.sheetnames
+    ws = wb["LinkedIn_Applications_Log"]
+    assert ws.max_row >= 4
+    assert ws.max_column == 10
+
+    # Verify skip_list_linkedin.json was NOT mutated
+    if os.path.exists(skip_path):
+        with open(skip_path, "r") as f:
+            skip_data = json.load(f)
+        assert len(skip_data) == 0, "Dry-run must not write job IDs to skip_list_linkedin.json"
+
+
 def test_cli_handle_linkedin_apply(monkeypatch, capsys):
     """Milestone 4: CLI command handler executes cleanly with structured output."""
     class MockArgs:
@@ -2035,15 +2887,751 @@ def test_cli_handle_linkedin_apply(monkeypatch, capsys):
         "jobs": []
     }
     
-    with patch("naukari_pro.modules.linkedin_apply.LinkedInApplyEngine.run_apply_cycle", new_callable=AsyncMock) as mock_cycle:
-        mock_cycle.return_value = mock_stats
+    with patch("naukari_pro.modules.linkedin_apply.LinkedInApplyEngine.run_offline_dry_run") as mock_dry:
+        mock_dry.return_value = mock_stats
         
         exit_code = handle_linkedin_apply(MockArgs())
         assert exit_code == 0
         
         out = capsys.readouterr().out
         assert "LINKEDIN AUTONOMOUS EASY APPLY ENGINE" in out
-        assert "DRY-RUN SIMULATION" in out
+        assert "DRY-RUN SIMULATION" in out or "DRY-RUN OFFLINE SIMULATION" in out
         assert "LINKEDIN APPLY CYCLE RESULTS SUMMARY" in out
         assert "Dry-Run Verified:      4" in out
         assert "LinkedIn_Applications_Log" in out
+
+
+def test_cli_linkedin_apply_dry_run_command_line(capsys, tmp_path, monkeypatch):
+    """
+    Feature 18: Verifies handle_linkedin_apply(dry_run=True) outputs structured table,
+    returns exit code 0, and runs completely offline.
+    """
+    excel_path = str(tmp_path / "tracker.xlsx")
+    monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path))
+
+    class MockArgs:
+        limit = 3
+        dry_run = True
+        headed = False
+        headless = True
+        min_score = 70.0
+        keyword = "Azure Data Engineer,Databricks"
+        location = "Bengaluru,Hyderabad"
+
+    with patch("naukari_pro.modules.linkedin_apply.TRACKER_PATH", excel_path):
+        exit_code = handle_linkedin_apply(MockArgs())
+        assert exit_code == 0
+
+    out = capsys.readouterr().out
+    assert "DRY-RUN OFFLINE SIMULATION" in out
+    assert "Azure Data Engineer, Databricks" in out
+    assert "Bengaluru, Hyderabad" in out
+    assert "Microsoft GCC" in out
+    assert "Dry-Run Verified:      3" in out
+    assert "LinkedIn_Applications_Log" in out
+
+
+def test_cli_subparser_plural_aliases_and_comma_parsing():
+    """
+    Feature 18: Verifies --keywords and --locations plural arguments parse without error.
+    """
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument("--headless", action="store_true")
+    common_parser.add_argument("--limit", type=int, default=25)
+    common_parser.add_argument("--dry-run", action="store_true")
+
+    parser = argparse.ArgumentParser(parents=[common_parser])
+    subparsers = parser.add_subparsers(dest="command")
+    apply_parser = subparsers.add_parser("linkedin-apply", parents=[common_parser])
+    apply_parser.add_argument("--keyword", "--keywords", dest="keyword", type=str, default=None)
+    apply_parser.add_argument("--location", "--locations", dest="location", type=str, default=None)
+
+    args = parser.parse_args(["linkedin-apply", "--keywords", "Azure Data Engineer,Databricks", "--locations", "Bengaluru,Pune"])
+    assert args.command == "linkedin-apply"
+    assert args.keyword == "Azure Data Engineer,Databricks"
+    assert args.location == "Bengaluru,Pune"
+
+
+def test_linkedin_apply_runner_facade(tmp_path, monkeypatch):
+    """
+    Milestone 4: Verifies LinkedInApplyRunner facade implements PROJECT.md contract,
+    routes dry_run to offline engine, and logs to Excel tracker.
+    """
+    excel_path = str(tmp_path / "facade_tracker.xlsx")
+    monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path))
+    
+    runner = LinkedInApplyRunner(headless=True, dry_run=True, limit=2, min_score=70.0)
+    assert runner.headless is True
+    assert runner.dry_run is True
+    assert runner.limit == 2
+    assert runner.min_score == 70.0
+    
+    stats = asyncio.run(runner.run())
+    assert stats["dry_run_verified"] == 2
+    assert len(stats["jobs"]) >= 2
+    
+    entry = {
+        "job_id": "999888777",
+        "company": "Direct GCC",
+        "title": "Azure Data Architect",
+        "location": "Bengaluru",
+        "url": "https://linkedin.com/jobs/view/999888777/",
+        "status": "APPLIED",
+        "match_score": 92.0,
+        "steps": 4
+    }
+    logged = runner.log_application_to_excel(entry, tracker_path=excel_path)
+    assert logged is True
+    
+    import openpyxl
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb["LinkedIn_Applications_Log"]
+    assert ws.max_row == 2
+    assert ws.cell(2, 1).value == "999888777"
+    assert ws.cell(2, 3).value == "Direct GCC"
+
+
+
+# ==============================================================================
+# SECTION 13: CHALLENGER REMEDIATIONS & REGRESSION SUITE (MILESTONE 2 ITERATION 2)
+# ==============================================================================
+
+import time
+import glob
+import threading
+import multiprocessing
+
+
+def test_remediation_1_redos_bounded_quantifier():
+    """Remediation 1: Benchmark bounded YOE regex to prevent ReDoS catastrophic backtracking."""
+    scorer = JobMatchScorer()
+    long_digit_payload = ("1" * 10000) + " years"
+    start_time = time.perf_counter()
+    res = scorer.evaluate("Azure Data Engineer", long_digit_payload)
+    elapsed = time.perf_counter() - start_time
+    assert elapsed < 0.05, f"ReDoS vulnerability detected: took {elapsed:.4f}s on 10,000 digits"
+    assert res is not None
+
+
+def test_remediation_2_experience_scoring_inversion_and_senior_penalty():
+    """Remediation 2: Enforce senior disqualification penalty on 6-8 and 6-9 YOE roles."""
+    scorer = JobMatchScorer()
+
+    # 6-8 YOE must be disqualified with score < 50%
+    r_6_8 = scorer.evaluate(
+        "Data Engineer",
+        "Required 6-8 years experience in Azure, Databricks, PySpark, SQL, Python"
+    )
+    assert r_6_8.score < 50.0, f"Expected score < 50%, got {r_6_8.score}"
+    assert r_6_8.passed is False
+    assert r_6_8.breakdown["experience"] == 0.0
+    assert r_6_8.breakdown["penalty"] >= 20.0
+    assert any("EXP_DISQUALIFIED" in r for r in r_6_8.match_reasons)
+
+    # 5-8 YOE must also be disqualified
+    r_5_8 = scorer.evaluate(
+        "Data Engineer",
+        "Required 5-8 years experience in Azure, Databricks, PySpark, SQL, Python"
+    )
+    assert r_5_8.score < 50.0
+    assert r_5_8.passed is False
+    assert r_5_8.breakdown["experience"] == 0.0
+    assert r_5_8.breakdown["penalty"] >= 20.0
+
+    # 6-9 YOE must also be disqualified
+    r_6_9 = scorer.evaluate(
+        "Data Engineer",
+        "Required 6 to 9 years experience in Azure, Databricks, PySpark, SQL, Python"
+    )
+    assert r_6_9.score < 50.0
+    assert r_6_9.passed is False
+    assert r_6_9.breakdown["experience"] == 0.0
+    assert r_6_9.breakdown["penalty"] >= 20.0
+
+    # 4-6 YOE is moderate stretch (12.0 pts)
+    r_4_6 = scorer.evaluate(
+        "Data Engineer",
+        "Required 4-6 years experience in Azure, Databricks, PySpark, SQL, Python"
+    )
+    assert r_4_6.breakdown["experience"] == 12.0
+    assert r_4_6.breakdown["penalty"] == 0.0
+    assert r_4_6.passed is True
+
+    # 5-7 YOE is high stretch (5.0 pts)
+    r_5_7 = scorer.evaluate(
+        "Data Engineer",
+        "Required 5-7 years experience in Azure, Databricks, PySpark, SQL, Python"
+    )
+    assert r_5_7.breakdown["experience"] == 5.0
+    assert r_5_7.breakdown["penalty"] == 0.0
+
+    # 2-4 YOE is ideal match (20.0 pts)
+    r_2_4 = scorer.evaluate(
+        "Data Engineer",
+        "Required 2-4 years experience in Azure, Databricks, PySpark, SQL, Python"
+    )
+    assert r_2_4.breakdown["experience"] == 20.0
+    assert r_2_4.breakdown["penalty"] == 0.0
+
+
+def test_remediation_3_non_engineering_title_disqualification():
+    """Remediation 3: Disqualify non-engineering roles (HR, Finance, Legal, WordPress) even with technical keyword stuffing."""
+    scorer = JobMatchScorer()
+    stuffed_jd = "2-3 years exp. Tech: Azure, ADF, Databricks, Delta Lake, PySpark, Python, SQL, Kafka, Docker."
+
+    non_eng_titles = [
+        "Human Resources Analyst",
+        "Financial Analyst",
+        "HR Consultant",
+        "WordPress Developer",
+        "Compliance Analyst",
+        "Legal Counsel",
+        "Marketing Specialist",
+        "Content Writer",
+    ]
+
+    for title in non_eng_titles:
+        res = scorer.evaluate(title, stuffed_jd)
+        assert res.score == 0.0, f"Expected 0.0% for non-engineering title '{title}', got {res.score}%"
+        assert res.passed is False
+        assert res.breakdown["penalty"] >= 50.0
+        assert any("DISQUALIFIED_TITLE" in r for r in res.match_reasons)
+
+
+def test_remediation_3_recruiter_title_evaluated_before_positive_matching():
+    """Remediation 3: Ensure recruiter/HR titles are disqualified before positive title matching."""
+    scorer = JobMatchScorer()
+    recruiter_jd = "Hiring Azure Data Engineers. 2-3 years exp in Azure, Databricks, PySpark, Python, SQL."
+
+    recruiter_titles = [
+        "HR Specialist - Azure Data Engineer",
+        "Sourcing Specialist - Azure Data Engineer",
+        "Technical Recruiter - Data Engineering",
+        "Headhunter - Azure Data Platform",
+    ]
+
+    for title in recruiter_titles:
+        res = scorer.evaluate(title, recruiter_jd)
+        assert res.score == 0.0, f"Expected 0.0% for recruiter title '{title}', got {res.score}%"
+        assert res.passed is False
+        assert res.breakdown["penalty"] >= 50.0
+        assert any("DISQUALIFIED_TITLE" in r for r in res.match_reasons)
+
+
+def test_remediation_3_tier4_standalone_analyst_consultant_restriction():
+    """Remediation 3: Standalone generic Analyst/Consultant titles must not receive Tier 4 points."""
+    scorer = JobMatchScorer()
+
+    # Allowed technical Tier 4 titles (ETL Developer is Tier 2 at 26.25)
+    allowed_tier4 = [
+        "Software Engineer",
+        "Data Analyst",
+        "BI Analyst",
+        "Business Intelligence Analyst",
+        "Data Consultant",
+    ]
+    for title in allowed_tier4:
+        score, penalty, disq, reasons = scorer._evaluate_title(title)
+        assert score == 5.25, f"Expected 5.25 for '{title}', got {score}"
+        assert disq is False
+
+    # Standalone generic titles must NOT receive 5.25 points
+    generic_titles = [
+        "Consultant",
+        "Analyst",
+        "Management Consultant",
+        "Operations Analyst",
+    ]
+    for title in generic_titles:
+        score, penalty, disq, reasons = scorer._evaluate_title(title)
+        assert score == 0.0, f"Expected 0.0 for generic '{title}', got {score}"
+
+
+def test_remediation_4_defensive_input_validation():
+    """Remediation 4: Validate handling of None, non-string, and empty inputs in JobMatchScorer."""
+    scorer = JobMatchScorer()
+
+    # None inside candidate_skills
+    res_none_skill = scorer.evaluate(
+        "Azure Data Engineer",
+        "Azure, Databricks, PySpark, 2-3 yrs",
+        candidate_skills=["Kafka", None, "", "Delta Lake", 999]
+    )
+    assert res_none_skill.passed is True
+
+    # Numeric integer job title
+    res_int_title = scorer.evaluate(123456, "Azure Data Engineer 2-3 yrs")
+    assert res_int_title.job_title == "123456"
+
+    # None job title and None JD
+    res_none_both = scorer.evaluate(None, None)
+    assert res_none_both.score < 70.0
+    assert res_none_both.breakdown["title"] == 0.0
+    assert res_none_both.breakdown["tech"] == 0.0
+    assert res_none_both.passed is False
+
+
+@run_async
+async def test_remediation_5_applied_materials_false_positive_fixed():
+    """Remediation 5: Company name 'Applied Materials' or 'Applied AI' must not trigger is_already_applied."""
+    parser = LinkedInJobCardParser()
+
+    # Card from Applied Materials with no footer applied state
+    card_mock = MagicMock()
+    card_mock.locator = MagicMock(return_value=make_mock_locator(count=0, visible=False, text=""))
+    card_mock.inner_text = AsyncMock(
+        return_value="Azure Data Engineer\nApplied Materials\nBengaluru, Karnataka\nEasy Apply"
+    )
+
+    is_applied = await parser.check_already_applied(card_mock)
+    assert is_applied is False, "False positive: 'Applied Materials' was incorrectly marked as applied"
+
+    # Card with actual footer badge
+    card_footer_applied = make_mock_job_card(is_applied=True)
+    assert await parser.check_already_applied(card_footer_applied) is True
+
+    # Card with full-text applied timestamp
+    card_text_applied = MagicMock()
+    card_text_applied.locator = MagicMock(return_value=make_mock_locator(count=0, visible=False, text=""))
+    card_text_applied.inner_text = AsyncMock(
+        return_value="Azure Data Engineer\nMicrosoft\nBengaluru\nApplied 2 days ago"
+    )
+    assert await parser.check_already_applied(card_text_applied) is True
+
+
+@run_async
+async def test_remediation_6_extract_title_view_prefix_preserved():
+    """Remediation 6: Titles starting with 'View' (e.g. Viewer Data Platform Engineer) must be preserved."""
+    parser = LinkedInJobCardParser()
+
+    # Valid job titles starting with View
+    valid_titles = [
+        "Viewer Data Platform Engineer",
+        "Viewpoint Analytics Engineer",
+        "Viewability Software Engineer",
+    ]
+    for vt in valid_titles:
+        title_loc = MagicMock()
+        title_loc.first = title_loc
+        title_loc.inner_text = AsyncMock(return_value=vt)
+        card = MagicMock()
+        card.locator = MagicMock(return_value=MagicMock(count=AsyncMock(return_value=1), first=title_loc))
+        extracted = await parser.extract_title(card)
+        assert extracted == vt, f"Expected '{vt}', got '{extracted}'"
+
+    # Actionable link text starting with View job/details/role/more should be stripped
+    invalid_links = [
+        "View job",
+        "View job details",
+        "View details",
+        "View role",
+        "View more",
+    ]
+    for iv in invalid_links:
+        title_loc = MagicMock()
+        title_loc.first = title_loc
+        title_loc.inner_text = AsyncMock(return_value=iv)
+        card = MagicMock()
+        card.locator = MagicMock(return_value=MagicMock(count=AsyncMock(return_value=1), first=title_loc))
+        extracted = await parser.extract_title(card)
+        assert extracted == "", f"Expected empty string for link '{iv}', got '{extracted}'"
+
+
+def test_remediation_7_deduplicator_multithreaded_concurrency(tmp_path):
+    """Remediation 7: Validate that 10 concurrent threads retain 100% of recorded applications."""
+    applied_f = str(tmp_path / "app_threads.json")
+    seen_f = str(tmp_path / "seen_threads.json")
+    dedup = JobDeduplicator(applied_file=applied_f, seen_file=seen_f)
+
+    num_threads = 10
+    records_per_thread = 50
+
+    def worker(tid):
+        for i in range(records_per_thread):
+            dedup.mark_applied(f"thread_{tid}_{i:03d}", job_info={"worker": tid, "seq": i})
+
+    threads = [threading.Thread(target=worker, args=(t,)) for t in range(num_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Verify on-disk persistence contains exactly 500 records
+    with open(applied_f, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert len(data["applied_job_ids"]) == num_threads * records_per_thread
+    assert len(data["records"]) == num_threads * records_per_thread
+
+
+def _mp_dedup_worker(applied_file: str, seen_file: str, proc_id: int, count: int):
+    """Helper worker process for multiprocessing deduplicator test."""
+    d = JobDeduplicator(applied_file=applied_file, seen_file=seen_file)
+    for i in range(count):
+        d.mark_applied(f"proc_{proc_id:02d}_{i:04d}", job_info={"proc": proc_id, "idx": i})
+        time.sleep(0.002)
+
+
+def test_remediation_7_deduplicator_multiprocess_concurrency(tmp_path):
+    """Remediation 7: Validate inter-process file locking preserves 100% of records across 4 processes."""
+    applied_f = str(tmp_path / "applied_mp.json")
+    seen_f = str(tmp_path / "seen_mp.json")
+    JobDeduplicator(applied_file=applied_f, seen_file=seen_f)
+
+    num_processes = 4
+    records_per_process = 25
+
+    ctx = multiprocessing.get_context("fork") if hasattr(multiprocessing, "get_context") else multiprocessing
+
+    procs = []
+    for p in range(num_processes):
+        proc = ctx.Process(
+            target=_mp_dedup_worker,
+            args=(applied_f, seen_f, p, records_per_process)
+        )
+        procs.append(proc)
+        proc.start()
+
+    for proc in procs:
+        proc.join()
+
+    with open(applied_f, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data["applied_job_ids"]) == num_processes * records_per_process
+
+
+def test_remediation_8_corrupted_cache_quarantine(tmp_path):
+    """Remediation 8: Corrupted JSON cache files are quarantined with .corrupt.<timestamp>."""
+    applied_f = str(tmp_path / "bad_applied.json")
+    seen_f = str(tmp_path / "bad_seen.json")
+
+    with open(applied_f, "w", encoding="utf-8") as f:
+        f.write("{invalid json content truncated")
+    with open(seen_f, "w", encoding="utf-8") as f:
+        f.write("[malformed array")
+
+    dedup = JobDeduplicator(applied_file=applied_f, seen_file=seen_f)
+
+    # Asserts cache initializes cleanly
+    assert dedup.is_applied("test_id") is False
+    assert dedup.is_seen("test_id") is False
+
+    # Asserts quarantine files exist
+    applied_corrupt = glob.glob(f"{applied_f}.corrupt.*")
+    seen_corrupt = glob.glob(f"{seen_f}.corrupt.*")
+
+    assert len(applied_corrupt) >= 1, "Applied corrupt quarantine file was not generated"
+    assert len(seen_corrupt) >= 1, "Seen corrupt quarantine file was not generated"
+
+
+def test_remediation_9_seen_jobs_disk_persistence_and_dataclass_serialization(tmp_path):
+    """Remediation 9: Validate dataclass serialization and defensive str fallback for on-disk persistence."""
+    applied_f = str(tmp_path / "app.json")
+    seen_f = str(tmp_path / "seen.json")
+    dedup = JobDeduplicator(applied_file=applied_f, seen_file=seen_f)
+
+    # 1. Test defensive serialization with arbitrary complex/dataclass object
+    from naukari_pro.modules.linkedin_search import MatchScoreResult
+    dummy_match = MatchScoreResult(
+        score=85.0,
+        passed=True,
+        match_reasons=["High match on Databricks"],
+        breakdown={"total": 85.0},
+        job_title="Azure Data Engineer"
+    )
+
+    # Pass raw dataclass object directly to job_info; default=str in _atomic_save must handle it defensively
+    dedup.mark_seen("99990001", job_info={"match_result": dummy_match, "title": "Raw Dataclass Job"}, status="QUALIFIED")
+    assert os.path.exists(seen_f) is True, "seen.json must be written to disk even with non-primitive object in job_info"
+
+    # 2. Test reload from disk
+    reloaded = JobDeduplicator(applied_file=applied_f, seen_file=seen_f)
+    assert reloaded.is_seen("99990001") is True
+    with open(seen_f, "r", encoding="utf-8") as f:
+        disk_content = json.load(f)
+    assert "99990001" in disk_content["seen_job_ids"]
+    assert disk_content["records"]["99990001"]["status"] == "QUALIFIED"
+
+
+
+# ==============================================================================
+# SECTION 8: MILESTONE 3 ITERATION 2 HARDENING & REMEDIATION TESTS
+# ==============================================================================
+
+def make_async_form_locator(count: int = 1, visible: bool = True, text: str = "", attr_map: dict = None, is_checked: bool = False):
+    loc = MagicMock()
+    loc.count = AsyncMock(return_value=count)
+    loc.is_visible = AsyncMock(return_value=visible)
+    loc.inner_text = AsyncMock(return_value=text)
+    attr_map = attr_map or {}
+    loc.get_attribute = AsyncMock(side_effect=lambda a: attr_map.get(a, None))
+    loc.first = loc
+    loc.last = loc
+    loc.nth = MagicMock(return_value=loc)
+    loc.click = AsyncMock(return_value=None)
+    loc.check = AsyncMock(return_value=None)
+    loc.uncheck = AsyncMock(return_value=None)
+    loc.fill = AsyncMock(return_value=None)
+    loc.is_checked = AsyncMock(return_value=is_checked)
+    loc.select_option = AsyncMock(return_value=None)
+    
+    sub_loc = MagicMock()
+    sub_loc.count = AsyncMock(return_value=0)
+    sub_loc.is_visible = AsyncMock(return_value=False)
+    sub_loc.inner_text = AsyncMock(return_value="")
+    sub_loc.first = sub_loc
+    sub_loc.nth = MagicMock(return_value=sub_loc)
+    loc.locator = MagicMock(return_value=sub_loc)
+    return loc
+
+
+@run_async
+async def test_m3_iter2_radio_substring_collision_word_boundary():
+    """Remediation 1: Verify word boundary regex matching prevents substring collisions on radio options."""
+    solver = LinkedInScreeningSolver()
+    
+    collision_words = [
+        "Technology Engineering",
+        "Continuous Innovation Team",
+        "Knowledge Management",
+        "Notice of Acceptance",
+        "Economic Analysis Division"
+    ]
+    
+    for word in collision_words:
+        prompt = "Do you require immigration sponsorship?"
+        assert solver.determine_radio_answer(prompt) is False
+        
+        radio_0 = make_async_form_locator(count=1, visible=True, text=word, attr_map={"value": "tech_val"})
+        radio_0.locator = MagicMock(return_value=make_async_form_locator(count=1, visible=True, text=word))
+        
+        radio_1 = make_async_form_locator(count=1, visible=True, text="No", attr_map={"value": "no_val"})
+        radio_1.locator = MagicMock(return_value=make_async_form_locator(count=1, visible=True, text="No"))
+        
+        radios_mock = MagicMock()
+        radios_mock.count = AsyncMock(return_value=2)
+        radios_mock.nth = MagicMock(side_effect=lambda idx: radio_0 if idx == 0 else radio_1)
+        
+        fieldset_mock = MagicMock()
+        fieldset_mock.count = AsyncMock(return_value=1)
+        fieldset_mock.is_visible = AsyncMock(return_value=True)
+        fieldset_mock.nth = MagicMock(return_value=fieldset_mock)
+        fieldset_mock.locator = MagicMock(side_effect=lambda sel: make_async_form_locator(count=1, visible=True, text=prompt) if "legend" in sel else radios_mock)
+        
+        modal = MagicMock()
+        modal.locator = MagicMock(side_effect=lambda sel: fieldset_mock if "fieldset" in sel else make_async_form_locator(count=0, visible=False))
+        
+        handled = await solver.solve_all_questions_in_step(modal)
+        
+        assert not radio_0.check.called, f"Radio 0 ('{word}') was falsely checked for target 'no'!"
+        assert radio_1.check.called, f"Radio 1 ('No') was not checked for prompt '{prompt}'!"
+        assert len(handled) == 1
+        assert handled[0]["answer"] == "No"
+
+
+@run_async
+async def test_m3_iter2_auto_heal_persistent_errors_discard_unresolvable():
+    """Remediation 2: Verify auto-heal rechecks validation errors and aborts with DISCARDED_UNRESOLVABLE after 2 attempts."""
+    bot = LinkedInEasyApplyBot(max_step_retries=2)
+    
+    err_loc = make_async_form_locator(count=1, visible=True, text="Please enter valid number")
+    inv_input = make_async_form_locator(count=1, visible=True, attr_map={"type": "number"})
+    next_btn = make_async_form_locator(count=1, visible=True, text="Next")
+    dismiss_btn = make_async_form_locator(count=1, visible=True, text="Dismiss")
+    discard_confirm_btn = make_async_form_locator(count=1, visible=True, text="Discard")
+    
+    modal_elem = MagicMock()
+    def modal_loc(sel):
+        if "artdeco-inline-feedback--error" in sel:
+            return err_loc
+        if "input[aria-invalid='true']" in sel:
+            return inv_input
+        if "next" in sel.lower():
+            return next_btn
+        return make_async_form_locator(count=0, visible=False)
+    modal_elem.locator = MagicMock(side_effect=modal_loc)
+    
+    modal_container = make_async_form_locator(count=1, visible=True)
+    modal_container.first = modal_elem
+    
+    page = MagicMock()
+    page.goto = AsyncMock(return_value=None)
+    def page_loc(sel):
+        if "modal" in sel:
+            return modal_container
+        if "apply" in sel:
+            return make_async_form_locator(count=1, visible=True)
+        if "dismiss" in sel.lower():
+            return dismiss_btn
+        if "discard" in sel.lower():
+            return discard_confirm_btn
+        return make_async_form_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()):
+        res = await bot.execute_easy_apply(page=page, job_info={"job_id": "777", "title": "Dev", "company": "Co"}, dry_run=False, max_steps=5)
+    
+    assert res["success"] is False
+    assert res["status"] == "DISCARDED_UNRESOLVABLE"
+    assert bot.current_state == ModalState.TERMINAL_DISCARDED
+    assert inv_input.fill.call_count == 2
+    assert dismiss_btn.click.called
+
+
+@run_async
+async def test_m3_iter2_standalone_consent_checkboxes_solved():
+    """Remediation 3: Verify solve_all_questions_in_step solves standalone consent/certification checkboxes."""
+    solver = LinkedInScreeningSolver()
+    
+    chk_consent = make_async_form_locator(count=1, visible=True, text="I certify that all statements are true")
+    chk_follow = make_async_form_locator(count=1, visible=True, text="Follow Company", attr_map={"id": "follow-company-checkbox"})
+    
+    modal = MagicMock()
+    def modal_loc(sel):
+        if "checkbox" in sel:
+            loc = MagicMock()
+            loc.count = AsyncMock(return_value=2)
+            loc.nth = MagicMock(side_effect=lambda idx: chk_consent if idx == 0 else chk_follow)
+            return loc
+        return make_async_form_locator(count=0, visible=False)
+    modal.locator = MagicMock(side_effect=modal_loc)
+    
+    handled = await solver.solve_all_questions_in_step(modal)
+    
+    assert chk_consent.check.called is True
+    assert chk_follow.check.called is False
+    assert len(handled) == 1
+    assert handled[0]["type"] == "checkbox"
+    assert handled[0]["answer"] is True
+
+
+@run_async
+async def test_m3_iter2_fsm_classify_step_history_connected():
+    """Remediation 4: Verify classify_step updates self.current_state and records history in execute_easy_apply."""
+    bot = LinkedInEasyApplyBot()
+    page = MagicMock()
+    page.goto = AsyncMock(return_value=None)
+    
+    apply_btn = make_async_form_locator(count=1, visible=True, text="Easy Apply")
+    submit_btn = make_async_form_locator(count=1, visible=True, text="Submit application")
+    dismiss_btn = make_async_form_locator(count=1, visible=True, text="Dismiss")
+    
+    modal_elem = MagicMock()
+    h_contact = make_async_form_locator(count=1, visible=True, text="Contact info")
+    modal_elem.locator = MagicMock(side_effect=lambda sel: h_contact if "h3" in sel else submit_btn if "submit" in sel.lower() else make_async_form_locator(count=0, visible=False))
+    
+    modal_container = make_async_form_locator(count=1, visible=True)
+    modal_container.first = modal_elem
+    
+    def page_loc(sel):
+        if "jobs-apply-button" in sel:
+            return apply_btn
+        if "jobs-easy-apply-modal" in sel or "[data-test-modal]" in sel:
+            return modal_container
+        if "dismiss" in sel.lower():
+            return dismiss_btn
+        return make_async_form_locator(count=0, visible=False)
+    page.locator = MagicMock(side_effect=page_loc)
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()):
+        res = await bot.execute_easy_apply(page=page, job_info={"job_id": "888", "title": "Dev", "company": "Co"}, dry_run=True)
+    
+    assert res["status"] == "DRY_RUN_VERIFIED"
+    assert len(bot.history) >= 1
+    assert bot.history[0]["step"] == 1
+    assert bot.history[0]["state"] == ModalState.STEP_REVIEW.value
+    assert "timestamp" in bot.history[0]
+
+
+def test_m3_iter2_screening_negative_guards_and_affirmative_sponsorship():
+    """Remediation 5: Verify negative guards and affirmative sponsorship exception in determine_radio_answer."""
+    solver = LinkedInScreeningSolver()
+    
+    # 1. Negative guards
+    assert solver.determine_radio_answer("Are you bound by a noncompetition agreement?") is False
+    assert solver.determine_radio_answer("Are you subject to any non-competition covenants?") is False
+    assert solver.determine_radio_answer("Have you ever faced disciplinary proceedings?") is False
+    assert solver.determine_radio_answer("Any history of disciplinary action?") is False
+    assert solver.determine_radio_answer("Do you now or in the future require visa sponsorship?") is False
+    
+    # 2. Affirmative without sponsorship
+    assert solver.determine_radio_answer("Are you authorized to work in India without requiring employer sponsorship?") is True
+    assert solver.determine_radio_answer("Can you work without sponsorship?") is True
+    assert solver.determine_radio_answer("Are you authorized to work without requiring visa sponsorship?") is True
+    assert solver.determine_radio_answer("Are you legally authorized to work in India?") is True
+
+
+@run_async
+async def test_m3_iter2_auto_heal_broadened_selector_scope():
+    """Remediation 6: Verify auto_heal_step queries inputs inside error containers even without aria-invalid='true'."""
+    bot = LinkedInEasyApplyBot()
+    modal = MagicMock()
+    
+    input_in_container = make_async_form_locator(count=1, visible=True, attr_map={"type": "number"})
+    
+    def modal_loc(sel):
+        if "div.artdeco-inline-feedback--error input" in sel:
+            return input_in_container
+        return make_async_form_locator(count=0, visible=False)
+    modal.locator = MagicMock(side_effect=modal_loc)
+    
+    healed = await bot.auto_heal_step(modal, attempt=1)
+    assert healed is True
+    assert input_in_container.fill.call_count == 1
+    assert input_in_container.fill.call_args[0][0] == "2"
+
+
+@run_async
+async def test_m3_iter2_circuit_breaker_single_counting_on_failure_and_success():
+    """Remediation 7: Verify circuit breaker failures and successes are counted once without duplicate engine increments."""
+    shared_cb = LinkedInCircuitBreaker(max_consecutive_errors=3)
+    
+    session_mgr = MagicMock()
+    session_mgr.get_lock = MagicMock(return_value=MagicMock(acquire=MagicMock(return_value=True), release=MagicMock()))
+    session_mgr.verify_session = AsyncMock(return_value={"status": "VALID", "authenticated": True, "candidate_name": "Lavkush"})
+    
+    mock_page = make_mock_page()
+    mock_ctx = MagicMock(pages=[mock_page], close=AsyncMock())
+    session_mgr.create_stealth_context = AsyncMock(return_value=mock_ctx)
+    
+    vacancies = [
+        {"job_id": "51001", "title": "Azure Data Engineer", "company": "Co 1", "is_easy_apply": True, "raw_snippet": "PySpark, Databricks, SQL"},
+        {"job_id": "51002", "title": "Azure Data Engineer", "company": "Co 2", "is_easy_apply": True, "raw_snippet": "PySpark, Databricks, SQL"},
+        {"job_id": "51003", "title": "Azure Data Engineer", "company": "Co 3", "is_easy_apply": True, "raw_snippet": "PySpark, Databricks, SQL"}
+    ]
+    
+    mock_search = MagicMock()
+    mock_search.search_jobs = AsyncMock(return_value=vacancies)
+    
+    real_nav = LinkedInEasyApplyNavigator(circuit_breaker=shared_cb)
+    real_nav.open_easy_apply_modal = AsyncMock(return_value=None)
+    
+    tracker = MagicMock()
+    tracker.is_applied = MagicMock(return_value=False)
+    
+    engine = LinkedInApplyEngine(
+        session_manager=session_mgr,
+        search_engine=mock_search,
+        navigator=real_nav,
+        tracker=tracker,
+        circuit_breaker=shared_cb,
+        min_score=70.0
+    )
+    score_obj = MagicMock()
+    score_obj.passed = True
+    score_obj.score = 85.0
+    engine.scorer.evaluate = MagicMock(return_value=score_obj)
+    
+    with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()), \
+         patch("playwright.async_api.async_playwright", make_playwright_cm_mock(mock_ctx)):
+        stats = await engine.run_apply_cycle(
+            keywords=["Azure Data Engineer"],
+            locations=["Hyderabad"],
+            limit=5,
+            dry_run=False
+        )
+        
+    assert shared_cb.is_tripped is True
+    assert shared_cb.trip_reason == "CONSECUTIVE_ERRORS"
+    assert len(stats["jobs"]) == 3, f"Expected exactly 3 jobs attempted before breaker trip, got {len(stats['jobs'])}"
+    assert shared_cb.consecutive_errors == 3
