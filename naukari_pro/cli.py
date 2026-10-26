@@ -39,6 +39,11 @@ from naukari_pro.modules.linkedin_session import (
     LinkedInCheckpointError,
     mask_cookie_token,
 )
+from naukari_pro.modules.linkedin_optimizer import (
+    LINKEDIN_100K_BLUEPRINT,
+    LinkedInProfileAuditor,
+    export_100k_blueprint_markdown,
+)
 
 BANNER = r"""
 ========================================================================
@@ -74,6 +79,7 @@ def print_menu():
     print("  [A] Authenticate Session (One-time Login & Cookie Persistence)")
     print("  [V] LinkedIn Session Diagnostic (Verify li_at cookie & Identity)")
     print("  [L] LinkedIn Easy Apply (Autonomous Multi-Step Bot & Screening Solver)")
+    print("  [K] LinkedIn 100k+ Search SEO & Recruiter Optimizer (Blueprint & Audit)")
     print("  [0] Exit")
     print("========================================================================")
 
@@ -632,10 +638,69 @@ def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min
     print("=" * 76 + "\n")
     return 0
 
+def handle_linkedin_seo(args=None, output_path: str = None) -> int:
+    """
+    Audits candidate profile parameters and generates the 100k+ monthly recruiter
+    search optimization blueprint (Headline, About, Top 3 Pinned skills, 50-skills taxonomy,
+    and hidden Open-to-Work configuration).
+    """
+    target_out = output_path
+    if args and hasattr(args, "output") and args.output:
+        target_out = args.output
+
+    auditor = LinkedInProfileAuditor()
+    bp = LINKEDIN_100K_BLUEPRINT
+
+    result = auditor.audit(
+        headline=bp["headline"],
+        about=bp["about"],
+        skills=bp["top_50_skills"],
+        current_title="DevOps Engineer / Azure Data Engineer"
+    )
+
+    md_file = export_100k_blueprint_markdown(target_out)
+
+    print("\n" + "=" * 76)
+    print("   LINKEDIN 100K+ RECRUITER SEARCH APPEARANCES & SEO OPTIMIZER")
+    print("=" * 76)
+    print(f"  • Candidate:             Lavkush Kumar (2.5 YOE | ₹20-25 LPA Target)")
+    print(f"  • Target Specialization: Azure Data Engineer / Lakehouse Platform")
+    print(f"  • Profile SEO Score:     {result['seo_score']}/100.0 [{result['grade']}]")
+    print(f"  • Core Keywords Active:  {len(result['critical_keywords_covered'])}/{len(auditor.CRITICAL_RECRUITER_KEYWORDS)} matched")
+    print(f"  • Skills Saturation:     {len(bp['top_50_skills'])}/50 skills defined (100% capacity)")
+    print("=" * 76)
+
+    print("\n📌 1. RECRUITER-OPTIMIZED HEADLINE (208 / 220 chars):")
+    print("-" * 76)
+    print(f"  {bp['headline']}")
+    print("-" * 76)
+
+    print("\n📌 2. TOP 3 PINNED SKILLS (Recruiter Boolean Priority 1):")
+    print("-" * 76)
+    for idx, sk in enumerate(bp['top_50_skills'][:3], 1):
+        print(f"  {idx}. {sk}")
+    print("-" * 76)
+
+    print("\n📌 3. OPEN TO WORK CONFIGURATION (Recruiters Only):")
+    print("-" * 76)
+    otw = bp['open_to_work_settings']
+    print(f"  • Target Titles:    {', '.join(otw['job_titles'])}")
+    print(f"  • Target Hubs:      {', '.join(otw['locations_on_site'])} + Remote")
+    print(f"  • Availability:     {otw['start_date']}")
+    print(f"  • Visibility:       {otw['visibility']}")
+    print("-" * 76)
+
+    print("\n📌 4. STANDALONE BLUEPRINT EXPORT:")
+    print("-" * 76)
+    print(f"  ✓ Exported to: {md_file}")
+    print(f"  ✓ Includes full 2,600-char 'About' section, 50-skills taxonomy, and experience bullets.")
+    print("-" * 76 + "\n")
+    return 0
+
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A, V, L]: ").strip().upper()
+        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A, V, L, K]: ").strip().upper()
         if choice == "P":
             handle_pro()
         elif choice == "W":
@@ -676,6 +741,8 @@ def interactive_loop():
             handle_linkedin_verify(headless=True)
         elif choice == "L":
             handle_linkedin_apply(dry_run=True)
+        elif choice == "K":
+            handle_linkedin_seo()
         elif choice == "0":
             print("\nExiting naukariPro. Good luck with your ₹25 LPA goal!\n")
             break
@@ -742,6 +809,12 @@ def main():
     apply_parser.add_argument("--location", "--locations", dest="location", type=str, default=None, help="Override search location(s), comma-separated (e.g. 'Bengaluru,Hyderabad')")
     apply_parser.set_defaults(limit=25)
 
+    seo_parser = subparsers.add_parser("linkedin-seo", help="Audit and export LinkedIn 100k+ Recruiter Search SEO blueprint", parents=[common_parser])
+    seo_parser.add_argument("--output", type=str, default=None, help="Custom export path for the markdown blueprint")
+
+    optimize_parser = subparsers.add_parser("linkedin-optimize", help="Alias for linkedin-seo", parents=[common_parser])
+    optimize_parser.add_argument("--output", type=str, default=None, help="Custom export path for the markdown blueprint")
+
     args = parser.parse_args()
 
     if args.command == "pro":
@@ -793,6 +866,9 @@ def main():
         sys.exit(exit_code)
     elif args.command == "linkedin-apply":
         exit_code = handle_linkedin_apply(args)
+        sys.exit(exit_code)
+    elif args.command in ("linkedin-seo", "linkedin-optimize"):
+        exit_code = handle_linkedin_seo(args)
         sys.exit(exit_code)
     else:
         interactive_loop()

@@ -3635,3 +3635,150 @@ async def test_m3_iter2_circuit_breaker_single_counting_on_failure_and_success()
     assert shared_cb.trip_reason == "CONSECUTIVE_ERRORS"
     assert len(stats["jobs"]) == 3, f"Expected exactly 3 jobs attempted before breaker trip, got {len(stats['jobs'])}"
     assert shared_cb.consecutive_errors == 3
+
+
+# ==============================================================================
+# LINKEDIN 100K+ SEARCH OPTIMIZER & SEO AUDITOR SUITE
+# ==============================================================================
+
+def test_auditor_perfect_score_blueprint():
+    """Validates that the canonical 100k+ blueprint achieves 100/100 A+ score."""
+    from naukari_pro.modules.linkedin_optimizer import LINKEDIN_100K_BLUEPRINT, LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+    bp = LINKEDIN_100K_BLUEPRINT
+
+    res = auditor.audit(
+        headline=bp["headline"],
+        about=bp["about"],
+        skills=bp["top_50_skills"],
+        current_title="DevOps Engineer / Azure Data Engineer"
+    )
+
+    assert res["seo_score"] == 100.0
+    assert "A+" in res["grade"]
+    assert len(res["missing_critical_keywords"]) == 0
+    assert len(res["critical_keywords_covered"]) == len(auditor.CRITICAL_RECRUITER_KEYWORDS)
+
+
+def test_auditor_short_headline_penalties():
+    """Validates penalties for short headline and missing notice period."""
+    from naukari_pro.modules.linkedin_optimizer import LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+
+    res = auditor.audit(
+        headline="Azure Data Engineer | 2.5 YOE",
+        about="Experienced in data engineering and SQL.",
+        skills=["Azure Data Engineer", "SQL"],
+        current_title="Software Engineer"
+    )
+
+    assert res["seo_score"] < 60.0
+    assert any("too short" in f for f in res["findings"])
+    assert any("Notice" in r or "notice" in r for r in res["recommendations"])
+
+
+def test_auditor_headline_exceeds_limit():
+    """Validates warning when headline exceeds the LinkedIn 220-char hard limit."""
+    from naukari_pro.modules.linkedin_optimizer import LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+
+    long_hl = "Azure Data Engineer " * 20  # 400 chars
+    res = auditor.audit(
+        headline=long_hl,
+        about="Test about",
+        skills=["Python"],
+        current_title="Azure Data Engineer"
+    )
+
+    assert any("exceeds LinkedIn 220-character limit" in f for f in res["findings"])
+    assert any("Trim headline" in r for r in res["recommendations"])
+
+
+def test_auditor_empty_sections_graceful():
+    """Validates that auditor handles None and empty strings without crashing."""
+    from naukari_pro.modules.linkedin_optimizer import LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+
+    res = auditor.audit(headline=None, about="", skills=[], current_title=None)
+    assert res["seo_score"] < 30.0
+    assert "D" in res["grade"]
+    assert any("Headline is empty" in f for f in res["findings"])
+    assert any("'About' section is empty" in f for f in res["findings"])
+    assert any("Skills section has 0 skills" in f for f in res["findings"])
+
+
+def test_auditor_skills_saturation_tiers():
+    """Validates scoring brackets for skills count (0, <30, <=50)."""
+    from naukari_pro.modules.linkedin_optimizer import LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+
+    res_empty = auditor.audit(skills=[])
+    res_partial = auditor.audit(skills=["Azure Databricks", "PySpark", "Azure Data Factory (ADF)"] + [f"Skill_{i}" for i in range(15)])
+    res_full = auditor.audit(skills=["Azure Databricks", "PySpark", "Azure Data Factory (ADF)"] + [f"Skill_{i}" for i in range(47)])
+
+    assert res_empty["seo_score"] < res_partial["seo_score"]
+    assert res_partial["seo_score"] < res_full["seo_score"]
+
+
+def test_auditor_top_3_pinned_skills_detection():
+    """Validates that top 3 pinned skills must include Azure Databricks, PySpark, and ADF."""
+    from naukari_pro.modules.linkedin_optimizer import LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+
+    # Good pinned skills
+    res_good = auditor.audit(skills=["Azure Databricks", "PySpark", "Azure Data Factory (ADF)", "SQL"])
+    assert any("Top pinned skills correctly prioritize" in f for f in res_good["findings"])
+
+    # Bad pinned skills (generic skills at top)
+    res_bad = auditor.audit(skills=["Teamwork", "Management", "Communication", "Azure Databricks", "PySpark"])
+    assert any("Pin 'Azure Databricks'" in r for r in res_bad["recommendations"])
+
+
+def test_auditor_title_alignment_tiers():
+    """Validates title scoring tiers for exact target title vs partial vs unrelated."""
+    from naukari_pro.modules.linkedin_optimizer import LinkedInProfileAuditor
+    auditor = LinkedInProfileAuditor()
+
+    res_exact = auditor.audit(current_title="Azure Data Engineer")
+    res_devops = auditor.audit(current_title="DevOps Engineer")
+    res_unrelated = auditor.audit(current_title="Sales Representative")
+
+    assert res_exact["seo_score"] > res_devops["seo_score"]
+    assert res_devops["seo_score"] > res_unrelated["seo_score"]
+
+
+def test_export_100k_blueprint_markdown_file_creation(tmp_path):
+    """Validates that export_100k_blueprint_markdown generates an authoritative document."""
+    from naukari_pro.modules.linkedin_optimizer import export_100k_blueprint_markdown
+    out_file = str(tmp_path / "TEST_LINKEDIN_BLUEPRINT.md")
+
+    path = export_100k_blueprint_markdown(output_path=out_file)
+    assert os.path.exists(path)
+
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "# 🚀 LinkedIn 100k+ Search Appearances Blueprint: Azure Data Engineer" in content
+    assert "Azure Databricks · PySpark · Delta Lake · Azure Data Factory" in content
+    assert "## 2. \"Open to Work\" Configuration" in content
+    assert "## 5. Top 50 Skills Taxonomy" in content
+    assert "The Math of 100k+ Search Appearances" in content
+
+
+def test_handle_linkedin_seo_cli_execution(tmp_path, capsys):
+    """Validates handle_linkedin_seo CLI function executes without errors."""
+    from naukari_pro.cli import handle_linkedin_seo
+    out_file = str(tmp_path / "CLI_EXPORT.md")
+
+    class MockArgs:
+        output = out_file
+
+    ret = handle_linkedin_seo(args=MockArgs())
+    assert ret == 0
+    assert os.path.exists(out_file)
+
+    captured = capsys.readouterr()
+    assert "LINKEDIN 100K+ RECRUITER SEARCH APPEARANCES & SEO OPTIMIZER" in captured.out
+    assert "100.0/100.0" in captured.out
+    assert "RECRUITER-OPTIMIZED HEADLINE" in captured.out
+
