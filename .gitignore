@@ -40,6 +40,13 @@ cookies_seed.json
 *cookie*.json
 naukri_system/cookies_seed.json
 naukri_system/browser_session/
+linkedin_system/session_cookies.json
+linkedin_system/cookies_seed.json
+linkedin_system/browser_session/
+linkedin_system/.linkedin_session.lock
+*.lock
+linkedin_applications_log.json
+skip_list_linkedin.json
 ~/.naukri_system_profile/
 .naukri_system_profile/
 

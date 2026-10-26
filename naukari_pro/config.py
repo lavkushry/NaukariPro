@@ -8,10 +8,10 @@ import json
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKSPACE_DIR = BASE_DIR
+WORKSPACE_DIR = os.getenv("WORKSPACE_DIR") or BASE_DIR
 
 # 1. Load .env once right at import
-ENV_PATH = os.path.join(BASE_DIR, ".env")
+ENV_PATH = os.getenv("ENV_PATH") or os.path.join(WORKSPACE_DIR, ".env")
 if os.path.exists(ENV_PATH):
     load_dotenv(ENV_PATH, override=False)
 

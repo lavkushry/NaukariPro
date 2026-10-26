@@ -13,6 +13,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 from naukari_pro.session import get_stealth_context, ensure_authenticated, save_session_cookies, detect_challenge
 from naukari_pro.config import load_config
@@ -29,6 +30,15 @@ from naukari_pro.modules.career_portals import CareerPortalFiller
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
 from naukari_pro.modules.pro_autopilot import ProAutoPilotEngine
 from naukari_pro.modules.profile_performance import ProfilePerformanceEngine, ProfilePerformanceTracker
+import asyncio
+import inspect
+from naukari_pro.modules.linkedin_session import (
+    LinkedInSessionManager,
+    LinkedInCookieMissingError,
+    LinkedInCookieExpiredError,
+    LinkedInCheckpointError,
+    mask_cookie_token,
+)
 
 BANNER = r"""
 ========================================================================
@@ -62,6 +72,8 @@ def print_menu():
     print("  [D] Run Complete Daily Autonomous Cycle (Bump + Scan + Apply + Log)")
     print("  [G] AGY Autonomous Scheduler (Linux systemd & agy CLI schedule)")
     print("  [A] Authenticate Session (One-time Login & Cookie Persistence)")
+    print("  [V] LinkedIn Session Diagnostic (Verify li_at cookie & Identity)")
+    print("  [L] LinkedIn Easy Apply (Autonomous Multi-Step Bot & Screening Solver)")
     print("  [0] Exit")
     print("========================================================================")
 
@@ -368,10 +380,233 @@ def handle_agy_schedule(action="status"):
         print("\n[*] Checking Crontab Fallback:")
         subprocess.run(["crontab", "-l"], check=False)
 
+def handle_linkedin_verify(args=None, headless: bool = True) -> int:
+    """
+    Executes LinkedIn session diagnostic verification and prints structured status box.
+    Uses pure async Playwright inside asyncio.run() to prevent event loop collisions.
+    Returns:
+        0 if session is VALID
+        1 if session is EXPIRED, COOKIE_MISSING, or UNREACHABLE
+        2 if session is CHECKPOINT
+    """
+    if hasattr(args, "headed"):
+        headless = not getattr(args, "headed", False)
+    elif hasattr(args, "headless"):
+        headless = getattr(args, "headless", True)
+    elif isinstance(args, bool):
+        headless = args
+
+    manager = LinkedInSessionManager()
+    token = None
+    try:
+        token = manager.get_li_at_cookie(raise_if_missing=True)
+    except LinkedInCookieMissingError:
+        token = None
+
+    if not token:
+        print("\n" + "=" * 72)
+        print("   LINKEDIN SESSION DIAGNOSTIC & IDENTITY VERIFICATION")
+        print("=" * 72)
+        print("  • Cookie Source:          NONE (Checked .env and linkedin_system/)")
+        print("  • Cookie Present:         NO")
+        print("  • Session Status:         COOKIE_MISSING")
+        print("  • Authenticated Identity: UNKNOWN")
+        print("=" * 72)
+        print("  DIAGNOSTIC DETAILS & REMEDIATION:")
+        print("  [!] No LinkedIn authentication cookie found.")
+        print("  👉 Remediation Instructions:")
+        print("     1. Open Chrome on your desktop and log in to https://www.linkedin.com.")
+        print("     2. Open DevTools (F12) -> Application tab -> Cookies -> https://www.linkedin.com.")
+        print("     3. Copy the value of cookie named 'li_at'.")
+        print("     4. Add to /Users/lavkushkumar/Desktop/Resume/.env:")
+        print('        LINKEDIN_LI_AT="your_li_at_cookie_value_here"')
+        print("     5. Alternatively, export LINKEDIN_LI_AT=\"your_cookie\" in your environment.")
+        print("=" * 72 + "\n")
+        return 1
+
+    masked_token = mask_cookie_token(token)
+    source_desc = getattr(manager, "last_cookie_source", ".env (LINKEDIN_LI_AT)")
+
+    async def _run_verify_async():
+        async with async_playwright() as p:
+            context = await manager.create_stealth_context(p, headless=headless)
+            try:
+                page = context.pages[0] if (hasattr(context, "pages") and context.pages) else await context.new_page()
+                res = await manager.verify_session(page, raise_for_status=False)
+                return res
+            finally:
+                if hasattr(context, "close"):
+                    c_res = context.close()
+                    if inspect.isawaitable(c_res):
+                        await c_res
+
+    diag = {}
+    try:
+        diag = asyncio.run(_run_verify_async())
+    except LinkedInCheckpointError as e:
+        diag = {
+            "status": "CHECKPOINT",
+            "authenticated": False,
+            "checkpoint_detected": True,
+            "candidate_name": None,
+            "headline": None,
+            "final_url": getattr(e, "checkpoint_url", "https://www.linkedin.com/checkpoint/challenge"),
+            "detail": str(e)
+        }
+    except LinkedInCookieExpiredError as e:
+        diag = {
+            "status": "EXPIRED",
+            "authenticated": False,
+            "candidate_name": None,
+            "headline": None,
+            "final_url": getattr(e, "redirect_url", "https://www.linkedin.com/authwall"),
+            "detail": str(e)
+        }
+    except Exception as e:
+        err_msg = str(e)
+        if "timeout" in err_msg.lower() or "err_" in err_msg.lower() or "dns" in err_msg.lower():
+            status_val = "UNREACHABLE"
+        else:
+            status_val = "EXPIRED"
+        diag = {
+            "status": status_val,
+            "authenticated": False,
+            "candidate_name": None,
+            "headline": None,
+            "detail": f"Verification error: {e}"
+        }
+
+    status = diag.get("status", "UNKNOWN")
+    candidate_name = diag.get("candidate_name") or "UNKNOWN"
+    headline = diag.get("headline") or diag.get("candidate_headline") or "N/A"
+    final_url = diag.get("final_url") or diag.get("feed_url") or "N/A"
+    dom_verified = diag.get("dom_verified", False)
+
+    print("\n" + "=" * 72)
+    print("   LINKEDIN SESSION DIAGNOSTIC & IDENTITY VERIFICATION")
+    print("=" * 72)
+    print(f"  • Cookie Source:          {source_desc}")
+    print("  • Cookie Present:         YES")
+    print(f"  • Cookie Token:           {masked_token}")
+    print(f"  • Session Status:         {status}")
+    print(f"  • Authenticated Identity: {candidate_name}")
+    print(f"  • Professional Headline:  {headline}")
+    if final_url != "N/A":
+        print(f"  • Verified URL:           {final_url}")
+    print("=" * 72)
+    print("  DIAGNOSTIC DETAILS & REMEDIATION:")
+
+    if status == "VALID":
+        print("  [✓] LinkedIn session is active, valid, and authenticated.")
+        if dom_verified:
+            print(f"  [✓] Verified candidate identity on live DOM: {candidate_name}.")
+        print("  [✓] System is fully ready for autonomous Easy Apply execution.")
+        print("=" * 72 + "\n")
+        return 0
+    elif status == "CHECKPOINT":
+        print("  ⚠️ LinkedIn security checkpoint or CAPTCHA challenge encountered!")
+        print("  👉 Remediation Instructions:")
+        print("     1. Run with visible GUI: './naukariPro linkedin-verify --headed'")
+        print("     2. Complete the visual challenge or email/SMS OTP in the browser window.")
+        print("     3. Once at https://www.linkedin.com/feed/, copy the refreshed 'li_at' cookie and update .env.")
+        print("=" * 72 + "\n")
+        return 2
+    elif status == "UNREACHABLE":
+        print("  [!] LinkedIn is unreachable. Check network connection or DNS resolution.")
+        print(f"  👉 Diagnostic Detail: {diag.get('detail', 'Network timeout or unreachable host')}")
+        print("=" * 72 + "\n")
+        return 1
+    elif status == "RATE_LIMITED":
+        print("  ⚠️ LinkedIn returned HTTP 429 (Too Many Requests / IP Cooldown).")
+        print("  👉 Remediation Instructions:")
+        print("     1. LinkedIn has temporarily throttled this IP address from repeated rapid page requests.")
+        print("     2. Wait 10-15 minutes for the rate limit cooldown to automatically expire.")
+        print("     3. Or run with residential proxy in .env (e.g. LINKEDIN_PROXY=http://user:pass@host:port).")
+        print("=" * 72 + "\n")
+        return 1
+    else:  # EXPIRED, UNKNOWN or other
+        print("  [!] The provided li_at cookie has expired or was revoked by LinkedIn.")
+        print("  👉 Remediation Instructions:")
+        print("     1. Open Chrome on your desktop and log in to https://www.linkedin.com.")
+        print("     2. Open DevTools (F12) -> Application -> Cookies -> https://www.linkedin.com.")
+        print("     3. Copy the fresh value of cookie named 'li_at'.")
+        print("     4. Update LINKEDIN_LI_AT in .env.")
+        print("=" * 72 + "\n")
+        return 1
+
+def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min_score=70.0, keyword=None, location=None):
+    """
+    Executes autonomous LinkedIn Easy Apply workflow across target hubs and keywords.
+    Strictly gates jobs by score (>= 70.0%) and handles multi-step screening forms.
+    """
+    if args:
+        if hasattr(args, "limit") and args.limit is not None:
+            limit = args.limit
+        if hasattr(args, "dry_run"):
+            dry_run = getattr(args, "dry_run", dry_run)
+        if hasattr(args, "headed"):
+            headless = not getattr(args, "headed", False)
+        elif hasattr(args, "headless"):
+            headless = getattr(args, "headless", headless)
+        if hasattr(args, "min_score") and args.min_score is not None:
+            min_score = args.min_score
+        if hasattr(args, "keyword") and args.keyword:
+            keyword = args.keyword
+        if hasattr(args, "location") and args.location:
+            location = args.location
+
+    print("\n" + "=" * 72)
+    print("   LINKEDIN AUTONOMOUS EASY APPLY ENGINE")
+    print("=" * 72)
+    mode_str = "DRY-RUN SIMULATION (NO SUBMISSIONS)" if dry_run else "LIVE AUTONOMOUS SUBMISSIONS"
+    print(f"  • Execution Mode:        {mode_str}")
+    print(f"  • Daily Cycle Limit:     {limit} applications")
+    print(f"  • Minimum Match Gate:    {min_score}%")
+    print(f"  • Browser Mode:          {'Headless' if headless else 'Visible GUI'}")
+    if keyword:
+        print(f"  • Keyword Filter:        {keyword}")
+    if location:
+        print(f"  • Location Filter:       {location}")
+    print("=" * 72)
+
+    from naukari_pro.modules.linkedin_apply import LinkedInApplyEngine
+    apply_engine = LinkedInApplyEngine(min_score=min_score)
+
+    keywords_list = [keyword] if keyword else None
+    locations_list = [location] if location else None
+
+    try:
+        stats = asyncio.run(apply_engine.run_apply_cycle(
+            keywords=keywords_list,
+            locations=locations_list,
+            limit=limit,
+            dry_run=dry_run,
+            headless=headless
+        ))
+    except Exception as e:
+        print(f"\n[!] Execution error during LinkedIn apply cycle: {e}")
+        return 1
+
+    print("\n" + "=" * 72)
+    print("   LINKEDIN APPLY CYCLE RESULTS SUMMARY")
+    print("=" * 72)
+    print(f"  • Vacancies Discovered:  {stats.get('discovered', 0)}")
+    print(f"  • Passed Match Gate:     {stats.get('scored_above_threshold', 0)}")
+    if dry_run:
+        print(f"  • Dry-Run Verified:      {stats.get('dry_run_verified', 0)}")
+    else:
+        print(f"  • Applications Sent:     {stats.get('applied', 0)}")
+    print(f"  • Skipped / Gated Out:   {stats.get('skipped', 0)}")
+    print(f"  • Errors / Stalled:      {stats.get('failed', 0)}")
+    print("  • Excel Tracker:         Naukri_Live_Application_Tracker.xlsx")
+    print("  • Tracker Worksheet:     LinkedIn_Applications_Log")
+    print("=" * 72 + "\n")
+    return 0
+
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A]: ").strip().upper()
+        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A, V, L]: ").strip().upper()
         if choice == "P":
             handle_pro()
         elif choice == "W":
@@ -408,6 +643,10 @@ def interactive_loop():
             handle_daily_cycle()
         elif choice == "A":
             handle_auth()
+        elif choice == "V":
+            handle_linkedin_verify(headless=True)
+        elif choice == "L":
+            handle_linkedin_apply(dry_run=True)
         elif choice == "0":
             print("\nExiting naukariPro. Good luck with your ₹25 LPA goal!\n")
             break
@@ -464,6 +703,15 @@ def main():
     sched_parser = subparsers.add_parser("agy-schedule", help="Manage Linux AGY Autonomous Scheduler (systemd timer + agy CLI)", parents=[common_parser])
     sched_parser.add_argument("action", nargs="?", default="status", choices=["install", "run", "status", "logs"], help="Action to perform: install | run | status | logs")
 
+    verify_parser = subparsers.add_parser("linkedin-verify", help="Validate LinkedIn session freshness & extract candidate identity", parents=[common_parser])
+    verify_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
+
+    apply_parser = subparsers.add_parser("linkedin-apply", help="Run autonomous LinkedIn Easy Apply engine across target vacancies", parents=[common_parser])
+    apply_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
+    apply_parser.add_argument("--min-score", type=float, default=70.0, help="Minimum job match score cutoff (default: 70.0)")
+    apply_parser.add_argument("--keyword", type=str, default=None, help="Override search keyword (e.g. 'Azure Data Engineer')")
+    apply_parser.add_argument("--location", type=str, default=None, help="Override search location (e.g. 'Bengaluru' or 'Remote')")
+
     args = parser.parse_args()
 
     if args.command == "pro":
@@ -509,6 +757,13 @@ def main():
         )
     elif args.command == "auth":
         handle_auth()
+    elif args.command == "linkedin-verify":
+        is_headless = not getattr(args, "headed", False)
+        exit_code = handle_linkedin_verify(args, headless=is_headless)
+        sys.exit(exit_code)
+    elif args.command == "linkedin-apply":
+        exit_code = handle_linkedin_apply(args)
+        sys.exit(exit_code)
     else:
         interactive_loop()
 
