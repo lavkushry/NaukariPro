@@ -83,7 +83,7 @@ def print_menu():
     print("  [0] Exit")
     print("========================================================================")
 
-def handle_pro(limit=10, headless=False, dry_run=False, force=False):
+def handle_pro(limit=20, headless=False, dry_run=False, force=False):
     engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run, force=force)
     return engine.run_full_pipeline()
 

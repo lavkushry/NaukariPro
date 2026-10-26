@@ -344,3 +344,117 @@ def test_multi_platform_tracker_sheet_discovery(tmp_path):
         assert summary["total_tracked_naukri"] == 2
         assert summary["total_tracked_linkedin"] == 3
         assert summary["total_tracked"] == 5
+
+
+# ==============================================================================
+# 9. ADVANCED ERROR ISOLATION: RATE LIMITED & SESSION PATH INTEGRITY
+# ==============================================================================
+
+def test_error_isolation_linkedin_rate_limited(capsys):
+    """
+    Simulates HTTP 429 RATE_LIMITED returned by LinkedIn during live cycle.
+    Verifies:
+    - LinkedIn apply reports RATE_LIMITED status cleanly.
+    - Naukri apply and profile bump proceed without interruption.
+    - Summary reports linkedin_status=RATE_LIMITED and naukri_status=SUCCESS.
+    """
+    engine = ProAutoPilotEngine(limit=5, headless=True, dry_run=False, force=False)
+
+    mock_ctx = MagicMock()
+    mock_ctx.pages = [MagicMock()]
+    mock_pw = MagicMock()
+    mock_pw.return_value.__enter__.return_value = MagicMock()
+
+    rate_limited_stats = {
+        "status": "RATE_LIMITED",
+        "discovered": 0,
+        "applied": 0,
+        "dry_run_verified": 0,
+        "failed": 0,
+        "jobs": []
+    }
+
+    with patch.object(engine.apply_engine, "run", return_value=5), \
+         patch.object(engine.li_session_manager, "get_li_at_cookie", return_value="valid_mock_cookie_1234567890"), \
+         patch.object(engine.li_apply_engine, "run_apply_cycle", AsyncMock(return_value=rate_limited_stats)), \
+         patch.object(engine.perf_engine, "display_report"), \
+         patch.object(engine.search_engine, "search_hacker_news", return_value=[]), \
+         patch("naukari_pro.session.get_stealth_context", return_value=mock_ctx), \
+         patch("naukari_pro.session.ensure_authenticated", return_value=True), \
+         patch("scripts.sync_naukri_live_profile.sync_full_naukri_profile"), \
+         patch("playwright.sync_api.sync_playwright", mock_pw):
+
+        summary = engine.run_full_pipeline()
+
+        captured = capsys.readouterr().out
+        assert "RATE_LIMITED" in captured
+        assert summary["applied_naukri"] == 5
+        assert summary["applied_linkedin"] == 0
+        assert summary["linkedin_status"] == "RATE_LIMITED"
+        assert summary["naukri_status"] == "SUCCESS"
+
+
+def test_session_cookies_path_detection(tmp_path, capsys):
+    """
+    Verifies that Stage 4 detects session cookies in naukri_system/session_cookies.json
+    rather than looking for non-existent root cookies.json.
+    """
+    engine = ProAutoPilotEngine(limit=2, headless=True, dry_run=False, force=False)
+
+    real_join = os.path.join
+    fake_session_cookies = tmp_path / "session_cookies.json"
+    fake_session_cookies.write_text('[{"name": "test", "value": "123"}]')
+
+    mock_ctx = MagicMock()
+    mock_ctx.pages = [MagicMock()]
+    mock_pw = MagicMock()
+    mock_pw.return_value.__enter__.return_value = MagicMock()
+
+    with patch("naukari_pro.modules.pro_autopilot.WORKSPACE_DIR", str(tmp_path)), \
+         patch("os.path.join", side_effect=lambda *args: str(fake_session_cookies) if "session_cookies.json" in args[-1] else real_join(*args)), \
+         patch.object(engine.apply_engine, "run", return_value=1), \
+         patch.object(engine.li_session_manager, "get_li_at_cookie", return_value="test_token_12345678"), \
+         patch.object(engine.li_apply_engine, "run_apply_cycle", AsyncMock(return_value={"applied": 1, "status": "SUCCESS"})), \
+         patch.object(engine.perf_engine, "display_report"), \
+         patch.object(engine.search_engine, "search_hacker_news", return_value=[]), \
+         patch("naukari_pro.session.get_stealth_context", return_value=mock_ctx), \
+         patch("naukari_pro.session.ensure_authenticated", return_value=True), \
+         patch("scripts.sync_naukri_live_profile.sync_full_naukri_profile"), \
+         patch("playwright.sync_api.sync_playwright", mock_pw):
+
+        summary = engine.run_full_pipeline()
+        captured = capsys.readouterr().out
+        assert "Naukri Session: VALID (Synchronized session cookies detected)" in captured
+
+
+def test_force_flag_passed_to_sync_full_naukri_profile(capsys):
+    """
+    Verifies that when ProAutoPilotEngine is initialized with force=True,
+    sync_full_naukri_profile is called with force=True.
+    """
+    engine = ProAutoPilotEngine(limit=2, headless=True, dry_run=False, force=True)
+
+    mock_ctx = MagicMock()
+    mock_ctx.pages = [MagicMock()]
+    mock_pw = MagicMock()
+    mock_pw.return_value.__enter__.return_value = MagicMock()
+
+    mock_sync = MagicMock()
+
+    with patch.object(engine.apply_engine, "run", return_value=1), \
+         patch.object(engine.li_session_manager, "get_li_at_cookie", return_value=None), \
+         patch.object(engine.perf_engine, "display_report"), \
+         patch.object(engine.profile_engine, "bump_profile") as mock_bump, \
+         patch.object(engine.search_engine, "search_hacker_news", return_value=[]), \
+         patch("naukari_pro.session.get_stealth_context", return_value=mock_ctx), \
+         patch("naukari_pro.session.ensure_authenticated", return_value=True), \
+         patch("scripts.sync_naukri_live_profile.sync_full_naukri_profile", mock_sync), \
+         patch("playwright.sync_api.sync_playwright", mock_pw):
+
+        engine.run_full_pipeline()
+        # Verify force=True was passed to sync_full_naukri_profile
+        mock_sync.assert_called_once()
+        _, kwargs = mock_sync.call_args
+        assert kwargs.get("force") is True
+        mock_bump.assert_called_once_with(mock_ctx.pages[0], force=True)
+

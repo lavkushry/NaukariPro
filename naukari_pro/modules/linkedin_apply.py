@@ -559,6 +559,8 @@ class LinkedInApplyEngine:
                     diag = await self.session_manager.verify_session(page, raise_for_status=False)
                     if diag.get("status") != "VALID":
                         logger.error("Session verification failed: %s", diag.get("status"))
+                        stats["status"] = diag.get("status", "FAILED")
+                        stats["detail"] = diag.get("detail", "")
                         return stats
 
                     logger.info("Session verified for '%s'. Beginning precision job discovery...", diag.get("candidate_name"))
@@ -676,6 +678,7 @@ class LinkedInApplyEngine:
 
                                 if self.circuit_breaker.is_tripped:
                                     logger.critical("Circuit breaker tripped: %s. Aborting vacancy processing.", self.circuit_breaker.trip_reason)
+                                    stats["status"] = f"CIRCUIT_BREAKER_TRIPPED: {self.circuit_breaker.trip_reason}"
                                     break
 
                                 # Randomized inter-application delay
@@ -688,6 +691,18 @@ class LinkedInApplyEngine:
                             await c_res
         finally:
             lock.release()
+
+        if "status" not in stats:
+            if stats["applied"] > 0:
+                stats["status"] = "SUCCESS"
+            elif stats["dry_run_verified"] > 0:
+                stats["status"] = "DRY_RUN_VERIFIED"
+            elif stats["failed"] > 0:
+                stats["status"] = "FAILED"
+            elif stats["skipped"] > 0:
+                stats["status"] = "SKIPPED_OR_ALREADY_APPLIED"
+            else:
+                stats["status"] = "IDLE"
 
         return stats
 

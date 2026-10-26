@@ -19,7 +19,13 @@ import asyncio
 from datetime import datetime
 import openpyxl
 
-from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH
+from naukari_pro.config import (
+    TRACKER_PATH,
+    RESUME_PDF_PATH,
+    COOKIES_SEED_PATH,
+    SESSION_DIR,
+    WORKSPACE_DIR
+)
 from naukari_pro.modules.auto_apply import AutoApplyEngine
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
 from naukari_pro.modules.career_portals import CareerPortalFiller
@@ -90,7 +96,7 @@ class ProAutoPilotEngine:
                     ctx = get_stealth_context(p, headless=self.headless)
                     page = ctx.pages[0] if ctx.pages else ctx.new_page()
                     if ensure_authenticated(page, headless=self.headless):
-                        sync_full_naukri_profile(page, force=False)
+                        sync_full_naukri_profile(page, force=self.force)
                         if self.force:
                             self.profile_engine.bump_profile(page, force=True)
                         try:
@@ -130,8 +136,12 @@ class ProAutoPilotEngine:
 
         # ── STAGE 4/8: Multi-Platform Session Verification (Naukri + LinkedIn) ──
         print("\n[STAGE 4/8] Multi-Platform Session Verification...")
-        naukri_cookies_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cookies.json")
-        has_naukri_cookies = os.path.exists(naukri_cookies_path) and os.path.getsize(naukri_cookies_path) > 10
+        session_cookies_file = os.path.join(WORKSPACE_DIR, "naukri_system", "session_cookies.json")
+        has_naukri_cookies = (
+            (os.path.exists(session_cookies_file) and os.path.getsize(session_cookies_file) > 10)
+            or (os.path.exists(COOKIES_SEED_PATH) and os.path.getsize(COOKIES_SEED_PATH) > 10)
+            or (os.path.exists(SESSION_DIR) and os.path.isdir(SESSION_DIR) and len(os.listdir(SESSION_DIR)) > 0)
+        )
 
         li_token = None
         try:
@@ -145,13 +155,13 @@ class ProAutoPilotEngine:
             li_session_valid = True
         else:
             if has_naukri_cookies:
-                print("  [✓] Naukri Session: VALID (Synchronized cookies.json detected)")
+                print("  [✓] Naukri Session: VALID (Synchronized session cookies detected)")
             else:
-                print("  [!] Naukri Session: cookies.json not detected. Browser fallback will engage.")
+                print("  [!] Naukri Session: cookies not detected. Browser fallback will engage.")
 
             if li_token:
                 masked = li_token[:6] + "..." + li_token[-4:] if len(li_token) > 10 else "***"
-                print(f"  [✓] LinkedIn Session: VALID (Active li_at cookie found: {masked})")
+                print(f"  [✓] LinkedIn Session: Configured (Active li_at cookie found: {masked})")
                 li_session_valid = True
             else:
                 print("  [!] LinkedIn Session: COOKIE_REFRESH_REQUIRED")
@@ -189,7 +199,17 @@ class ProAutoPilotEngine:
                     headless=self.headless
                 ))
                 applied_linkedin = li_stats.get("applied", 0)
-                print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted.")
+                status = li_stats.get("status")
+                if applied_linkedin > 0:
+                    print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted.")
+                elif status == "RATE_LIMITED":
+                    print("  ⚠️ LinkedIn live auto-apply: RATE_LIMITED (HTTP 429 IP cooldown active; resumes next scheduled window).")
+                elif status in ("EXPIRED", "COOKIE_MISSING", "COOKIE_REFRESH_REQUIRED"):
+                    print(f"  [!] LinkedIn live auto-apply paused: {status} (cookie renewal needed).")
+                elif status == "CHECKPOINT":
+                    print("  ⚠️ LinkedIn live auto-apply paused: Security checkpoint or CAPTCHA detected.")
+                else:
+                    print(f"  [*] LinkedIn Easy Apply cycle finished: {applied_linkedin} applied (Status: {status or 'IDLE'}).")
         except Exception as e:
             print(f"  [!] LinkedIn apply error (isolated): {e}")
             li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
