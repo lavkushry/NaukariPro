@@ -3,14 +3,14 @@ Description=Run NaukariPro Autonomous Career Agent 3x daily via agy CLI (IST pea
 PartOf=naukaripro-agy.service
 
 [Timer]
-# 09:15 AM IST (03:45 UTC) - Morning recruiter opening queue
-OnCalendar=*-*-* 03:45:00 UTC
+# 09:15 AM IST - Morning recruiter opening queue
+OnCalendar=*-*-* 09:15:00 Asia/Kolkata
 
-# 02:30 PM IST (09:00 UTC) - Post-lunch recruiter search batch
-OnCalendar=*-*-* 09:00:00 UTC
+# 02:30 PM IST - Post-lunch recruiter search batch
+OnCalendar=*-*-* 14:30:00 Asia/Kolkata
 
-# 06:00 PM IST (12:30 UTC) - Evening shortlisting review
-OnCalendar=*-*-* 12:30:00 UTC
+# 06:00 PM IST - Evening shortlisting review
+OnCalendar=*-*-* 18:00:00 Asia/Kolkata
 
 # Catch up if the system was powered down during scheduled time
 Persistent=true
