@@ -44,6 +44,13 @@ from naukari_pro.modules.linkedin_optimizer import (
     LinkedInProfileAuditor,
     export_100k_blueprint_markdown,
 )
+from naukari_pro.modules.recruiter_outreach import (
+    RecruiterOutreachCRM,
+    RecruiterTemplateGenerator,
+    TOP_GCC_TARGETS,
+)
+from naukari_pro.modules.goal_5calls import Goal5CallsEngine
+
 
 BANNER = r"""
 ========================================================================
@@ -80,6 +87,7 @@ def print_menu():
     print("  [V] LinkedIn Session Diagnostic (Verify li_at cookie & Identity)")
     print("  [L] LinkedIn Easy Apply (Autonomous Multi-Step Bot & Screening Solver)")
     print("  [K] LinkedIn 100k+ Search SEO & Recruiter Optimizer (Blueprint & Audit)")
+    print("  [O] 5-Calls/Day Recruiter Outreach & Goal Achievement Engine")
     print("  [0] Exit")
     print("========================================================================")
 
@@ -672,10 +680,171 @@ def handle_linkedin_seo(args=None, output_path: str = None) -> int:
     print("-" * 76 + "\n")
     return 0
 
+def handle_goal_5calls(
+    args=None,
+    outreach=False,
+    pacing=False,
+    status=False,
+    block=None,
+    dry_run=False,
+    company=None,
+    recruiter=None,
+    role="Azure Data Engineer",
+    msg_type=None,
+    update_status=None,
+    lead_id=None,
+    notes=None
+):
+    """
+    Handles 5-Calls/Day Goal Pacing, Recruiter Outreach Engine, and Daily 3-Block Execution.
+    """
+    if args:
+        if getattr(args, "outreach", False):
+            outreach = True
+        if getattr(args, "pacing", False):
+            pacing = True
+        if getattr(args, "status", False):
+            status = True
+        if getattr(args, "block", None) is not None:
+            block = args.block
+        if getattr(args, "dry_run", False):
+            dry_run = True
+        if getattr(args, "company", None):
+            company = args.company
+        if getattr(args, "recruiter", None):
+            recruiter = args.recruiter
+        if getattr(args, "role", None):
+            role = args.role
+        if getattr(args, "msg_type", None):
+            msg_type = args.msg_type
+        if getattr(args, "update_status", None):
+            update_status = args.update_status
+        if getattr(args, "lead_id", None):
+            lead_id = args.lead_id
+        if getattr(args, "notes", None):
+            notes = args.notes
+
+    engine = Goal5CallsEngine()
+
+    # 1. Update lead status if requested
+    if update_status:
+        target_id = lead_id or recruiter or company
+        if not target_id:
+            print("[!] Error: Must specify --lead-id, --recruiter, or --company with --update-status.")
+            return 1
+        updated = engine.crm.update_status(target_id, update_status, notes=notes)
+        if updated:
+            print(f"\n[✓] Successfully updated lead '{updated.get('lead_id')}' ({updated.get('company')}) to {update_status}.")
+            print(f"    Notes: {updated.get('notes')}")
+        else:
+            print(f"\n[!] Lead '{target_id}' not found in outreach CRM.")
+            return 1
+        return 0
+
+    # 2. Daily Block Execution
+    if block is not None:
+        print(f"\n[*] Executing Daily Block {block} (Dry-Run: {dry_run})...")
+        res = engine.run_block(block_number=int(block), dry_run=dry_run)
+        print("\n" + "=" * 76)
+        print(f"   5-CALLS/DAY DAILY BLOCK {block} EXECUTION SUMMARY")
+        print("=" * 76)
+        print(f"  • Timestamp: {res.get('timestamp')}")
+        print(f"  • Status:    {res.get('status')}")
+        print("  • Actions Executed:")
+        for act in res.get("actions_executed", []):
+            print(f"    - {act.get('action')}: {act.get('details', '')}")
+            if "count" in act:
+                print(f"      Count: {act['count']}")
+        print("=" * 76 + "\n")
+        return 0
+
+    # 3. Outreach Pitch Generation
+    if outreach:
+        gen = engine.generator
+        if company:
+            rec = recruiter or "Hiring Team"
+            t_type = msg_type or "inmail"
+            template_res = gen.generate_template(t_type, rec, company, role=role)
+            conn_note = gen.generate_connection_note(rec, company)
+
+            print("\n" + "=" * 76)
+            print(f"   RECRUITER OUTREACH TEMPLATES: {company.upper()}")
+            print("=" * 76)
+            print(f"  • Recruiter / Lead: {rec}")
+            print(f"  • Role Target:      {role}")
+            print(f"  • Template Type:    {t_type}")
+            print("-" * 76)
+            print(f"📌 1. LINKEDIN CONNECTION NOTE (Length: {len(conn_note)}/300 chars):")
+            print(f"   {conn_note}")
+            print("-" * 76)
+            print(f"📌 2. {template_res.get('subject', 'MESSAGE')}:")
+            print(template_res.get("body", ""))
+            print("-" * 76)
+
+            if not dry_run:
+                entry = engine.crm.log_outreach(
+                    recruiter_name=rec,
+                    company=company,
+                    target_role=role,
+                    platform="LinkedIn",
+                    message_type=t_type,
+                    status="CONTACTED",
+                    notes=notes or "Generated via naukariPro goal-5calls CLI",
+                    message_content=template_res.get("body", "")
+                )
+                print(f"[✓] Logged outreach lead: {entry.get('lead_id')} to outreach_tracker.json & Excel.")
+            else:
+                print("[*] Dry-run mode: CRM entry not persisted.")
+            print("=" * 76 + "\n")
+            return 0
+        else:
+            # Batch generate for top 10 GCCs
+            print("\n[*] Batch-generating recruiter pitches across top 10 GCC target companies...")
+            pitches = engine.crm.batch_generate_gcc_outreach()
+            print("\n" + "=" * 76)
+            print(f"   TOP 10 GCC RECRUITER OUTREACH PITCHES GENERATED")
+            print("=" * 76)
+            for idx, p in enumerate(pitches, 1):
+                lead = p["lead"]
+                print(f"  {idx:2d}. {lead.get('company'):<22} | {lead.get('recruiter_name'):<32} | {lead.get('message_type')}")
+                print(f"      Connection Note ({len(p['connection_note'])} chars): {p['connection_note']}")
+            print("-" * 76)
+            print(f"[✓] Synchronized {len(pitches)} leads into outreach_tracker.json & Recruiter_Outreach_Log.")
+            print("=" * 76 + "\n")
+            return 0
+
+    # 4. Status / CRM Summary
+    if status:
+        leads = engine.crm.list_active_leads()
+        summary = engine.crm.get_summary()
+        print("\n" + "=" * 76)
+        print("   RECRUITER OUTREACH CRM & ACTIVE PIPELINE STATUS")
+        print("=" * 76)
+        print(f"  • Total Leads Logged:        {summary.get('total_leads', 0)}")
+        print(f"  • Outreaches Today:          {summary.get('today_outreaches', 0)}")
+        print(f"  • Recruiter Calls Booked:    {summary.get('today_calls_scheduled', 0)}")
+        print("  • Leads by Status:")
+        for st, count in summary.get("by_status", {}).items():
+            print(f"    - {st:<16}: {count}")
+        print("-" * 76)
+        if leads:
+            print(f"  {'Lead ID':<18} {'Date':<17} {'Company':<20} {'Status':<16} {'Recruiter'}")
+            print("-" * 76)
+            for l in leads[-10:]:
+                print(f"  {l.get('lead_id', 'N/A'):<18} {l.get('date', '')[:16]:<17} {l.get('company', '')[:18]:<20} {l.get('status', ''):<16} {l.get('recruiter_name', '')[:20]}")
+            print("-" * 76)
+        print("=" * 76 + "\n")
+        return 0
+
+    # 5. Default / Pacing Dashboard
+    dashboard = engine.format_dashboard()
+    print("\n" + dashboard + "\n")
+    return 0
+
 def interactive_loop():
     while True:
         print_menu()
-        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A, V, L, K]: ").strip().upper()
+        choice = input("Select an option [0-9, P, W, E, M, S, C, D, G, A, V, L, K, O]: ").strip().upper()
         if choice == "P":
             handle_pro()
         elif choice == "W":
@@ -718,6 +887,8 @@ def interactive_loop():
             handle_linkedin_apply(dry_run=True)
         elif choice == "K":
             handle_linkedin_seo()
+        elif choice == "O":
+            handle_goal_5calls()
         elif choice == "0":
             print("\nExiting naukariPro. Good luck with your ₹25 LPA goal!\n")
             break
@@ -790,6 +961,19 @@ def main():
     optimize_parser = subparsers.add_parser("linkedin-optimize", help="Alias for linkedin-seo", parents=[common_parser])
     optimize_parser.add_argument("--output", type=str, default=None, help="Custom export path for the markdown blueprint")
 
+    goal_parser = subparsers.add_parser("goal-5calls", help="5-Calls/Day Recruiter Outreach & Goal Achievement Engine", parents=[common_parser])
+    goal_parser.add_argument("--outreach", action="store_true", help="Generate and log recruiter outreach pitch(es)")
+    goal_parser.add_argument("--pacing", action="store_true", help="Display 5-calls/day funnel pacing & diagnostic report")
+    goal_parser.add_argument("--status", action="store_true", help="Show outreach CRM active leads and funnel status")
+    goal_parser.add_argument("--block", type=int, choices=[1, 2, 3], help="Execute daily high-impact block: 1 (Morning), 2 (Afternoon), 3 (Evening)")
+    goal_parser.add_argument("--company", type=str, default=None, help="Target company name for outreach pitch")
+    goal_parser.add_argument("--recruiter", type=str, default=None, help="Recruiter or Engineering Lead name")
+    goal_parser.add_argument("--role", type=str, default="Azure Data Engineer", help="Target role title")
+    goal_parser.add_argument("--type", type=str, default=None, dest="msg_type", choices=["note", "inmail", "tech-lead", "followup", "app-followup"], help="Message template type to generate")
+    goal_parser.add_argument("--update-status", type=str, default=None, choices=["CONTACTED", "CONNECTED", "PITCH_SENT", "CALL_SCHEDULED", "REJECTED"], help="Update lead status in CRM")
+    goal_parser.add_argument("--lead-id", type=str, default=None, help="Lead ID or recruiter identifier to update")
+    goal_parser.add_argument("--notes", type=str, default=None, help="Optional notes for status update or lead logging")
+
     args = parser.parse_args()
 
     if args.command == "pro":
@@ -845,6 +1029,10 @@ def main():
     elif args.command in ("linkedin-seo", "linkedin-optimize"):
         exit_code = handle_linkedin_seo(args)
         sys.exit(exit_code)
+    elif args.command in ("goal-5calls", "goal", "outreach"):
+        exit_code = handle_goal_5calls(args=args)
+        if exit_code:
+            sys.exit(exit_code)
     else:
         interactive_loop()
 
