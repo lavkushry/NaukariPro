@@ -42,6 +42,10 @@ from naukari_pro.modules.linkedin_apply import (
     get_candidate_profile,
 )
 
+from naukari_pro.modules.linkedin_outreach import (
+    LinkedInOutreachSender,
+)
+
 __all__ = [
     "LinkedInSessionManager",
     "LinkedInError",
@@ -49,6 +53,7 @@ __all__ = [
     "LinkedInCookieMissingError",
     "LinkedInCookieExpiredError",
     "LinkedInCheckpointError",
+    "LinkedInOutreachSender",
     "TECH_HUBS",
     "CANONICAL_LOCATIONS",
     "LOCATION_ALIASES",
@@ -75,3 +80,4 @@ __all__ = [
     "LinkedInSubmissionFailedError",
     "get_candidate_profile",
 ]
+

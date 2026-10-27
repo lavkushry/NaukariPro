@@ -14,8 +14,9 @@ import os
 import json
 import pytest
 import openpyxl
+import asyncio
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from naukari_pro.modules.recruiter_outreach import (
     RecruiterTemplateGenerator,
@@ -23,6 +24,18 @@ from naukari_pro.modules.recruiter_outreach import (
     VALID_STATUSES,
     TOP_GCC_TARGETS,
     CANDIDATE_FACTS
+)
+from naukari_pro.modules.linkedin_outreach import (
+    LinkedInOutreachSender,
+    DIRECT_CONNECT_SELECTORS,
+    OVERFLOW_CONNECT_SELECTORS,
+    MORE_SELECTORS,
+    ADD_NOTE_SELECTORS,
+    TEXTAREA_SELECTORS,
+    DISMISS_SELECTORS,
+    SEND_SELECTORS,
+    PENDING_SELECTORS,
+    CONNECTED_SELECTORS
 )
 from naukari_pro.modules.goal_5calls import (
     Goal5CallsEngine,
@@ -572,4 +585,449 @@ def test_cli_interactive_handler_clean_exit(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": "0")
     ret = handle_goal_5calls_interactive()
     assert ret == 0
+
+
+# ==============================================================================
+# SECTION 5: AUTONOMOUS LINKEDIN RECRUITER OUTREACH BOT (PLAYWRIGHT STEALTH)
+# ==============================================================================
+
+def make_mock_outreach_locator(count: int = 1, visible: bool = True, text: str = "", attr_map: dict = None):
+    """Factory creating an asynchronous Playwright locator mock."""
+    loc = MagicMock()
+    loc.count = AsyncMock(return_value=count)
+    loc.is_visible = AsyncMock(return_value=visible)
+    loc.inner_text = AsyncMock(return_value=text)
+    attr_map = attr_map or {}
+    loc.get_attribute = AsyncMock(side_effect=lambda a: attr_map.get(a, None))
+    loc.click = AsyncMock(return_value=None)
+    loc.focus = AsyncMock(return_value=None)
+    loc.fill = AsyncMock(return_value=None)
+    loc.type = AsyncMock(return_value=None)
+    loc.press_sequentially = AsyncMock(return_value=None)
+    loc.first = loc
+    loc.last = loc
+    loc.nth = MagicMock(return_value=loc)
+    return loc
+
+
+def make_mock_outreach_page(url="https://www.linkedin.com/in/kavita-rao/", locator_map=None, body_content=""):
+    """Factory creating an asynchronous Playwright page mock."""
+    page = MagicMock()
+    page.url = url
+    page.goto = AsyncMock(return_value=None)
+    page.content = AsyncMock(return_value=f"<html><body>{body_content}</body></html>")
+    page.wait_for_timeout = AsyncMock(return_value=None)
+
+    locator_map = locator_map or {}
+    fallback_loc = make_mock_outreach_locator(count=0, visible=False)
+
+    def get_locator(selector: str):
+        if selector in locator_map:
+            return locator_map[selector]
+        return fallback_loc
+
+    page.locator = MagicMock(side_effect=get_locator)
+    return page
+
+
+def test_outreach_direct_connect_add_note_send(tmp_path):
+    """
+    Verify full live outreach execution:
+    1. Direct Connect button click
+    2. Add a note modal trigger
+    3. Humanized typing into message textarea (<= 300 chars)
+    4. Send button click
+    5. CRM logging with status CONTACTED
+    """
+    json_path = str(tmp_path / "outreach.json")
+    excel_path = str(tmp_path / "tracker.xlsx")
+    crm = RecruiterOutreachCRM(json_path=json_path, excel_path=excel_path)
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    add_note_loc = make_mock_outreach_locator(count=1, visible=True)
+    textarea_loc = make_mock_outreach_locator(count=1, visible=True)
+    send_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+        ADD_NOTE_SELECTORS[0]: add_note_loc,
+        TEXTAREA_SELECTORS[0]: textarea_loc,
+        SEND_SELECTORS[0]: send_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Priya Sharma",
+            company="Walmart Global Tech",
+            profile_url="https://www.linkedin.com/in/priya-sharma-walmart/",
+            dry_run=False,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "SENT"
+    assert res["sent"] is True
+    assert res["dry_run"] is False
+    assert res["note_length"] <= 300
+    assert "Walmart" in res["note"]
+
+    # Verify DOM actions
+    connect_loc.click.assert_awaited_once()
+    add_note_loc.click.assert_awaited_once()
+    send_loc.click.assert_awaited_once()
+    assert textarea_loc.type.await_count > 0 or textarea_loc.press_sequentially.await_count > 0 or textarea_loc.fill.await_count > 0
+
+    # Verify CRM updated to CONTACTED
+    leads = crm.list_active_leads()
+    assert len(leads) == 1
+    assert leads[0]["recruiter_name"] == "Priya Sharma"
+    assert leads[0]["company"] == "Walmart Global Tech"
+    assert leads[0]["status"] == "CONTACTED"
+    assert leads[0]["message_type"] == "Connection Request Note"
+
+
+def test_outreach_overflow_more_menu_connect(tmp_path):
+    """
+    Verify fallback from missing direct Connect button to More overflow menu:
+    1. Direct Connect buttons are absent
+    2. More actions dropdown button clicked
+    3. Overflow Connect menu item clicked
+    4. Note added and sent
+    """
+    json_path = str(tmp_path / "outreach.json")
+    excel_path = str(tmp_path / "tracker.xlsx")
+    crm = RecruiterOutreachCRM(json_path=json_path, excel_path=excel_path)
+    sender = LinkedInOutreachSender(crm=crm)
+
+    more_loc = make_mock_outreach_locator(count=1, visible=True)
+    overflow_connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    add_note_loc = make_mock_outreach_locator(count=1, visible=True)
+    textarea_loc = make_mock_outreach_locator(count=1, visible=True)
+    send_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        MORE_SELECTORS[0]: more_loc,
+        OVERFLOW_CONNECT_SELECTORS[0]: overflow_connect_loc,
+        ADD_NOTE_SELECTORS[0]: add_note_loc,
+        TEXTAREA_SELECTORS[0]: textarea_loc,
+        SEND_SELECTORS[0]: send_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Rohan Gupta",
+            company="JPMorgan Chase",
+            dry_run=False,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "SENT"
+    assert res["sent"] is True
+    more_loc.click.assert_awaited_once()
+    overflow_connect_loc.click.assert_awaited_once()
+    send_loc.click.assert_awaited_once()
+
+
+def test_outreach_already_connected_detection(tmp_path):
+    """Verify that an existing 1st-degree connection is detected without clicking Connect."""
+    json_path = str(tmp_path / "outreach.json")
+    crm = RecruiterOutreachCRM(json_path=json_path)
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connected_loc = make_mock_outreach_locator(count=1, visible=True, text="1st")
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        CONNECTED_SELECTORS[0]: connected_loc,
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Amit Verma",
+            company="PNC Bank GCC",
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "ALREADY_CONNECTED"
+    assert res["sent"] is False
+    connect_loc.click.assert_not_called()
+
+    leads = crm.list_active_leads()
+    assert len(leads) == 1
+    assert leads[0]["status"] == "CONNECTED"
+    assert "Already 1st-degree connection" in leads[0]["notes"]
+
+
+def test_outreach_pending_invitation_detection(tmp_path):
+    """Verify that a pending invitation is detected without re-sending."""
+    json_path = str(tmp_path / "outreach.json")
+    crm = RecruiterOutreachCRM(json_path=json_path)
+    sender = LinkedInOutreachSender(crm=crm)
+
+    pending_loc = make_mock_outreach_locator(count=1, visible=True, text="Pending")
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        PENDING_SELECTORS[0]: pending_loc,
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Kavita Rao",
+            company="Microsoft",
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "PENDING"
+    assert res["sent"] is False
+    connect_loc.click.assert_not_called()
+
+    leads = crm.list_active_leads()
+    assert len(leads) == 1
+    assert "pending" in leads[0]["notes"].lower()
+
+
+def test_outreach_strict_character_limit_compliance(tmp_path):
+    """
+    CRITICAL CONSTRAINT: Connection note must never exceed 300 characters.
+    Even with an adversarial 500-character custom note, it is clamped to <= 300.
+    """
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    add_note_loc = make_mock_outreach_locator(count=1, visible=True)
+    textarea_loc = make_mock_outreach_locator(count=1, visible=True)
+    dismiss_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+        ADD_NOTE_SELECTORS[0]: add_note_loc,
+        TEXTAREA_SELECTORS[0]: textarea_loc,
+        DISMISS_SELECTORS[0]: dismiss_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    excessive_note = "A" * 500
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Ananya Sen",
+            company="Amazon",
+            note=excessive_note,
+            dry_run=True,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "DRY_RUN_VERIFIED"
+    assert res["note_length"] == 300
+    assert len(res["note"]) == 300
+
+
+def test_outreach_dry_run_simulation_mode(tmp_path):
+    """
+    Verify dry-run simulation:
+    1. Connect and Add a note are clicked
+    2. Note is typed into textarea
+    3. Dismiss / Cancel is clicked
+    4. Send button is NEVER clicked
+    5. Lead is logged with [DRY RUN] note
+    """
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    add_note_loc = make_mock_outreach_locator(count=1, visible=True)
+    textarea_loc = make_mock_outreach_locator(count=1, visible=True)
+    dismiss_loc = make_mock_outreach_locator(count=1, visible=True)
+    send_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+        ADD_NOTE_SELECTORS[0]: add_note_loc,
+        TEXTAREA_SELECTORS[0]: textarea_loc,
+        DISMISS_SELECTORS[0]: dismiss_loc,
+        SEND_SELECTORS[0]: send_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Vikram Malhotra",
+            company="Barclays",
+            dry_run=True,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "DRY_RUN_VERIFIED"
+    assert res["sent"] is False
+    assert res["dry_run"] is True
+    connect_loc.click.assert_awaited_once()
+    add_note_loc.click.assert_awaited_once()
+    dismiss_loc.click.assert_awaited_once()
+    send_loc.click.assert_not_called()
+
+    leads = crm.list_active_leads()
+    assert len(leads) == 1
+    assert "[DRY RUN]" in leads[0]["notes"]
+
+
+def test_outreach_rate_limit_http_429_graceful_handling(tmp_path):
+    """Verify HTTP 429 rate limit is gracefully captured without uncaught exception."""
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    mock_page = make_mock_outreach_page(body_content="HTTP 429 Too Many Requests. IP rate limited.")
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Sneha Kulkarni",
+            company="HSBC Technology",
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "RATE_LIMITED"
+    assert res["sent"] is False
+    assert "429" in res["detail"]
+
+
+def test_outreach_checkpoint_and_authwall_detection(tmp_path):
+    """Verify security checkpoint and authwall redirects are safely detected."""
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    # Checkpoint
+    checkpoint_page = make_mock_outreach_page(url="https://www.linkedin.com/checkpoint/challenge/12345")
+    res1 = asyncio.run(sender.send_outreach("Arjun Nair", "Lloyds", page=checkpoint_page))
+    assert res1["status"] == "CHECKPOINT"
+    assert res1["sent"] is False
+
+    # Authwall
+    authwall_page = make_mock_outreach_page(url="https://www.linkedin.com/authwall?trk=bf")
+    res2 = asyncio.run(sender.send_outreach("Arjun Nair", "Lloyds", page=authwall_page))
+    assert res2["status"] == "AUTH_WALL"
+    assert res2["sent"] is False
+
+
+def test_outreach_daily_safety_throttling(tmp_path):
+    """
+    Verify safety throttle halts outreach when daily connection limit (e.g. 8) is reached.
+    """
+    json_path = str(tmp_path / "outreach.json")
+    crm = RecruiterOutreachCRM(json_path=json_path)
+
+    # Pre-populate CRM with 8 real outreaches today
+    today_prefix = datetime.now().strftime("%Y-%m-%d %H:%M")
+    for i in range(8):
+        crm.log_outreach(
+            recruiter_name=f"Recruiter {i}",
+            company=f"Company {i}",
+            platform="LinkedIn",
+            status="CONTACTED",
+            notes="Real invitation sent",
+            date_str=today_prefix
+        )
+
+    sender = LinkedInOutreachSender(crm=crm, max_daily_limit=8)
+    mock_page = make_mock_outreach_page()
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Neha Kapoor",
+            company="Salesforce",
+            dry_run=False,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "DAILY_LIMIT_REACHED"
+    assert res["sent"] is False
+    assert "Safety throttle" in res["detail"]
+    mock_page.goto.assert_not_called()
+
+
+def test_cli_goal_5calls_send_outreach_flag(monkeypatch):
+    """Verify CLI --send-outreach dispatches cleanly and returns 0."""
+    with patch("naukari_pro.modules.linkedin_outreach.LinkedInOutreachSender.run_outreach") as mock_run:
+        mock_run.return_value = {
+            "status": "DRY_RUN_VERIFIED",
+            "recruiter_name": "Kavita Rao",
+            "company": "Microsoft",
+            "sent": False,
+            "note": "Hi Kavita, ...",
+            "note_length": 250,
+            "detail": "Dry-run verified"
+        }
+        ret = handle_goal_5calls(
+            send_outreach=True,
+            company="Microsoft",
+            recruiter="Kavita Rao",
+            dry_run=True
+        )
+        assert ret == 0
+        mock_run.assert_called_once()
+
+
+def test_cli_goal_5calls_batch_send_outreach(monkeypatch):
+    """Verify CLI batch outreach dispatches cleanly."""
+    with patch("naukari_pro.modules.linkedin_outreach.LinkedInOutreachSender.run_batch") as mock_batch:
+        mock_batch.return_value = {
+            "status": "COMPLETED",
+            "total_processed": 3,
+            "sent_count": 0,
+            "dry_run_count": 3,
+            "results": [
+                {"company": "Microsoft", "recruiter_name": "Kavita", "status": "DRY_RUN_VERIFIED", "note": "Note 1", "note_length": 150},
+                {"company": "Walmart", "recruiter_name": "Priya", "status": "DRY_RUN_VERIFIED", "note": "Note 2", "note_length": 160},
+                {"company": "Amazon", "recruiter_name": "Ananya", "status": "DRY_RUN_VERIFIED", "note": "Note 3", "note_length": 170},
+            ]
+        }
+        ret = handle_goal_5calls(
+            send_outreach=True,
+            limit=3,
+            dry_run=True
+        )
+        assert ret == 0
+        mock_batch.assert_called_once()
+
+
+def test_cli_interactive_handler_bot_option(monkeypatch):
+    """Verify interactive menu handles choice 'B' then exits cleanly on '0'."""
+    from naukari_pro.cli import handle_goal_5calls_interactive
+
+    inputs = iter([
+        "B",        # Choose Bot
+        "1",        # Batch mode
+        "3",        # Limit 3
+        "Y",        # Dry-run Y
+        "n",        # Headed N
+        "",         # Press enter to continue
+        "0"         # Exit
+    ])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+    with patch("naukari_pro.modules.linkedin_outreach.LinkedInOutreachSender.run_batch") as mock_batch:
+        mock_batch.return_value = {
+            "status": "COMPLETED",
+            "total_processed": 3,
+            "sent_count": 0,
+            "dry_run_count": 3,
+            "results": []
+        }
+        ret = handle_goal_5calls_interactive()
+        assert ret == 0
+        mock_batch.assert_called_once()
+
 

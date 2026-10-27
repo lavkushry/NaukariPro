@@ -731,3 +731,11 @@ class RecruiterOutreachCRM:
                 "inmail_body": pitch["body"]
             })
         return generated
+
+
+# Lazy export of LinkedInOutreachSender for unified module discovery
+try:
+    from naukari_pro.modules.linkedin_outreach import LinkedInOutreachSender
+except ImportError:
+    LinkedInOutreachSender = None
+

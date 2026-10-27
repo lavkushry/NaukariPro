@@ -693,7 +693,12 @@ def handle_goal_5calls(
     msg_type=None,
     update_status=None,
     lead_id=None,
-    notes=None
+    notes=None,
+    send_outreach=False,
+    limit=5,
+    headed=False,
+    profile_url=None,
+    note=None
 ):
     """
     Handles 5-Calls/Day Goal Pacing, Recruiter Outreach Engine, and Daily 3-Block Execution.
@@ -702,30 +707,135 @@ def handle_goal_5calls(
         return handle_goal_5calls_interactive()
 
     if args:
-        if getattr(args, "outreach", False):
+        val_send = getattr(args, "send_outreach", False)
+        if val_send is True or (isinstance(val_send, bool) and val_send):
+            send_outreach = True
+        raw_limit = getattr(args, "limit", None)
+        if isinstance(raw_limit, int):
+            limit = raw_limit
+        elif raw_limit is not None and not isinstance(raw_limit, type(args)):
+            try:
+                limit = int(raw_limit)
+            except (ValueError, TypeError):
+                pass
+        raw_headed = getattr(args, "headed", False)
+        if raw_headed is True or (isinstance(raw_headed, bool) and raw_headed):
+            headed = True
+        raw_url = getattr(args, "profile_url", None)
+        if isinstance(raw_url, str):
+            profile_url = raw_url
+        raw_note = getattr(args, "note", None)
+        if isinstance(raw_note, str):
+            note = raw_note
+
+        val_outreach = getattr(args, "outreach", False)
+        if val_outreach is True or (isinstance(val_outreach, bool) and val_outreach):
             outreach = True
-        if getattr(args, "pacing", False):
+        val_pacing = getattr(args, "pacing", False)
+        if val_pacing is True or (isinstance(val_pacing, bool) and val_pacing):
             pacing = True
-        if getattr(args, "status", False):
+        val_status = getattr(args, "status", False)
+        if val_status is True or (isinstance(val_status, bool) and val_status):
             status = True
-        if getattr(args, "block", None) is not None:
-            block = args.block
-        if getattr(args, "dry_run", False):
+        val_block = getattr(args, "block", None)
+        if isinstance(val_block, int):
+            block = val_block
+        elif val_block is not None and not isinstance(val_block, type(args)):
+            try:
+                block = int(val_block)
+            except (ValueError, TypeError):
+                pass
+        val_dry = getattr(args, "dry_run", False)
+        if val_dry is True or (isinstance(val_dry, bool) and val_dry):
             dry_run = True
-        if getattr(args, "company", None):
-            company = args.company
-        if getattr(args, "recruiter", None):
-            recruiter = args.recruiter
-        if getattr(args, "role", None):
-            role = args.role
-        if getattr(args, "msg_type", None):
-            msg_type = args.msg_type
-        if getattr(args, "update_status", None):
-            update_status = args.update_status
-        if getattr(args, "lead_id", None):
-            lead_id = args.lead_id
-        if getattr(args, "notes", None):
-            notes = args.notes
+        val_comp = getattr(args, "company", None)
+        if isinstance(val_comp, str):
+            company = val_comp
+        val_rec = getattr(args, "recruiter", None)
+        if isinstance(val_rec, str):
+            recruiter = val_rec
+        val_role = getattr(args, "role", None)
+        if isinstance(val_role, str):
+            role = val_role
+        val_type = getattr(args, "msg_type", None)
+        if isinstance(val_type, str):
+            msg_type = val_type
+        val_up = getattr(args, "update_status", None)
+        if isinstance(val_up, str):
+            update_status = val_up
+        val_lid = getattr(args, "lead_id", None)
+        if isinstance(val_lid, str):
+            lead_id = val_lid
+        val_notes = getattr(args, "notes", None)
+        if isinstance(val_notes, str):
+            notes = val_notes
+
+    # 0. Autonomous Recruiter Connection Bot (Playwright Stealth)
+    if send_outreach:
+        from naukari_pro.modules.linkedin_outreach import LinkedInOutreachSender
+        sender = LinkedInOutreachSender(headless=not headed, max_daily_limit=min(limit, 8))
+
+        print("\n" + "=" * 76)
+        print("   🤖 AUTONOMOUS LINKEDIN RECRUITER CONNECTION BOT (PLAYWRIGHT STEALTH)")
+        print("   Candidate: Lavkush Kumar (₹20–25 LPA | 15-Day Notice | Azure Data Engineer)")
+        print("=" * 76)
+        mode_desc = "[DRY-RUN SIMULATION] (Safe: Modal verified, no live invitations sent)" if dry_run else "[LIVE DISPATCH] (Sending live connection requests)"
+        print(f"  • Mode:              {mode_desc}")
+        print(f"  • Browser:           {'Headed (Visible GUI)' if headed else 'Headless (Stealth)'}")
+        print(f"  • Daily Limit:       {min(limit, 8)} profiles max")
+        print("-" * 76)
+
+        if company or recruiter or profile_url:
+            rec = recruiter or "Hiring Team"
+            comp = company or "Target Company"
+            print(f"[*] Navigating to {rec} at {comp} (URL: {profile_url or 'LinkedIn Search'})...")
+            res = sender.run_outreach(
+                recruiter_name=rec,
+                company=comp,
+                profile_url=profile_url,
+                note=note,
+                dry_run=dry_run,
+                max_daily_limit=min(limit, 8)
+            )
+            print("-" * 76)
+            print(f"  • Recruiter:         {res.get('recruiter_name')}")
+            print(f"  • Company:           {res.get('company')}")
+            print(f"  • Status:            {res.get('status')}")
+            print(f"  • Invitation Sent:   {res.get('sent')}")
+            if res.get("note"):
+                print(f"  • Note ({res.get('note_length', len(res['note']))}/300 chars):")
+                print(f"    \"{res.get('note')}\"")
+            print(f"  • Diagnostic Detail: {res.get('detail')}")
+            print("=" * 76 + "\n")
+            return 0 if res.get("status") in ["SENT", "DRY_RUN_VERIFIED", "ALREADY_CONNECTED", "PENDING"] else 1
+        else:
+            print(f"[*] Executing Autonomous Outreach Batch (up to {min(limit, 8)} GCC Recruiters)...")
+            batch_res = sender.run_batch(
+                limit=min(limit, 8),
+                dry_run=dry_run,
+                headless=not headed,
+                custom_note=note
+            )
+            print("\n" + "=" * 76)
+            print("   RECRUITER OUTREACH BATCH EXECUTION RESULTS")
+            print("=" * 76)
+            print(f"  • Batch Status:      {batch_res.get('status')}")
+            print(f"  • Processed:         {batch_res.get('total_processed', 0)}")
+            print(f"  • Live Invites Sent: {batch_res.get('sent_count', 0)}")
+            print(f"  • Dry-Run Verified:  {batch_res.get('dry_run_count', 0)}")
+            print("-" * 76)
+            results_list = batch_res.get("results", [])
+            if results_list:
+                print(f"  {'#':<3} {'Company':<22} {'Recruiter':<22} {'Status':<18} {'Length'}")
+                print("-" * 76)
+                for i, r in enumerate(results_list, 1):
+                    c_name = str(r.get("company", ""))[:20]
+                    r_name = str(r.get("recruiter_name", ""))[:20]
+                    st = str(r.get("status", ""))[:16]
+                    n_len = f"{r.get('note_length', 0)}/300" if r.get("note") else "N/A"
+                    print(f"  {i:<3} {c_name:<22} {r_name:<22} {st:<18} {n_len}")
+            print("=" * 76 + "\n")
+            return 0
 
     engine = Goal5CallsEngine()
 
@@ -859,9 +969,10 @@ def handle_goal_5calls_interactive():
         print("  [3] Execute Daily High-Impact Block (Block 1: Morning, 2: Afternoon, 3: Evening)")
         print("  [4] Update Recruiter Lead Status (CONTACTED -> CONNECTED -> CALL_SCHEDULED)")
         print("  [5] View Recruiter Outreach CRM Active Pipeline & Summary")
+        print("  [B] Execute Autonomous Recruiter Connection Bot (Playwright Stealth)")
         print("  [0] Return to Main Menu")
         print("=" * 76)
-        choice = input("Select an option [0-5]: ").strip()
+        choice = input("Select an option [0-5, B]: ").strip()
         if choice == "1":
             print("\n" + engine.format_dashboard() + "\n")
         elif choice == "2":
@@ -910,10 +1021,42 @@ def handle_goal_5calls_interactive():
                     handle_goal_5calls(update_status=st, lead_id=ident, notes=notes or None)
         elif choice == "5":
             handle_goal_5calls(status=True)
+        elif choice.upper() == "B":
+            print("\nAutonomous Recruiter Connection Bot Modes:")
+            print("  [1] Batch Run: Top GCC Recruiters (Microsoft, Walmart, JPMorgan, etc.)")
+            print("  [2] Single Recruiter Target (Custom Company & Recruiter Name / Profile URL)")
+            bot_mode = input("Select outreach mode [1-2, default 1]: ").strip() or "1"
+
+            comp = None
+            rec = None
+            prof_url = None
+            if bot_mode == "2":
+                comp = input("Enter Company Name: ").strip() or "Target Company"
+                rec = input("Enter Recruiter Name: ").strip() or "Hiring Team"
+                prof_url = input("Enter Direct Profile URL (optional, leave blank to search): ").strip() or None
+
+            limit_in = input("Enter connection limit [1-8, default 5]: ").strip()
+            limit_val = int(limit_in) if limit_in.isdigit() and 1 <= int(limit_in) <= 8 else 5
+
+            dry_in = input("Run in Dry-Run simulation mode? [Y/n]: ").strip().lower()
+            is_dry = dry_in != "n"
+
+            headed_in = input("Run with visible browser window (headed)? [y/N]: ").strip().lower()
+            is_headed = headed_in == "y"
+
+            handle_goal_5calls(
+                send_outreach=True,
+                company=comp,
+                recruiter=rec,
+                profile_url=prof_url,
+                limit=limit_val,
+                dry_run=is_dry,
+                headed=is_headed
+            )
         elif choice == "0":
             break
         else:
-            print("\n[!] Invalid choice. Please select from [0-5].")
+            print("\n[!] Invalid choice. Please select from [0-5, B].")
         input("\nPress Enter to continue...")
     return 0
 
@@ -1039,6 +1182,10 @@ def main():
 
     goal_parser = subparsers.add_parser("goal-5calls", help="5-Calls/Day Recruiter Outreach & Goal Achievement Engine", parents=[common_parser])
     goal_parser.add_argument("--interactive", action="store_true", help="Launch interactive 5-calls/day console")
+    goal_parser.add_argument("--send-outreach", action="store_true", help="Execute Autonomous LinkedIn Recruiter Connection Bot (Playwright Stealth)")
+    goal_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
+    goal_parser.add_argument("--profile-url", type=str, default=None, help="Direct LinkedIn profile URL to send connection request to")
+    goal_parser.add_argument("--note", type=str, default=None, help="Custom connection note (<= 300 characters)")
     goal_parser.add_argument("--outreach", action="store_true", help="Generate and log recruiter outreach pitch(es)")
     goal_parser.add_argument("--pacing", action="store_true", help="Display 5-calls/day funnel pacing & diagnostic report")
     goal_parser.add_argument("--status", action="store_true", help="Show outreach CRM active leads and funnel status")
