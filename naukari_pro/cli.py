@@ -835,7 +835,7 @@ def handle_goal_5calls(
                     n_len = f"{r.get('note_length', 0)}/300" if r.get("note") else "N/A"
                     print(f"  {i:<3} {c_name:<22} {r_name:<22} {st:<18} {n_len}")
             print("=" * 76 + "\n")
-            return 0
+            return 0 if batch_res.get("status") == "COMPLETED" else 1
 
     engine = Goal5CallsEngine()
 

@@ -83,17 +83,17 @@ CONNECTED_SELECTORS = [
 ]
 
 DIRECT_CONNECT_SELECTORS = [
-    "button:has-text('Connect')",
-    "button[aria-label*='Invite'][aria-label*='to connect']",
-    "button[aria-label^='Connect with']",
     "div.pvs-profile-actions button:has-text('Connect')",
     "div.ph5 button:has-text('Connect')",
+    "button[aria-label*='Invite'][aria-label*='to connect']",
+    "button[aria-label^='Connect with']",
+    "button:has-text('Connect')",
     "button[aria-label*='Connect']",
 ]
 
 MORE_SELECTORS = [
-    "button[aria-label='More actions']",
     "div.pvs-profile-actions button:has-text('More')",
+    "button[aria-label='More actions']",
     "button:has-text('More')",
     "button.artdeco-dropdown__trigger:has-text('More')",
 ]
@@ -105,12 +105,15 @@ OVERFLOW_CONNECT_SELECTORS = [
     "button:has-text('Connect')",
     "div[aria-label*='Invite'][aria-label*='to connect']",
     "div[aria-label*='Connect']",
+    "li:has-text('Connect')",
 ]
 
 ADD_NOTE_SELECTORS = [
     "button[aria-label='Add a note']",
+    "button[aria-label*='Add a note']",
     "button:has-text('Add a note')",
     "button.artdeco-button--secondary:has-text('Add a note')",
+    "div[role='dialog'] button:has-text('Add a note')",
 ]
 
 TEXTAREA_SELECTORS = [
@@ -124,15 +127,38 @@ TEXTAREA_SELECTORS = [
 DISMISS_SELECTORS = [
     "button[aria-label='Dismiss']",
     "button[aria-label='Cancel']",
+    "button[aria-label='Close']",
     "button:has-text('Cancel')",
     "button.artdeco-modal__dismiss",
+    "div[role='dialog'] button[aria-label='Dismiss']",
 ]
 
 SEND_SELECTORS = [
     "button[aria-label='Send invitation']",
     "button[aria-label='Send now']",
+    "button[aria-label='Send']",
+    "div[role='dialog'] button.artdeco-button--primary:has-text('Send')",
     "button.artdeco-button--primary:has-text('Send')",
+    "button:has-text('Send invitation')",
+    "button:has-text('Send now')",
     "button:has-text('Send')",
+]
+
+EMAIL_REQUIRED_SELECTORS = [
+    "input[type='email']",
+    "input#email",
+    "input[name='email']",
+    "p:has-text('enter their email')",
+    "span:has-text('enter their email')",
+    "div:has-text('enter their email to connect')",
+]
+
+WEEKLY_LIMIT_SELECTORS = [
+    "h2:has-text('weekly invitation limit')",
+    "p:has-text('weekly invitation limit')",
+    "span:has-text('weekly invitation limit')",
+    "div:has-text('reached the weekly invitation limit')",
+    "div:has-text('invitation limit')",
 ]
 
 
@@ -152,11 +178,12 @@ async def safe_count(loc: Any) -> int:
 
 
 async def safe_inner_text(loc: Any) -> str:
-    """Safely extracts inner text or empty string."""
+    """Safely extracts inner text or empty string from the first matching element."""
     if loc is None:
         return ""
     try:
-        res = loc.inner_text()
+        target = loc.first if hasattr(loc, "first") else loc
+        res = target.inner_text()
         text = await res if inspect.isawaitable(res) else res
         return (text or "").strip()
     except Exception:
@@ -164,11 +191,12 @@ async def safe_inner_text(loc: Any) -> str:
 
 
 async def safe_is_visible(loc: Any) -> bool:
-    """Safely checks if locator is visible."""
+    """Safely checks if locator's first matching element is visible without strict mode violation."""
     if loc is None:
         return False
     try:
-        res = loc.is_visible()
+        target = loc.first if hasattr(loc, "first") else loc
+        res = target.is_visible()
         return await res if inspect.isawaitable(res) else res
     except Exception:
         return False
@@ -218,7 +246,7 @@ class LinkedInOutreachSender:
         self.sent_today_count = 0
 
     def _get_today_outreaches_count(self) -> int:
-        """Counts real (non-dry-run) LinkedIn connection requests sent today."""
+        """Counts real (non-dry-run) LinkedIn connection requests sent today without double-counting."""
         today_str = datetime.now().strftime("%Y-%m-%d")
         crm_count = sum(
             1 for l in self.crm.leads
@@ -227,7 +255,7 @@ class LinkedInOutreachSender:
             and l.get("status") in ["CONTACTED", "CONNECTED", "PITCH_SENT"]
             and "[DRY RUN]" not in str(l.get("notes", ""))
         )
-        return crm_count + self.sent_today_count
+        return max(crm_count, self.sent_today_count)
 
     async def _check_page_health(self, page: Any, recruiter_name: str, company: str, dry_run: bool) -> Optional[Dict[str, Any]]:
         """
@@ -299,7 +327,10 @@ class LinkedInOutreachSender:
         """
         Internal executor for outreach actions on an active Playwright page.
         """
-        effective_limit = max_daily_limit if max_daily_limit is not None else self.max_daily_limit
+        effective_limit = min(
+            max_daily_limit if max_daily_limit is not None else self.max_daily_limit,
+            self.MAX_SAFE_DAILY_LIMIT
+        )
 
         # 1. Check daily safety throttling
         today_total = self._get_today_outreaches_count()
@@ -317,12 +348,15 @@ class LinkedInOutreachSender:
         # 2. Navigate to profile or search
         target_profile_url = profile_url
         if target_profile_url and target_profile_url.strip():
+            target_profile_url = target_profile_url.strip()
+            if not target_profile_url.startswith("http://") and not target_profile_url.startswith("https://"):
+                target_profile_url = f"https://{target_profile_url}"
             goto_res = page.goto(target_profile_url, wait_until="domcontentloaded")
             if inspect.isawaitable(goto_res):
                 await goto_res
             await humanized_delay(400, 800, page=page)
         else:
-            search_kw = f"{recruiter_name} {company}"
+            search_kw = f"{recruiter_name} {company}".strip()
             search_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote_plus(search_kw)}"
             goto_res = page.goto(search_url, wait_until="domcontentloaded")
             if inspect.isawaitable(goto_res):
@@ -340,18 +374,25 @@ class LinkedInOutreachSender:
                 loc = page.locator(sel)
                 cnt = await safe_count(loc)
                 if cnt > 0:
-                    target = loc.first if hasattr(loc, "first") else loc
-                    href_res = target.get_attribute("href")
-                    href = await href_res if inspect.isawaitable(href_res) else href_res
-                    if href:
-                        clean_href = href.split("?")[0]
-                        target_profile_url = clean_href
-                        p_goto = page.goto(clean_href, wait_until="domcontentloaded")
-                        if inspect.isawaitable(p_goto):
-                            await p_goto
-                        await humanized_delay(400, 800, page=page)
-                        found_profile = True
-                        break
+                    for idx in range(cnt):
+                        target = loc.nth(idx) if hasattr(loc, "nth") else loc
+                        href_res = target.get_attribute("href")
+                        href = await href_res if inspect.isawaitable(href_res) else href_res
+                        if href and "/in/" in href:
+                            clean_href = href.split("?")[0].strip()
+                            if clean_href.startswith("/"):
+                                clean_href = f"https://www.linkedin.com{clean_href}"
+                            elif not clean_href.startswith("http://") and not clean_href.startswith("https://"):
+                                clean_href = f"https://{clean_href}"
+                            target_profile_url = clean_href
+                            p_goto = page.goto(clean_href, wait_until="domcontentloaded")
+                            if inspect.isawaitable(p_goto):
+                                await p_goto
+                            await humanized_delay(400, 800, page=page)
+                            found_profile = True
+                            break
+                if found_profile:
+                    break
 
             if not found_profile:
                 curr_url = getattr(page, "url", "") or ""
@@ -373,7 +414,7 @@ class LinkedInOutreachSender:
         # 4. Check if already Pending
         for p_sel in PENDING_SELECTORS:
             loc = page.locator(p_sel)
-            if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+            if await safe_is_visible(loc):
                 entry = self.crm.log_outreach(
                     recruiter_name=recruiter_name,
                     company=company,
@@ -397,7 +438,7 @@ class LinkedInOutreachSender:
         # 5. Check if already Connected (1st degree)
         for c_sel in CONNECTED_SELECTORS:
             loc = page.locator(c_sel)
-            if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+            if await safe_is_visible(loc):
                 entry = self.crm.log_outreach(
                     recruiter_name=recruiter_name,
                     company=company,
@@ -440,7 +481,7 @@ class LinkedInOutreachSender:
             more_btn = None
             for m_sel in MORE_SELECTORS:
                 loc = page.locator(m_sel)
-                if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+                if await safe_is_visible(loc):
                     more_btn = loc.first if hasattr(loc, "first") else loc
                     break
 
@@ -452,12 +493,24 @@ class LinkedInOutreachSender:
 
                 for o_sel in OVERFLOW_CONNECT_SELECTORS:
                     loc = page.locator(o_sel)
-                    if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+                    cnt = await safe_count(loc)
+                    if cnt > 0:
+                        for idx in range(cnt):
+                            target = loc.nth(idx) if cnt > 1 else loc
+                            if await safe_is_visible(target):
+                                c_res = target.click()
+                                if inspect.isawaitable(c_res):
+                                    await c_res
+                                clicked_connect = True
+                                break
+                    elif await safe_is_visible(loc):
                         btn = loc.first if hasattr(loc, "first") else loc
                         c_res = btn.click()
                         if inspect.isawaitable(c_res):
                             await c_res
                         clicked_connect = True
+                        break
+                    if clicked_connect:
                         break
 
         if not clicked_connect:
@@ -471,11 +524,61 @@ class LinkedInOutreachSender:
                 "detail": "Connect button could not be found in direct profile actions or More dropdown."
             }
 
+        # Check if weekly limit reached modal popped up
+        is_weekly_limit = False
+        for wl_sel in WEEKLY_LIMIT_SELECTORS:
+            if await safe_is_visible(page.locator(wl_sel)):
+                is_weekly_limit = True
+                break
+
+        if is_weekly_limit:
+            for dis_sel in DISMISS_SELECTORS + ["button:has-text('Got it')"]:
+                loc = page.locator(dis_sel)
+                if await safe_is_visible(loc):
+                    d_res = loc.first.click() if hasattr(loc, "first") else loc.click()
+                    if inspect.isawaitable(d_res):
+                        await d_res
+                    break
+            return {
+                "status": "WEEKLY_LIMIT_REACHED",
+                "recruiter_name": recruiter_name,
+                "company": company,
+                "profile_url": target_profile_url,
+                "sent": False,
+                "dry_run": dry_run,
+                "detail": "LinkedIn weekly connection invitation limit has been reached."
+            }
+
+        # Check if email is required modal popped up
+        is_email_required = False
+        for em_sel in EMAIL_REQUIRED_SELECTORS:
+            if await safe_is_visible(page.locator(em_sel)):
+                is_email_required = True
+                break
+
+        if is_email_required:
+            for dis_sel in DISMISS_SELECTORS:
+                loc = page.locator(dis_sel)
+                if await safe_is_visible(loc):
+                    d_res = loc.first.click() if hasattr(loc, "first") else loc.click()
+                    if inspect.isawaitable(d_res):
+                        await d_res
+                    break
+            return {
+                "status": "EMAIL_REQUIRED",
+                "recruiter_name": recruiter_name,
+                "company": company,
+                "profile_url": target_profile_url,
+                "sent": False,
+                "dry_run": dry_run,
+                "detail": f"Recruiter {recruiter_name} ({company}) requires an email address to send a connection request."
+            }
+
         # 7. Add a Note Modal Handling
         await humanized_delay(300, 600, page=page)
         for an_sel in ADD_NOTE_SELECTORS:
             loc = page.locator(an_sel)
-            if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+            if await safe_is_visible(loc):
                 btn = loc.first if hasattr(loc, "first") else loc
                 an_res = btn.click()
                 if inspect.isawaitable(an_res):
@@ -492,7 +595,7 @@ class LinkedInOutreachSender:
         typed = False
         for t_sel in TEXTAREA_SELECTORS:
             loc = page.locator(t_sel)
-            if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+            if await safe_is_visible(loc):
                 ta = loc.first if hasattr(loc, "first") else loc
                 f_res = ta.focus()
                 if inspect.isawaitable(f_res):
@@ -512,12 +615,32 @@ class LinkedInOutreachSender:
                 typed = True
                 break
 
+        if not typed:
+            # Dismiss modal safely without sending blank invitation
+            for dis_sel in DISMISS_SELECTORS:
+                loc = page.locator(dis_sel)
+                if await safe_is_visible(loc):
+                    btn = loc.first if hasattr(loc, "first") else loc
+                    d_res = btn.click()
+                    if inspect.isawaitable(d_res):
+                        await d_res
+                    break
+            return {
+                "status": "NOTE_INPUT_FAILED",
+                "recruiter_name": recruiter_name,
+                "company": company,
+                "profile_url": target_profile_url,
+                "sent": False,
+                "dry_run": dry_run,
+                "detail": "Could not locate or type into the connection note textarea in the invitation modal."
+            }
+
         # 10. Dry-Run Dismiss vs Live Send
         if dry_run:
             # Dismiss modal without sending
             for dis_sel in DISMISS_SELECTORS:
                 loc = page.locator(dis_sel)
-                if await safe_is_visible(loc.first if hasattr(loc, "first") else loc):
+                if await safe_is_visible(loc):
                     btn = loc.first if hasattr(loc, "first") else loc
                     d_res = btn.click()
                     if inspect.isawaitable(d_res):
@@ -732,7 +855,7 @@ class LinkedInOutreachSender:
                     results.append(res)
 
                     # Halt batch on critical stop signals
-                    if res.get("status") in ["RATE_LIMITED", "CHECKPOINT", "AUTH_WALL", "DAILY_LIMIT_REACHED"]:
+                    if res.get("status") in ["RATE_LIMITED", "CHECKPOINT", "AUTH_WALL", "DAILY_LIMIT_REACHED", "WEEKLY_LIMIT_REACHED"]:
                         logger.warning("Terminating batch outreach early due to stop condition: %s", res.get("status"))
                         break
 

@@ -27,6 +27,7 @@ from naukari_pro.modules.recruiter_outreach import (
 )
 from naukari_pro.modules.linkedin_outreach import (
     LinkedInOutreachSender,
+    SEARCH_PROFILE_SELECTORS,
     DIRECT_CONNECT_SELECTORS,
     OVERFLOW_CONNECT_SELECTORS,
     MORE_SELECTORS,
@@ -1029,5 +1030,244 @@ def test_cli_interactive_handler_bot_option(monkeypatch):
         ret = handle_goal_5calls_interactive()
         assert ret == 0
         mock_batch.assert_called_once()
+
+
+def test_outreach_today_count_no_double_counting(tmp_path):
+    """
+    CRITICAL BUG REGRESSION: Verify that live outreach dispatches do NOT
+    double-count in _get_today_outreaches_count.
+    """
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm, max_daily_limit=5)
+
+    assert sender._get_today_outreaches_count() == 0
+
+    # Simulate 1 live sent outreach logged into CRM
+    sender.sent_today_count += 1
+    crm.log_outreach(
+        recruiter_name="Recruiter 1",
+        company="Company 1",
+        platform="LinkedIn",
+        status="CONTACTED",
+        notes="Live connection request invitation sent via Playwright Stealth Bot"
+    )
+
+    # Must be 1, NOT 2!
+    assert sender._get_today_outreaches_count() == 1
+
+    # Simulate 2nd live sent outreach
+    sender.sent_today_count += 1
+    crm.log_outreach(
+        recruiter_name="Recruiter 2",
+        company="Company 2",
+        platform="LinkedIn",
+        status="CONTACTED",
+        notes="Live connection request invitation sent via Playwright Stealth Bot"
+    )
+
+    # Must be 2, NOT 4!
+    assert sender._get_today_outreaches_count() == 2
+
+
+def test_outreach_connect_unavailable_creator_mode(tmp_path):
+    """
+    Verify profile with only 'Follow' button and no 'Connect' in More overflow
+    returns CONNECT_UNAVAILABLE without sending.
+    """
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    # Only 'More' button is visible, but More menu contains no Connect
+    more_loc = make_mock_outreach_locator(count=1, visible=True)
+    locator_map = {
+        MORE_SELECTORS[0]: more_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Creator Recruiter",
+            company="Startup",
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "CONNECT_UNAVAILABLE"
+    assert res["sent"] is False
+    assert "Connect button could not be found" in res["detail"]
+
+
+def test_outreach_email_required_modal_detection(tmp_path):
+    """
+    Verify detection of 'enter their email to connect' modal:
+    Dismisses modal safely, returns EMAIL_REQUIRED, and never clicks Send.
+    """
+    from naukari_pro.modules.linkedin_outreach import EMAIL_REQUIRED_SELECTORS
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    email_loc = make_mock_outreach_locator(count=1, visible=True)
+    dismiss_loc = make_mock_outreach_locator(count=1, visible=True)
+    send_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+        EMAIL_REQUIRED_SELECTORS[0]: email_loc,
+        DISMISS_SELECTORS[0]: dismiss_loc,
+        SEND_SELECTORS[0]: send_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Private Recruiter",
+            company="FinanceCorp",
+            dry_run=False,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "EMAIL_REQUIRED"
+    assert res["sent"] is False
+    assert "requires an email address" in res["detail"]
+    dismiss_loc.click.assert_awaited_once()
+    send_loc.click.assert_not_called()
+
+
+def test_outreach_weekly_invitation_limit_modal_detection(tmp_path):
+    """
+    Verify detection of 'weekly invitation limit' modal:
+    Dismisses modal safely, returns WEEKLY_LIMIT_REACHED, and stops batch.
+    """
+    from naukari_pro.modules.linkedin_outreach import WEEKLY_LIMIT_SELECTORS
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    weekly_loc = make_mock_outreach_locator(count=1, visible=True)
+    dismiss_loc = make_mock_outreach_locator(count=1, visible=True)
+
+    locator_map = {
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+        WEEKLY_LIMIT_SELECTORS[0]: weekly_loc,
+        DISMISS_SELECTORS[0]: dismiss_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Target Recruiter",
+            company="TechCorp",
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "WEEKLY_LIMIT_REACHED"
+    assert res["sent"] is False
+    assert "weekly connection invitation limit" in res["detail"]
+    dismiss_loc.click.assert_awaited_once()
+
+
+def test_outreach_note_input_failed_prevents_blank_send(tmp_path):
+    """
+    CRITICAL SAFETY CONSTRAINT: If textarea cannot be found or typed,
+    the bot MUST NOT click Send (preventing blank invitations) and MUST NOT
+    report DRY_RUN_VERIFIED.
+    """
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    connect_loc = make_mock_outreach_locator(count=1, visible=True)
+    add_note_loc = make_mock_outreach_locator(count=1, visible=True)
+    dismiss_loc = make_mock_outreach_locator(count=1, visible=True)
+    send_loc = make_mock_outreach_locator(count=1, visible=True)
+    # Textarea is intentionally missing (visible=False)
+
+    locator_map = {
+        DIRECT_CONNECT_SELECTORS[0]: connect_loc,
+        ADD_NOTE_SELECTORS[0]: add_note_loc,
+        DISMISS_SELECTORS[0]: dismiss_loc,
+        SEND_SELECTORS[0]: send_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    res = asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Target Recruiter",
+            company="TechCorp",
+            dry_run=False,
+            page=mock_page
+        )
+    )
+
+    assert res["status"] == "NOTE_INPUT_FAILED"
+    assert res["sent"] is False
+    assert "Could not locate or type into the connection note" in res["detail"]
+    dismiss_loc.click.assert_awaited_once()
+    send_loc.click.assert_not_called()
+
+
+def test_outreach_url_normalization(tmp_path):
+    """Verify profile_url without protocol is normalized to https://."""
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    mock_page = make_mock_outreach_page()
+    raw_url = "linkedin.com/in/kavita-rao"
+
+    asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Kavita Rao",
+            company="Microsoft",
+            profile_url=raw_url,
+            page=mock_page
+        )
+    )
+
+    # First goto call must have been normalized with https://
+    mock_page.goto.assert_called_with("https://linkedin.com/in/kavita-rao", wait_until="domcontentloaded")
+
+
+def test_outreach_relative_url_in_search_results(tmp_path):
+    """Verify search result with relative href '/in/kavita-rao/' is prefixed with https://www.linkedin.com."""
+    crm = RecruiterOutreachCRM(json_path=str(tmp_path / "outreach.json"))
+    sender = LinkedInOutreachSender(crm=crm)
+
+    search_result_loc = make_mock_outreach_locator(count=1, visible=True, attr_map={"href": "/in/kavita-rao?miniProfile=1"})
+    locator_map = {
+        SEARCH_PROFILE_SELECTORS[0]: search_result_loc,
+    }
+    mock_page = make_mock_outreach_page(locator_map=locator_map)
+
+    asyncio.run(
+        sender.send_outreach(
+            recruiter_name="Kavita Rao",
+            company="Microsoft",
+            profile_url=None,
+            page=mock_page
+        )
+    )
+
+    # Profile navigation must have been called with full https://www.linkedin.com/in/kavita-rao
+    mock_page.goto.assert_any_call("https://www.linkedin.com/in/kavita-rao", wait_until="domcontentloaded")
+
+
+def test_safe_helpers_with_multiple_elements():
+    """Verify safe_is_visible and safe_inner_text handle multiple matches via loc.first."""
+    from naukari_pro.modules.linkedin_outreach import safe_is_visible, safe_inner_text
+
+    mock_loc = MagicMock()
+    mock_loc.first = MagicMock()
+    mock_loc.first.is_visible = AsyncMock(return_value=True)
+    mock_loc.first.inner_text = AsyncMock(return_value="Connect")
+
+    vis = asyncio.run(safe_is_visible(mock_loc))
+    assert vis is True
+    mock_loc.first.is_visible.assert_awaited_once()
+
+    text = asyncio.run(safe_inner_text(mock_loc))
+    assert text == "Connect"
+    mock_loc.first.inner_text.assert_awaited_once()
 
 
