@@ -440,3 +440,136 @@ def test_cli_handle_goal_5calls_status_view(capsys):
     assert ret == 0
     captured = capsys.readouterr()
     assert "RECRUITER OUTREACH CRM & ACTIVE PIPELINE STATUS" in captured.out
+
+
+# ==============================================================================
+# SECTION 6: ADVERSARIAL STRESS & CORNER-CASE TESTS
+# ==============================================================================
+
+def test_salutation_intelligence_anti_bot():
+    """
+    CRITICAL: Verify salutation generator NEVER emits bot-like greetings
+    like 'Hi Technical,', 'Hi Senior,', 'Hi Corporate,', 'Hi AWS,'.
+    """
+    gen = RecruiterTemplateGenerator()
+
+    # 1. Genuine personal names (with or without titles)
+    assert gen._format_salutation("Priya Sharma", "Walmart") == "Hi Priya,"
+    assert gen._format_salutation("Mr. Rajesh Kumar", "Microsoft") == "Hi Rajesh,"
+    assert gen._format_salutation("Dr. Amit Verma", "PNC Bank") == "Hi Amit,"
+    assert gen._format_salutation("Prof. Sarah Jenkins", "MIT") == "Hi Sarah,"
+    assert gen._format_salutation("Sneha Kulkarni (Senior Recruiter)", "HSBC") == "Hi Sneha,"
+
+    # 2. Departmental / Role titles (must fall back to team or generic salutation)
+    sal1 = gen._format_salutation("Technical Talent Acquisition - Data & AI", "Microsoft")
+    assert sal1 == "Hi Microsoft Recruiting Team,"
+    assert "Technical" not in sal1
+
+    sal2 = gen._format_salutation("Senior Tech Recruiter - Data Engineering", "Walmart Global Tech")
+    assert sal2 == "Hi Walmart Global Tech Team,"
+    assert "Senior" not in sal2
+
+    sal3 = gen._format_salutation("Corporate Technology Talent Acquisition", "JPMorgan Chase")
+    assert sal3 == "Hi JPMorgan Chase Recruiting Team,"
+    assert "Corporate" not in sal3
+
+    sal4 = gen._format_salutation("AWS / Retail Data Tech Recruiting", "Amazon")
+    assert sal4 == "Hi Amazon Recruiting Team,"
+    assert "AWS" not in sal4
+
+    sal5 = gen._format_salutation("GCC Campus & Lateral Talent Acquisition", "PNC Bank GCC")
+    assert sal5 == "Hi PNC Bank GCC Recruiting Team,"
+    assert not sal5.startswith("Hi GCC,")
+
+    # 3. Empty or None recruiter
+    assert gen._format_salutation("", "Barclays") == "Hi Barclays Recruiting Team,"
+    assert gen._format_salutation("", "") == "Hi there,"
+
+
+def test_connection_note_intact_signoff_extreme_company_length():
+    """
+    Verify that extreme company lengths (150+ chars) never slice off the
+    candidate sign-off '- Lavkush' and strictly remain <= 300 characters.
+    """
+    gen = RecruiterTemplateGenerator()
+    giant_company = "Global Enterprise Mega Financial Services Cloud And Big Data Technologies Platform Solutions International Private Limited"
+    note = gen.generate_connection_note("Priya Sharma", giant_company)
+
+    assert len(note) <= 300, f"Exceeded 300 chars: {len(note)}"
+    assert note.endswith("- Lavkush"), f"Sign-off was truncated: '{note}'"
+    assert "Hi Priya," in note
+
+
+def test_template_dispatcher_flexible_portal_kwargs():
+    """Verify generate_template accepts 'portal' directly as keyword argument."""
+    gen = RecruiterTemplateGenerator()
+    res = gen.generate_template("app-followup", "Neha", "Salesforce", portal="Workday R-90210")
+    assert "Workday R-90210" in res["subject"]
+    assert "Workday R-90210" in res["body"]
+
+
+def test_crm_preserves_lead_id_and_tracks_call_scheduled_at(tmp_path):
+    """
+    Verify:
+    1. Re-logging an existing lead preserves the original lead_id.
+    2. Setting CALL_SCHEDULED records call_scheduled_at timestamp.
+    3. Updating notes later does not overwrite call_scheduled_at.
+    """
+    json_file = str(tmp_path / "outreach.json")
+    excel_file = str(tmp_path / "tracker.xlsx")
+    crm = RecruiterOutreachCRM(json_path=json_file, excel_path=excel_file)
+
+    entry1 = crm.log_outreach("Kavita Rao", "Microsoft", status="CONTACTED")
+    original_id = entry1["lead_id"]
+    assert original_id.startswith("LEAD-")
+
+    # Update with new message type (e.g. 48h followup)
+    entry2 = crm.log_outreach("Kavita Rao", "Microsoft", message_type="48-Hour Follow-Up", status="CONNECTED")
+    assert entry2["lead_id"] == original_id, "lead_id was wiped or regenerated on update!"
+
+    # Update to CALL_SCHEDULED
+    entry3 = crm.update_status("Microsoft", "CALL_SCHEDULED", notes="First round booked")
+    assert entry3["status"] == "CALL_SCHEDULED"
+    call_ts = entry3.get("call_scheduled_at")
+    assert call_ts is not None
+
+    # Later update notes only
+    entry4 = crm.update_status("Microsoft", "CALL_SCHEDULED", notes="Added interviewer prep notes")
+    assert entry4["call_scheduled_at"] == call_ts, "call_scheduled_at was mutated on subsequent note update!"
+
+
+def test_excel_styling_and_column_widths(tmp_path):
+    """Verify that Recruiter_Outreach_Log sheet is formatted with executive styling."""
+    json_file = str(tmp_path / "outreach.json")
+    excel_file = str(tmp_path / "tracker.xlsx")
+    crm = RecruiterOutreachCRM(json_path=json_file, excel_path=excel_file)
+
+    crm.log_outreach("Priya Sharma", "Walmart Global Tech", status="CALL_SCHEDULED", notes="Screening scheduled")
+    crm.log_outreach("Rohan Gupta", "JPMorgan", status="PITCH_SENT")
+
+    wb = openpyxl.load_workbook(excel_file)
+    assert "Recruiter_Outreach_Log" in wb.sheetnames
+    ws = wb["Recruiter_Outreach_Log"]
+
+    # Header row height and fill
+    assert ws.row_dimensions[1].height == 28
+    assert ws.cell(row=1, column=1).fill.start_color.rgb in ["001E3A8A", "1E3A8A"]
+    assert ws.cell(row=1, column=1).font.color.rgb in ["00FFFFFF", "FFFFFF"]
+
+    # Column widths configured
+    assert ws.column_dimensions["A"].width == 18
+    assert ws.column_dimensions["C"].width == 25
+    assert ws.column_dimensions["H"].width == 45
+
+    # Status cell styling
+    # Row 2 is Walmart (CALL_SCHEDULED) -> soft emerald fill
+    assert ws.cell(row=2, column=7).fill.start_color.rgb in ["00D1FAE5", "D1FAE5"]
+
+
+def test_cli_interactive_handler_clean_exit(monkeypatch):
+    """Verify handle_goal_5calls_interactive terminates cleanly on choice '0'."""
+    from naukari_pro.cli import handle_goal_5calls_interactive
+    monkeypatch.setattr("builtins.input", lambda prompt="": "0")
+    ret = handle_goal_5calls_interactive()
+    assert ret == 0
+

@@ -698,6 +698,9 @@ def handle_goal_5calls(
     """
     Handles 5-Calls/Day Goal Pacing, Recruiter Outreach Engine, and Daily 3-Block Execution.
     """
+    if args and getattr(args, "interactive", False) is True:
+        return handle_goal_5calls_interactive()
+
     if args:
         if getattr(args, "outreach", False):
             outreach = True
@@ -841,6 +844,79 @@ def handle_goal_5calls(
     print("\n" + dashboard + "\n")
     return 0
 
+def handle_goal_5calls_interactive():
+    """
+    Interactive terminal controller for 5-Calls/Day Goal Pacing, Outreach Generator & CRM.
+    """
+    engine = Goal5CallsEngine()
+    while True:
+        print("\n" + "=" * 76)
+        print("   🎯 5-CALLS/DAY RECRUITER OUTREACH & GOAL PACING CONTROL CENTER")
+        print("   Candidate: Lavkush Kumar (₹20–25 LPA | 15-Day Notice | Azure Data Engineer)")
+        print("=" * 76)
+        print("  [1] View 5-Calls/Day Funnel Pacing & Diagnostic Report")
+        print("  [2] Generate Recruiter Outreach Pitch (Custom or Top GCCs)")
+        print("  [3] Execute Daily High-Impact Block (Block 1: Morning, 2: Afternoon, 3: Evening)")
+        print("  [4] Update Recruiter Lead Status (CONTACTED -> CONNECTED -> CALL_SCHEDULED)")
+        print("  [5] View Recruiter Outreach CRM Active Pipeline & Summary")
+        print("  [0] Return to Main Menu")
+        print("=" * 76)
+        choice = input("Select an option [0-5]: ").strip()
+        if choice == "1":
+            print("\n" + engine.format_dashboard() + "\n")
+        elif choice == "2":
+            comp = input("\nEnter Company Name (leave blank for Top 10 GCC batch): ").strip()
+            if comp:
+                rec = input("Enter Recruiter Name (or leave blank for Hiring Team): ").strip() or "Hiring Team"
+                role = input("Enter Target Role [default: Azure Data Engineer]: ").strip() or "Azure Data Engineer"
+                print("\nMessage Types:")
+                print("  [1] LinkedIn Connection Note (<= 300 chars)")
+                print("  [2] Direct InMail / First Message")
+                print("  [3] Tech Lead / Hiring Manager Pitch")
+                print("  [4] 48-Hour Urgent Follow-Up")
+                print("  [5] External Application Follow-Up")
+                t_choice = input("Select message type [1-5, default 2]: ").strip() or "2"
+                t_map = {"1": "note", "2": "inmail", "3": "tech-lead", "4": "followup", "5": "app-followup"}
+                t_type = t_map.get(t_choice, "inmail")
+                dry_in = input("Dry-run mode (do not log to CRM)? [Y/n]: ").strip().lower()
+                is_dry = dry_in != "n"
+                handle_goal_5calls(outreach=True, company=comp, recruiter=rec, role=role, msg_type=t_type, dry_run=is_dry)
+            else:
+                handle_goal_5calls(outreach=True)
+        elif choice == "3":
+            print("\nExecution Blocks:")
+            print("  [1] Block 1 (09:00 - 11:00): Morning Resdex bump + 25 batch applications")
+            print("  [2] Block 2 (14:00 - 16:00): 10 Top GCC InMail & Tech Lead pitches")
+            print("  [3] Block 3 (18:00 - 20:00): Evening Resdex bump + 5 follow-ups + funnel audit")
+            blk_in = input("Select block to execute [1-3]: ").strip()
+            if blk_in in ["1", "2", "3"]:
+                dry_in = input("Execute in dry-run mode? [Y/n]: ").strip().lower()
+                is_dry = dry_in != "n"
+                handle_goal_5calls(block=int(blk_in), dry_run=is_dry)
+        elif choice == "4":
+            ident = input("\nEnter Lead ID, Company, or Recruiter Name: ").strip()
+            if ident:
+                print("\nAvailable Statuses:")
+                print("  [1] CONTACTED")
+                print("  [2] CONNECTED")
+                print("  [3] PITCH_SENT")
+                print("  [4] CALL_SCHEDULED")
+                print("  [5] REJECTED")
+                st_in = input("Select new status [1-5]: ").strip()
+                st_map = {"1": "CONTACTED", "2": "CONNECTED", "3": "PITCH_SENT", "4": "CALL_SCHEDULED", "5": "REJECTED"}
+                st = st_map.get(st_in)
+                if st:
+                    notes = input("Enter notes (optional): ").strip()
+                    handle_goal_5calls(update_status=st, lead_id=ident, notes=notes or None)
+        elif choice == "5":
+            handle_goal_5calls(status=True)
+        elif choice == "0":
+            break
+        else:
+            print("\n[!] Invalid choice. Please select from [0-5].")
+        input("\nPress Enter to continue...")
+    return 0
+
 def interactive_loop():
     while True:
         print_menu()
@@ -888,7 +964,7 @@ def interactive_loop():
         elif choice == "K":
             handle_linkedin_seo()
         elif choice == "O":
-            handle_goal_5calls()
+            handle_goal_5calls_interactive()
         elif choice == "0":
             print("\nExiting naukariPro. Good luck with your ₹25 LPA goal!\n")
             break
@@ -962,6 +1038,7 @@ def main():
     optimize_parser.add_argument("--output", type=str, default=None, help="Custom export path for the markdown blueprint")
 
     goal_parser = subparsers.add_parser("goal-5calls", help="5-Calls/Day Recruiter Outreach & Goal Achievement Engine", parents=[common_parser])
+    goal_parser.add_argument("--interactive", action="store_true", help="Launch interactive 5-calls/day console")
     goal_parser.add_argument("--outreach", action="store_true", help="Generate and log recruiter outreach pitch(es)")
     goal_parser.add_argument("--pacing", action="store_true", help="Display 5-calls/day funnel pacing & diagnostic report")
     goal_parser.add_argument("--status", action="store_true", help="Show outreach CRM active leads and funnel status")

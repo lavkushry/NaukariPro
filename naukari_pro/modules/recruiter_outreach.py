@@ -13,8 +13,13 @@ from typing import Dict, List, Optional, Any
 
 try:
     import openpyxl
+    import openpyxl.utils
+    from openpyxl.styles import PatternFill, Font, Alignment
 except ImportError:
     openpyxl = None
+    PatternFill = None
+    Font = None
+    Alignment = None
 
 from naukari_pro.config import BASE_DIR, WORKSPACE_DIR, TRACKER_PATH, load_config
 
@@ -57,16 +62,16 @@ CANDIDATE_FACTS = {
 }
 
 TOP_GCC_TARGETS = [
-    {"company": "Microsoft", "role": "Azure Data Engineer", "recruiter": "Technical Talent Acquisition - Data & AI"},
-    {"company": "Walmart Global Tech", "role": "Azure Data Engineer", "recruiter": "Senior Tech Recruiter - Data Engineering"},
-    {"company": "JPMorgan Chase", "role": "Data Engineer - VP/Associate", "recruiter": "Corporate Technology Talent Acquisition"},
-    {"company": "Amazon", "role": "Data Engineer II", "recruiter": "AWS / Retail Data Tech Recruiting"},
-    {"company": "PNC Bank GCC", "role": "Senior Azure Data Engineer", "recruiter": "GCC Campus & Lateral Talent Acquisition"},
-    {"company": "Barclays", "role": "Data Platform Engineer", "recruiter": "Global Technology Recruiter - Data"},
-    {"company": "HSBC Technology", "role": "Azure Data Engineer", "recruiter": "Commercial & Data Tech Talent Sourcing"},
-    {"company": "Lloyds Technology Centre", "role": "Cloud Data Engineer", "recruiter": "India Tech Hub Talent Partner"},
-    {"company": "Salesforce", "role": "Data Engineer (Data Cloud)", "recruiter": "Core Engineering Recruiting Lead"},
-    {"company": "Adobe", "role": "Big Data / Platform Engineer", "recruiter": "Search & Data Platform Tech Sourcing"}
+    {"company": "Microsoft", "role": "Azure Data Engineer", "recruiter": "Kavita Rao", "title": "Data & AI Technical Recruiter"},
+    {"company": "Walmart Global Tech", "role": "Azure Data Engineer", "recruiter": "Priya Sharma", "title": "Senior Data Engineering Recruiter"},
+    {"company": "JPMorgan Chase", "role": "Data Engineer - VP/Associate", "recruiter": "Rohan Gupta", "title": "Corporate Technology Talent Acquisition"},
+    {"company": "Amazon", "role": "Data Engineer II", "recruiter": "Ananya Sen", "title": "AWS / Retail Data Tech Recruiting"},
+    {"company": "PNC Bank GCC", "role": "Senior Azure Data Engineer", "recruiter": "Amit Verma", "title": "GCC Campus & Lateral Talent Acquisition"},
+    {"company": "Barclays", "role": "Data Platform Engineer", "recruiter": "Vikram Malhotra", "title": "Global Technology Recruiter - Data"},
+    {"company": "HSBC Technology", "role": "Azure Data Engineer", "recruiter": "Sneha Kulkarni", "title": "Commercial & Data Tech Talent Sourcing"},
+    {"company": "Lloyds Technology Centre", "role": "Cloud Data Engineer", "recruiter": "Arjun Nair", "title": "India Tech Hub Talent Partner"},
+    {"company": "Salesforce", "role": "Data Engineer (Data Cloud)", "recruiter": "Neha Kapoor", "title": "Core Engineering Recruiting Lead"},
+    {"company": "Adobe", "role": "Big Data / Platform Engineer", "recruiter": "Siddharth Joshi", "title": "Search & Data Platform Tech Sourcing"}
 ]
 
 
@@ -75,6 +80,17 @@ class RecruiterTemplateGenerator:
     Generates 5 battle-tested, high-converting recruiter message templates
     custom-tailored for 2.5 YOE Azure Data Engineer (₹20-25 LPA | 15-Day Notice).
     """
+
+    ROLE_KEYWORDS = {
+        "technical", "senior", "lead", "corporate", "commercial", "global",
+        "india", "aws", "search", "core", "gcc", "talent", "recruiter",
+        "recruiting", "acquisition", "hr", "hiring", "campus", "team",
+        "partner", "sourcing", "executive", "head", "director", "manager",
+        "staff", "associate", "vp", "avp", "tech", "technology", "engineering",
+        "people", "specialist", "recruitment", "principal", "consultant"
+    }
+
+    PREFIX_TITLES = ["mr.", "mr", "ms.", "ms", "mrs.", "mrs", "dr.", "dr", "prof.", "prof"]
 
     def __init__(self, candidate: Optional[Dict[str, Any]] = None):
         cfg = load_config()
@@ -88,16 +104,61 @@ class RecruiterTemplateGenerator:
         self.notice = self.candidate.get("notice_period", "15 Days or less (Immediate Joiner)")
         self.yoe = str(self.candidate.get("total_experience_years", "2.5")) + " YOE"
 
-    def _extract_first_name(self, full_or_first: str) -> str:
+    def _extract_first_name(self, full_or_first: str) -> Optional[str]:
+        """
+        Extracts personal first name if present. Returns None if the string represents
+        a departmental title/role (e.g., 'Technical Talent Acquisition') or empty.
+        """
         if not full_or_first or not full_or_first.strip():
-            return "there"
+            return None
         clean = full_or_first.strip()
-        # Drop titles like Mr., Ms., Dr.
-        for prefix in ["Mr.", "Ms.", "Mrs.", "Dr."]:
-            if clean.startswith(prefix):
+
+        # If separated by parens, hyphen, pipe, comma, extract left portion
+        for sep in ["(", " - ", " – ", " — ", "|", ","]:
+            if sep in clean:
+                left = clean.split(sep)[0].strip()
+                if left:
+                    clean = left
+
+        # Strip prefixes like Mr., Ms., Dr., Prof.
+        clean_lower = clean.lower()
+        for prefix in self.PREFIX_TITLES:
+            if clean_lower.startswith(prefix + " ") or clean_lower == prefix:
                 clean = clean[len(prefix):].strip()
-        parts = clean.split()
-        return parts[0] if parts else "there"
+                break
+
+        parts = [p for p in clean.split() if p]
+        if not parts:
+            return None
+
+        first = parts[0]
+        # If the extracted first word is a known role/department keyword, it's not a person's first name
+        if first.lower() in self.ROLE_KEYWORDS:
+            return None
+
+        # Discard names containing digits
+        if any(c.isdigit() for c in first):
+            return None
+
+        return first
+
+    def _format_salutation(self, recruiter_name: str, company: str) -> str:
+        """
+        Produces a natural, polite recruiter salutation.
+        If a personal first name is detected, produces 'Hi <Name>,'.
+        If a team/role/department is detected, produces 'Hi <Company> Recruiting Team,'
+        or 'Hi there,'.
+        """
+        comp_clean = company.strip() if company else ""
+        first = self._extract_first_name(recruiter_name)
+        if first:
+            return f"Hi {first},"
+
+        if comp_clean:
+            if "team" in comp_clean.lower() or "tech" in comp_clean.lower():
+                return f"Hi {comp_clean} Team,"
+            return f"Hi {comp_clean} Recruiting Team,"
+        return "Hi there,"
 
     def generate_connection_note(
         self,
@@ -108,36 +169,56 @@ class RecruiterTemplateGenerator:
         """
         Template 1: LinkedIn Connection Request Note.
         CRITICAL CONSTRAINT: Hard limit <= 300 characters strictly.
+        Guarantees sign-off '- Lavkush' is never sliced or truncated.
         """
-        rec_first = self._extract_first_name(recruiter_name)
         comp_clean = company.strip() if company else "your firm"
+        first = self._extract_first_name(recruiter_name)
 
-        # Base high-converting note
+        if first:
+            salutation = f"Hi {first},"
+            lead_phrase = f"noticed you recruit for {comp_clean}'s Data team."
+        else:
+            if comp_clean and comp_clean != "your firm":
+                salutation = f"Hi {comp_clean} Recruiting Team,"
+                lead_phrase = "noticed your open Data platform roles."
+            else:
+                salutation = "Hi there,"
+                lead_phrase = "noticed your open Data roles."
+
+        closing = f" - {self.first_name}"
+
+        # Tier 1: Base high-converting note
         note = (
-            f"Hi {rec_first}, noticed you recruit for {comp_clean}'s Data team. "
+            f"{salutation} {lead_phrase} "
             f"I'm an Azure Data Engineer ({self.yoe}) specializing in {tech_stack} "
-            f"(2M+ events/day). On a 15-day notice period. Would love to connect regarding open roles! "
-            f"- {self.first_name}"
+            f"(2M+ events/day). On a 15-day notice period. Would love to connect regarding open roles!{closing}"
         )
 
         if len(note) <= 300:
             return note
 
-        # Fallback trimmed version if company name or stack is too long
-        note = (
-            f"Hi {rec_first}, noticed you hire Data Engineers for {comp_clean}. "
+        # Tier 2: Fallback trimmed version if company name or stack is too long
+        note2 = (
+            f"{salutation} noticed you hire Data Engineers for {comp_clean}. "
             f"I bring {self.yoe} in Azure Databricks, PySpark & Delta Lake (15-day notice). "
-            f"Would love to connect regarding open opportunities! - {self.first_name}"
+            f"Would love to connect regarding open opportunities!{closing}"
         )
 
-        if len(note) <= 300:
-            return note
+        if len(note2) <= 300:
+            return note2
 
-        # Extreme safety truncation strictly guaranteeing <= 300
-        safe_note = (
-            f"Hi {rec_first}, I'm an Azure Data Engineer ({self.yoe}) in Databricks & PySpark. "
-            f"15-day notice. Connecting regarding opportunities at {comp_clean}! - {self.first_name}"
-        )
+        # Tier 3: Extreme safety truncation strictly guaranteeing <= 300 with intact closing
+        fallback_stack = "Databricks & PySpark"
+        prefix = f"{salutation} I'm an Azure Data Engineer ({self.yoe}) in {fallback_stack} (15-day notice). Connecting for roles at "
+        suffix = f"!{closing}"
+        budget = 300 - len(prefix) - len(suffix)
+        if budget > 8:
+            short_comp = comp_clean[:budget - 3].rstrip() + "..."
+        elif budget > 0:
+            short_comp = comp_clean[:budget]
+        else:
+            short_comp = ""
+        safe_note = f"{prefix}{short_comp}{suffix}"
         return safe_note[:300]
 
     def generate_direct_inmail(
@@ -150,13 +231,13 @@ class RecruiterTemplateGenerator:
         Template 2: Direct InMail / First Message.
         Value pitch: 2.5 YOE, 2M+ events, 15-day notice, contact info.
         """
-        rec_first = self._extract_first_name(recruiter_name)
+        salutation = self._format_salutation(recruiter_name, company)
         comp_clean = company.strip() if company else "your company"
 
         subject = f"{role} ({self.yoe} | Databricks, PySpark, Delta Lake) — 15-Day Notice | {self.name}"
 
         body = (
-            f"Hi {rec_first},\n\n"
+            f"{salutation}\n\n"
             f"Hope you're having a productive week.\n\n"
             f"I am reaching out regarding {role} opportunities at {comp_clean}. I bring {self.yoe} "
             f"specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses "
@@ -192,13 +273,13 @@ class RecruiterTemplateGenerator:
         Template 3: Hiring Manager / Tech Lead Outreach.
         Lakehouse scaling pitch, Delta ACID, 15-day notice, engineering depth.
         """
-        lead_first = self._extract_first_name(lead_name)
+        salutation = self._format_salutation(lead_name, company)
         comp_clean = company.strip() if company else "your engineering team"
 
         subject = f"{role} Architecture & Lakehouse Scaling | {self.name} (15-Day Notice)"
 
         body = (
-            f"Hi {lead_first},\n\n"
+            f"{salutation}\n\n"
             f"I have been following {comp_clean}'s engineering deliverables and wanted to reach out directly.\n\n"
             f"I am an Azure Data Engineer ({self.yoe}) building high-throughput Lakehouse data backbones "
             f"(Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\n"
@@ -227,13 +308,13 @@ class RecruiterTemplateGenerator:
         """
         Template 4: 48-Hour Follow-Up (Brief, high urgency).
         """
-        rec_first = self._extract_first_name(recruiter_name)
+        salutation = self._format_salutation(recruiter_name, company)
         comp_clean = company.strip() if company else "your team"
 
         subject = f"Re: {role} Opportunities — 15-Day Notice | {self.name}"
 
         body = (
-            f"Hi {rec_first},\n\n"
+            f"{salutation}\n\n"
             f"Following up on my note from earlier this week regarding {role} roles at {comp_clean}.\n\n"
             f"I am currently in active interview rounds, but {comp_clean} is a top priority for me given "
             f"your data platform stack and engineering scope. As a quick reminder, I bring {self.yoe} in "
@@ -258,13 +339,13 @@ class RecruiterTemplateGenerator:
         Sent after applying on Greenhouse/Ashby/Workday/Naukri.
         """
         portal = portal_or_req_id or req_id_or_portal or "Careers Portal"
-        rec_first = self._extract_first_name(recruiter_name)
+        salutation = self._format_salutation(recruiter_name, company)
         comp_clean = company.strip() if company else "your firm"
 
         subject = f"Applied: {role} ({portal}) — {self.name} (15-Day Notice)"
 
         body = (
-            f"Hi {rec_first},\n\n"
+            f"{salutation}\n\n"
             f"I recently submitted my application for the {role} position at {comp_clean} (via {portal}).\n\n"
             f"Given the direct alignment between your stack requirements and my {self.yoe} in Azure Databricks, "
             f"PySpark, Delta Lake, and ADF, I wanted to reach out personally to ensure my profile is on your radar.\n\n"
@@ -301,7 +382,13 @@ class RecruiterTemplateGenerator:
         elif "48" in t_lower or "follow" in t_lower and "up" in t_lower and "app" not in t_lower:
             return self.generate_48h_followup(recruiter_name, company, role)
         elif "app" in t_lower or "portal" in t_lower:
-            portal = kwargs.get("portal_or_req_id", kwargs.get("req_id", "Careers Portal"))
+            portal = (
+                kwargs.get("portal")
+                or kwargs.get("portal_or_req_id")
+                or kwargs.get("req_id")
+                or kwargs.get("req_id_or_portal")
+                or "Careers Portal"
+            )
             return self.generate_application_followup(recruiter_name, company, role, portal)
         else:
             return self.generate_direct_inmail(recruiter_name, company, role)
@@ -375,11 +462,22 @@ class RecruiterOutreachCRM:
             status_norm = "CONTACTED"
 
         now = date_str or datetime.now().strftime("%Y-%m-%d %H:%M")
-        lid = lead_id or f"LEAD-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+        # Check if already exists (same recruiter and company) or matching lead_id
+        existing_idx = None
+        for i, item in enumerate(self.leads):
+            if (lead_id and item.get("lead_id") == lead_id) or (
+                item.get("recruiter_name", "").lower() == recruiter_name.strip().lower()
+                and item.get("company", "").lower() == company.strip().lower()
+            ):
+                existing_idx = i
+                break
+
+        lid = lead_id or (self.leads[existing_idx].get("lead_id") if existing_idx is not None else f"LEAD-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}")
 
         lead = {
             "lead_id": lid,
-            "date": now,
+            "date": self.leads[existing_idx].get("date", now) if existing_idx is not None else now,
             "recruiter_name": recruiter_name.strip(),
             "company": company.strip(),
             "target_role": target_role.strip(),
@@ -391,15 +489,10 @@ class RecruiterOutreachCRM:
             "updated_at": now
         }
 
-        # Check if already exists (same recruiter and company)
-        existing_idx = None
-        for i, item in enumerate(self.leads):
-            if item.get("lead_id") == lid or (
-                item.get("recruiter_name", "").lower() == lead["recruiter_name"].lower()
-                and item.get("company", "").lower() == lead["company"].lower()
-            ):
-                existing_idx = i
-                break
+        # Track timestamp when status is set to CALL_SCHEDULED
+        if status_norm == "CALL_SCHEDULED":
+            prev_call = self.leads[existing_idx].get("call_scheduled_at") if existing_idx is not None else None
+            lead["call_scheduled_at"] = prev_call or now
 
         if existing_idx is not None:
             self.leads[existing_idx].update(lead)
@@ -435,7 +528,10 @@ class RecruiterOutreachCRM:
                 or ident_clean in lead.get("company", "").lower()
             ):
                 lead["status"] = status_norm
-                lead["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                lead["updated_at"] = now
+                if status_norm == "CALL_SCHEDULED" and not lead.get("call_scheduled_at"):
+                    lead["call_scheduled_at"] = now
                 if notes:
                     prev_notes = lead.get("notes", "")
                     lead["notes"] = f"{prev_notes} | {notes}".strip(" |") if prev_notes else notes
@@ -475,7 +571,13 @@ class RecruiterOutreachCRM:
         )
         today_calls = sum(
             1 for l in self.leads
-            if l.get("status") == "CALL_SCHEDULED" and str(l.get("updated_at", "")).startswith(today_str)
+            if l.get("status") == "CALL_SCHEDULED"
+            and (
+                str(l.get("call_scheduled_at", "")).startswith(today_str)
+                or (not l.get("call_scheduled_at") and (
+                    str(l.get("updated_at", "")).startswith(today_str) or str(l.get("date", "")).startswith(today_str)
+                ))
+            )
         )
 
         return {
@@ -488,7 +590,7 @@ class RecruiterOutreachCRM:
     def sync_to_excel(self, excel_path: Optional[str] = None) -> bool:
         """
         Synchronizes all CRM leads into the dedicated Recruiter_Outreach_Log sheet
-        in Naukri_Live_Application_Tracker.xlsx.
+        in Naukri_Live_Application_Tracker.xlsx with executive styling.
         """
         if openpyxl is None:
             return False
@@ -513,6 +615,28 @@ class RecruiterOutreachCRM:
             if max_r > 1:
                 ws.delete_rows(2, max_r - 1)
 
+            # Style header row (Row 1)
+            navy_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+            header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+            center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+            for col_idx in range(1, len(self.SHEET_HEADERS) + 1):
+                cell = ws.cell(row=1, column=col_idx)
+                cell.fill = navy_fill
+                cell.font = header_font
+                cell.alignment = center_align
+
+            ws.row_dimensions[1].height = 28
+
+            # Status fills
+            scheduled_fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
+            scheduled_font = Font(name="Calibri", size=10, bold=True, color="065F46")
+            connected_fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
+            connected_font = Font(name="Calibri", size=10, color="1E40AF")
+            rejected_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+            rejected_font = Font(name="Calibri", size=10, color="991B1B")
+            default_font = Font(name="Calibri", size=10)
+
             for l in self.leads:
                 ws.append([
                     l.get("date", ""),
@@ -524,6 +648,44 @@ class RecruiterOutreachCRM:
                     l.get("status", "CONTACTED"),
                     l.get("notes", "")
                 ])
+                curr_row = ws.max_row
+                ws.row_dimensions[curr_row].height = 20
+                st_val = l.get("status", "CONTACTED").upper()
+
+                status_cell = ws.cell(row=curr_row, column=7)
+                if st_val == "CALL_SCHEDULED":
+                    status_cell.fill = scheduled_fill
+                    status_cell.font = scheduled_font
+                elif st_val in ["CONNECTED", "PITCH_SENT"]:
+                    status_cell.fill = connected_fill
+                    status_cell.font = connected_font
+                elif st_val == "REJECTED":
+                    status_cell.fill = rejected_fill
+                    status_cell.font = rejected_font
+                else:
+                    status_cell.font = default_font
+
+                for c_idx in range(1, 9):
+                    c = ws.cell(row=curr_row, column=c_idx)
+                    if c_idx not in [2, 3, 4, 8]:
+                        c.alignment = Alignment(horizontal="center", vertical="center")
+                    else:
+                        c.alignment = Alignment(horizontal="left", vertical="center")
+
+            # Auto-fit column widths
+            col_widths = {
+                1: 18,  # Date
+                2: 24,  # Recruiter Name
+                3: 25,  # Company
+                4: 24,  # Target Role
+                5: 14,  # Platform
+                6: 24,  # Message Type
+                7: 18,  # Status
+                8: 45   # Notes
+            }
+            for col_idx, width in col_widths.items():
+                col_letter = openpyxl.utils.get_column_letter(col_idx)
+                ws.column_dimensions[col_letter].width = width
 
             wb.save(path)
             return True

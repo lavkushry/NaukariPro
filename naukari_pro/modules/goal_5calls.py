@@ -181,7 +181,12 @@ class Goal5CallsEngine:
         calls_today = sum(
             1 for l in leads
             if l.get("status") == "CALL_SCHEDULED"
-            and (str(l.get("updated_at", "")).startswith(today_str) or str(l.get("date", "")).startswith(today_str))
+            and (
+                str(l.get("call_scheduled_at", "")).startswith(today_str)
+                or (not l.get("call_scheduled_at") and (
+                    str(l.get("updated_at", "")).startswith(today_str) or str(l.get("date", "")).startswith(today_str)
+                ))
+            )
         )
         calls_total = crm_summary["by_status"].get("CALL_SCHEDULED", 0)
 
@@ -251,7 +256,7 @@ class Goal5CallsEngine:
 
         return diagnostics
 
-    def run_block(self, block_number: int, dry_run: bool = False) -> Dict[str, Any]:
+    def run_block(self, block_number: int, dry_run: bool = False, execute_live: bool = False) -> Dict[str, Any]:
         """
         Executes one of the 3 Daily High-Impact Execution Blocks.
         - Block 1 (Morning): Resdex bump + batch 20-25 applications.
@@ -268,11 +273,27 @@ class Goal5CallsEngine:
 
         if block_number == 1:
             # Block 1: Morning Ingestion & Resdex Bump
-            # 1. Resdex profile bump
+            bump_details = "Triggered profile touch to refresh candidate active timestamp for peak 09:00-11:00 recruiter search window."
+            if execute_live and not dry_run:
+                try:
+                    from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
+                    from naukari_pro.session import get_stealth_context, ensure_authenticated
+                    from playwright.sync_api import sync_playwright
+                    with sync_playwright() as p:
+                        ctx = get_stealth_context(p, headless=True)
+                        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                        if ensure_authenticated(page, headless=True):
+                            ProfileEnhancerEngine().bump_profile(page, force=True)
+                            bump_details += " [Live bump executed successfully]"
+                        ctx.close()
+                except Exception as e:
+                    bump_details += f" [Live attempt bypassed: {e}]"
+
             result["actions_executed"].append({
                 "action": "Resdex Profile Timestamp Refresh",
-                "details": "Triggered profile touch to refresh candidate active timestamp for peak 09:00-11:00 recruiter search window."
+                "details": bump_details
             })
+
             # 2. Batch applications
             batch_count = 25
             result["actions_executed"].append({
@@ -321,6 +342,7 @@ class Goal5CallsEngine:
     def generate_followup_batch(self, count: int = 5) -> List[Dict[str, Any]]:
         """
         Selects leads needing follow-up (status CONTACTED or CONNECTED) and logs 48-Hour follow-ups.
+        Preserves original lead_id to maintain tracking continuity.
         """
         eligible = [
             l for l in self.crm.leads
@@ -335,7 +357,7 @@ class Goal5CallsEngine:
                 selected.append({
                     "recruiter_name": t.get("recruiter", "Recruiter"),
                     "company": t.get("company", "GCC"),
-                    "target_role": "Azure Data Engineer",
+                    "target_role": t.get("role", "Azure Data Engineer"),
                     "platform": "LinkedIn"
                 })
 
@@ -352,7 +374,8 @@ class Goal5CallsEngine:
                 message_type="48-Hour Follow-Up",
                 status="PITCH_SENT",
                 notes="48h High-Urgency Follow-Up dispatched via Block 3",
-                message_content=pitch["body"]
+                message_content=pitch["body"],
+                lead_id=lead.get("lead_id")
             )
             dispatched.append(entry)
         return dispatched
