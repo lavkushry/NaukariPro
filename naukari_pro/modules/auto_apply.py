@@ -681,18 +681,34 @@ def is_experience_eligible(
     - Any job where minimum experience exceeds candidate experience (min_exp > 2.5) must be strictly rejected upfront.
     Returns: (is_eligible: bool, reason: str, min_exp: Optional[float], max_exp: Optional[float])
     """
-    min_exp, max_exp = parse_experience_range(exp_text)
-
-    # Check url slug if exp_text didn't have range (e.g. "...-10-to-20-years-...")
-    if min_exp is None and url:
+    # 1. Check authoritative URL slug if present (e.g. "...-10-to-20-years-...")
+    url_min, url_max = None, None
+    if url:
         m_url = re.search(r"-(\d+)-to-(\d+)-years-", url)
         if m_url:
             try:
-                min_exp, max_exp = float(m_url.group(1)), float(m_url.group(2))
+                url_min, url_max = float(m_url.group(1)), float(m_url.group(2))
             except Exception:
                 pass
+        else:
+            m_url_single = re.search(r"-(\d+)-years-", url)
+            if m_url_single:
+                try:
+                    url_min = float(m_url_single.group(1))
+                except Exception:
+                    pass
 
-    # Check title / JD if not found in exp_text
+    if url_min is not None:
+        if url_min > max_allowed:
+            return False, f"Rejected: Posting specifies {url_min} YOE which exceeds max allowed limit ({max_allowed} YOE)", url_min, url_max
+        if url_min > candidate_exp:
+            return False, f"Rejected: Posting specifies {url_min} YOE which exceeds candidate experience ({candidate_exp} YOE)", url_min, url_max
+
+    min_exp, max_exp = parse_experience_range(exp_text)
+    if min_exp is None and url_min is not None:
+        min_exp, max_exp = url_min, url_max
+
+    # 2. Check title / JD if not found in exp_text
     if min_exp is None and (title or jd_text):
         combined = f"{title} {jd_text}".lower()
         exp_matches = re.finditer(r"(?:experience|exp|yoe)?\s*:?\s*(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:yrs|yr|years|year|yoe)", combined)
@@ -721,12 +737,12 @@ def is_experience_eligible(
             return False, f"Rejected: Minimum required experience ({min_exp} YOE) exceeds candidate experience ({candidate_exp} YOE)", min_exp, max_exp
         return True, f"Experience {min_exp}-{max_exp or '+'} YOE matches candidate ({candidate_exp} YOE)", min_exp, max_exp
 
-    # Senior / Staff / Leadership title safeguards if no numeric experience found
+    # Senior / Staff / Leadership / Architect title safeguards if no numeric experience found
     t_low = (title or "").lower()
-    senior_lead_titles = ["director", "principal", "head of", "vp ", "vice president", "staff engineer", "senior staff", "associate director"]
+    senior_lead_titles = ["director", "principal", "head of", "vp ", "vice president", "staff engineer", "senior staff", "associate director", "architect", "lead architect"]
     for st in senior_lead_titles:
         if st in t_low:
-            return False, f"Rejected: Senior/Staff leadership title '{title}' exceeds 2.5 YOE experience profile", None, None
+            return False, f"Rejected: Senior leadership title '{title}' exceeds 2.5 YOE experience profile", None, None
 
     return True, "Experience requirements eligible or open", None, None
 
