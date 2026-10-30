@@ -7,11 +7,17 @@
     "target_role": "Azure Data Engineer",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Kavita,\n\nHope you're having a productive week.\n\nI am reaching out regarding Azure Data Engineer opportunities at Microsoft. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "message_content": "Hi Kavita,\n\nHope you're having a productive week.\n\nI am reaching out regarding Azure Data Engineer opportunities at Microsoft. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
     "updated_at": "2026-10-27 19:53",
-    "call_scheduled_at": "2026-10-27 19:32"
+    "call_scheduled_at": "2026-10-27 19:32",
+    "connection_note_300chars": "Hi Kavita, saw Microsoft expanding data platform. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Built Medallion Lakehouses with Databricks & PySpark (slashed ETL time 35% on 2M+ events). Would love to connect & share my resume if hiring. Best, Lavkush",
+    "connection_note_char_count": 263,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Kavita, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Kavita, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-863159",
@@ -21,11 +27,17 @@
     "target_role": "Azure Data Engineer",
     "platform": "LinkedIn",
     "message_type": "Tech Lead Outreach",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Priya,\n\nI have been following Walmart Global Tech's engineering deliverables and wanted to reach out directly.\n\nI am an Azure Data Engineer (2.5 YOE) building high-throughput Lakehouse data backbones (Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\nWhat I can immediately deliver for your data platform:\n1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), ensuring zero schema drift and high platform availability.\n\nI am on a 15-day notice period and actively targeting ₹20–25 LPA Azure Data Engineering roles.\n\nI would welcome a 10-minute technical chat to discuss your current data platform challenges and share how my background aligns with Walmart Global Tech's roadmap.\n\nBest regards,\nLavkush Kumar\nPhone: +91-9122036484 | Email: lavkushry@gmail.com | LinkedIn: linkedin.com/in/lavkushry",
+    "message_content": "Hi Priya,\n\nI have been following Walmart Global Tech's engineering deliverables and wanted to reach out directly.\n\nI am an Azure Data Engineer (2.5 YOE) building high-throughput Lakehouse data backbones (Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\nWhat I can immediately deliver for your data platform:\n1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), ensuring zero schema drift and high platform availability.\n\nI am on a 15-day notice period and actively targeting \u20b920\u201325 LPA Azure Data Engineering roles.\n\nI would welcome a 10-minute technical chat to discuss your current data platform challenges and share how my background aligns with Walmart Global Tech's roadmap.\n\nBest regards,\nLavkush Kumar\nPhone: +91-9122036484 | Email: lavkushry@gmail.com | LinkedIn: linkedin.com/in/lavkushry",
     "updated_at": "2026-10-27 19:53",
-    "call_scheduled_at": "2026-10-27 19:30"
+    "call_scheduled_at": "2026-10-27 19:30",
+    "connection_note_300chars": "Hi Priya, following Walmart Global Tech data engineering. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Built Medallion Lakehouses with Databricks & PySpark (slashed ETL time 35% on 2M+ events). Would love to connect & share my resume if hiring. Best, Lavkush",
+    "connection_note_char_count": 271,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Priya, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Priya, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-508AAA",
@@ -35,10 +47,16 @@
     "target_role": "Data Engineer - VP/Associate",
     "platform": "LinkedIn",
     "message_type": "Tech Lead Outreach",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Rohan,\n\nI have been following JPMorgan Chase's engineering deliverables and wanted to reach out directly.\n\nI am an Azure Data Engineer (2.5 YOE) building high-throughput Lakehouse data backbones (Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\nWhat I can immediately deliver for your data platform:\n1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), ensuring zero schema drift and high platform availability.\n\nI am on a 15-day notice period and actively targeting ₹20–25 LPA Azure Data Engineering roles.\n\nI would welcome a 10-minute technical chat to discuss your current data platform challenges and share how my background aligns with JPMorgan Chase's roadmap.\n\nBest regards,\nLavkush Kumar\nPhone: +91-9122036484 | Email: lavkushry@gmail.com | LinkedIn: linkedin.com/in/lavkushry",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Rohan,\n\nI have been following JPMorgan Chase's engineering deliverables and wanted to reach out directly.\n\nI am an Azure Data Engineer (2.5 YOE) building high-throughput Lakehouse data backbones (Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\nWhat I can immediately deliver for your data platform:\n1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), ensuring zero schema drift and high platform availability.\n\nI am on a 15-day notice period and actively targeting \u20b920\u201325 LPA Azure Data Engineering roles.\n\nI would welcome a 10-minute technical chat to discuss your current data platform challenges and share how my background aligns with JPMorgan Chase's roadmap.\n\nBest regards,\nLavkush Kumar\nPhone: +91-9122036484 | Email: lavkushry@gmail.com | LinkedIn: linkedin.com/in/lavkushry",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Rohan, noticed JPMorgan's data platform scale. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Engineered PySpark & Databricks pipelines processing 2M+ events/day into Delta Lake (35% faster ETL). Would love to connect regarding data roles. Best, Lavkush",
+    "connection_note_char_count": 267,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Rohan, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Rohan, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-830080",
@@ -48,10 +66,16 @@
     "target_role": "Data Engineer II",
     "platform": "LinkedIn",
     "message_type": "Tech Lead Outreach",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Ananya,\n\nI have been following Amazon's engineering deliverables and wanted to reach out directly.\n\nI am an Azure Data Engineer (2.5 YOE) building high-throughput Lakehouse data backbones (Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\nWhat I can immediately deliver for your data platform:\n1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), ensuring zero schema drift and high platform availability.\n\nI am on a 15-day notice period and actively targeting ₹20–25 LPA Azure Data Engineering roles.\n\nI would welcome a 10-minute technical chat to discuss your current data platform challenges and share how my background aligns with Amazon's roadmap.\n\nBest regards,\nLavkush Kumar\nPhone: +91-9122036484 | Email: lavkushry@gmail.com | LinkedIn: linkedin.com/in/lavkushry",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Ananya,\n\nI have been following Amazon's engineering deliverables and wanted to reach out directly.\n\nI am an Azure Data Engineer (2.5 YOE) building high-throughput Lakehouse data backbones (Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\nWhat I can immediately deliver for your data platform:\n1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), ensuring zero schema drift and high platform availability.\n\nI am on a 15-day notice period and actively targeting \u20b920\u201325 LPA Azure Data Engineering roles.\n\nI would welcome a 10-minute technical chat to discuss your current data platform challenges and share how my background aligns with Amazon's roadmap.\n\nBest regards,\nLavkush Kumar\nPhone: +91-9122036484 | Email: lavkushry@gmail.com | LinkedIn: linkedin.com/in/lavkushry",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Ananya, saw Amazon hiring data talent. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Built high-throughput Medallion Lakehouses using PySpark & Databricks (slashed ETL runtime 35% on 2M+ daily events). Would love to connect for DE roles. Best, Lavkush",
+    "connection_note_char_count": 266,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Ananya, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Ananya, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-EF9EBE",
@@ -61,10 +85,16 @@
     "target_role": "Senior Azure Data Engineer",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Amit,\n\nHope you're having a productive week.\n\nI am reaching out regarding Senior Azure Data Engineer opportunities at PNC Bank GCC. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Amit,\n\nHope you're having a productive week.\n\nI am reaching out regarding Senior Azure Data Engineer opportunities at PNC Bank GCC. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Amit, working on PNC GCC data initiatives via CGI. Azure Data Engineer (2.5 YOE, 15d notice). Built Medallion Lakehouses with Databricks, PySpark & ADF (slashed ETL runtime 35% on 2M+ events). Would love to connect regarding internal DE openings. Best, Lavkush",
+    "connection_note_char_count": 263,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Amit, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Amit, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-00A4D1",
@@ -74,10 +104,16 @@
     "target_role": "Data Platform Engineer",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Vikram,\n\nHope you're having a productive week.\n\nI am reaching out regarding Data Platform Engineer opportunities at Barclays. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Vikram,\n\nHope you're having a productive week.\n\nI am reaching out regarding Data Platform Engineer opportunities at Barclays. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Vikram, following Barclays data platform engineering. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Engineered PySpark & Delta Lake pipelines (slashed batch ETL runtime 35% on 2M+ daily events). Would love to connect if you're hiring. Best, Lavkush",
+    "connection_note_char_count": 263,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Vikram, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Vikram, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-1CDB40",
@@ -87,10 +123,16 @@
     "target_role": "Azure Data Engineer",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Sneha,\n\nHope you're having a productive week.\n\nI am reaching out regarding Azure Data Engineer opportunities at HSBC Technology. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Sneha,\n\nHope you're having a productive week.\n\nI am reaching out regarding Azure Data Engineer opportunities at HSBC Technology. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Sneha, saw HSBC expanding Azure Data teams. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Built Medallion Lakehouses with Databricks & PySpark (slashed ETL runtime 35% across 2M+ events). Would love to connect & share my resume. Best, Lavkush",
+    "connection_note_char_count": 257,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Sneha, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Sneha, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-7BB33C",
@@ -100,10 +142,16 @@
     "target_role": "Cloud Data Engineer",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Arjun,\n\nHope you're having a productive week.\n\nI am reaching out regarding Cloud Data Engineer opportunities at Lloyds Technology Centre. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Arjun,\n\nHope you're having a productive week.\n\nI am reaching out regarding Cloud Data Engineer opportunities at Lloyds Technology Centre. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Arjun, following Lloyds Tech Centre Hyderabad expansion. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Built Medallion Lakehouses with Databricks & PySpark (slashed ETL runtime 35% on 2M+ events). Would love to connect for cloud data roles. Best, Lavkush",
+    "connection_note_char_count": 269,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Arjun, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Arjun, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-6B6282",
@@ -113,10 +161,16 @@
     "target_role": "Data Engineer (Data Cloud)",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Neha,\n\nHope you're having a productive week.\n\nI am reaching out regarding Data Engineer (Data Cloud) opportunities at Salesforce. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Neha,\n\nHope you're having a productive week.\n\nI am reaching out regarding Data Engineer (Data Cloud) opportunities at Salesforce. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Neha, saw Salesforce scaling Data Cloud in India. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Engineered Lakehouse pipelines with PySpark & Databricks (slashed ETL runtime 35% on 2M+ events). Would love to connect for Data Engineer roles. Best, Lavkush",
+    "connection_note_char_count": 269,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Neha, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Neha, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   },
   {
     "lead_id": "LEAD-20261027-2BDB31",
@@ -126,9 +180,15 @@
     "target_role": "Big Data / Platform Engineer",
     "platform": "LinkedIn",
     "message_type": "Direct InMail",
-    "status": "CONTACTED",
+    "status": "DRAFT_PENDING_MANUAL_SEND",
     "notes": "Generated via 5-Calls/Day Autonomous GCC batch",
-    "message_content": "Hi Siddharth,\n\nHope you're having a productive week.\n\nI am reaching out regarding Big Data / Platform Engineer opportunities at Adobe. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n• Notice Period: 15 Days or less (Immediate joiner)\n• Target CTC: ₹20–25 LPA\n• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n• Phone: +91-9122036484\n• Email: lavkushry@gmail.com\n• LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
-    "updated_at": "2026-10-27 19:53"
+    "message_content": "Hi Siddharth,\n\nHope you're having a productive week.\n\nI am reaching out regarding Big Data / Platform Engineer opportunities at Adobe. I bring 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses at CGI (PNC Bank GCC) and HFCL.\n\nKey Production Highlights:\n\u2022 Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second streaming ingestion.\n\u2022 Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution runtime by 35% while sustaining 99.95% platform availability.\n\u2022 Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using Terraform, Docker, and Kubernetes.\n\nAvailability & Compensation:\n\u2022 Notice Period: 15 Days or less (Immediate joiner)\n\u2022 Target CTC: \u20b920\u201325 LPA\n\u2022 Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\nDirect Contact:\n\u2022 Phone: +91-9122036484\n\u2022 Email: lavkushry@gmail.com\n\u2022 LinkedIn: linkedin.com/in/lavkushry\n\nWould you have 5 minutes for a brief introductory call this week?\n\nBest regards,\nLavkush Kumar",
+    "updated_at": "2026-10-27 19:53",
+    "connection_note_300chars": "Hi Siddharth, following Adobe big data engineering. Azure Data Engineer (2.5 YOE, 15d notice) at CGI/PNC GCC. Built high-throughput Lakehouse pipelines using PySpark & Databricks (slashed ETL runtime 35% on 2M+ events). Would love to connect for DE roles. Best, Lavkush",
+    "connection_note_char_count": 269,
+    "day_3_followup_date": "2026-10-31",
+    "day_3_followup_note": "Hi Siddharth, following up on my note. In case helpful, here is my GitHub architecture repo showing Medallion Lakehouse & PySpark optimization benchmarks: github.com/lavkushry. Available for a brief call whenever convenient!",
+    "day_7_followup_date": "2026-11-04",
+    "day_7_followup_note": "Hi Siddharth, just checking in once more. If your team isn't currently hiring Azure Data Engineers, no worries at all\u2014happy to stay connected for future pipelines. Best regards, Lavkush"
   }
 ]

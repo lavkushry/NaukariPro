@@ -91,3 +91,17 @@ scroll_*.py
 
 # Subagent internal scratch directories
 .agents/
+
+# Backup files
+*.bak
+*.bak.*
+*.bak[0-9]*
+
+# Root test screenshots
+/*_evidence.png
+/*_external.png
+/test_*.png
+/naukri_application_history.png
+linkedin_system/*.png
+linkedin_system/*.html
+linkedin_system/*.json
