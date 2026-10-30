@@ -1,7 +1,7 @@
 {
   "candidate": {
     "name": "Lavkush Kumar",
-    "email": "lavkushry@gmail.com",
+    "email": "lav84095@gmail.com",
     "phone": "+91 9122036484",
     "current_company": "CGI India (PNC Bank GCC)",
     "current_designation": "Azure Data Engineer",
@@ -54,8 +54,10 @@
     ],
     "max_experience": 4,
     "min_salary_lpa": 12.0,
+    "min_match_score": 80.0,
     "posted_within_days": 1,
-    "daily_application_limit": 20
+    "daily_application_limit": 15,
+    "linkedin_automation_enabled": false
   },
   "profile_summary": "Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF within enterprise Medallion Lakehouses. Engineered scalable batch and real-time streaming architectures (Apache Kafka, ADLS Gen2, Unity Catalog) processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second latency. Automated DataOps CI/CD release cycles and infrastructure provisioning via Terraform, cutting ETL execution runtime by 35% and sustaining 99.95% cloud data platform availability.",
   "technical_competencies": {
@@ -205,43 +207,185 @@
     "current_location": "Hyderabad",
     "relocation": "Yes"
   },
-  "headline_template": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
+  "headline_experiment": {
+    "status": "ACTIVE_7_DAY_TEST",
+    "test_start_date": "2026-10-28",
+    "test_end_date": "2026-11-04",
+    "evaluation_date": "2026-11-05",
+    "control_headline": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
+    "test_headline": "Azure Data Engineer | 2.5 YOE | Azure Databricks · PySpark · Delta Lake · ADF | Medallion Lakehouse (2M+ events/day) | 15 Days Notice (Immediate Joiner)",
+    "baseline_7day_metrics": {
+      "search_appearances": 642,
+      "profile_views": 7,
+      "contact_unlocks": 4,
+      "ctr_percent": 1.09,
+      "view_to_contact_conv_pct": 57.14,
+      "real_calls_received": 0
+    },
+    "protocol": "Keep constant for 7 days. Day 8 compare against baseline variance. Declare win ONLY if delta > normal variance."
+  },
+  "headline_template": "Azure Data Engineer | 2.5 YOE | Azure Databricks · PySpark · Delta Lake · ADF | Medallion Lakehouse (2M+ events/day) | 15 Days Notice (Immediate Joiner)",
   "tracker_excel_path": "Naukri_Live_Application_Tracker.xlsx",
   "skill_demand_data": {
     "Core Data Engineering": [
-      {"skill": "PySpark / Spark SQL", "demand": "94%", "priority": "CRITICAL", "yoe_sweet_spot": "2-4 Yrs"},
-      {"skill": "Azure Databricks", "demand": "91%", "priority": "CRITICAL", "yoe_sweet_spot": "1.5-3 Yrs"},
-      {"skill": "Delta Lake & Medallion", "demand": "86%", "priority": "HIGH", "yoe_sweet_spot": "1-3 Yrs"},
-      {"skill": "Advanced SQL (CTEs, Window)", "demand": "98%", "priority": "MANDATORY", "yoe_sweet_spot": "2+ Yrs"},
-      {"skill": "Azure Data Factory (ADF)", "demand": "84%", "priority": "HIGH", "yoe_sweet_spot": "1.5-3 Yrs"},
-      {"skill": "Apache Kafka / Event Streaming", "demand": "72%", "priority": "HIGH", "yoe_sweet_spot": "1-2 Yrs"}
+      {
+        "skill": "PySpark / Spark SQL",
+        "demand": "94%",
+        "priority": "CRITICAL",
+        "yoe_sweet_spot": "2-4 Yrs"
+      },
+      {
+        "skill": "Azure Databricks",
+        "demand": "91%",
+        "priority": "CRITICAL",
+        "yoe_sweet_spot": "1.5-3 Yrs"
+      },
+      {
+        "skill": "Delta Lake & Medallion",
+        "demand": "86%",
+        "priority": "HIGH",
+        "yoe_sweet_spot": "1-3 Yrs"
+      },
+      {
+        "skill": "Advanced SQL (CTEs, Window)",
+        "demand": "98%",
+        "priority": "MANDATORY",
+        "yoe_sweet_spot": "2+ Yrs"
+      },
+      {
+        "skill": "Azure Data Factory (ADF)",
+        "demand": "84%",
+        "priority": "HIGH",
+        "yoe_sweet_spot": "1.5-3 Yrs"
+      },
+      {
+        "skill": "Apache Kafka / Event Streaming",
+        "demand": "72%",
+        "priority": "HIGH",
+        "yoe_sweet_spot": "1-2 Yrs"
+      }
     ],
     "DataOps & Infrastructure": [
-      {"skill": "Terraform / IaC", "demand": "76%", "priority": "HIGH", "yoe_sweet_spot": "1.5-3 Yrs"},
-      {"skill": "Kubernetes (EKS/StatefulSets)", "demand": "68%", "priority": "HIGH", "yoe_sweet_spot": "2+ Yrs"},
-      {"skill": "Docker & Helm", "demand": "82%", "priority": "STANDARD", "yoe_sweet_spot": "2+ Yrs"},
-      {"skill": "CI/CD (Jenkins, GitLab CI)", "demand": "85%", "priority": "STANDARD", "yoe_sweet_spot": "2+ Yrs"}
+      {
+        "skill": "Terraform / IaC",
+        "demand": "76%",
+        "priority": "HIGH",
+        "yoe_sweet_spot": "1.5-3 Yrs"
+      },
+      {
+        "skill": "Kubernetes (EKS/StatefulSets)",
+        "demand": "68%",
+        "priority": "HIGH",
+        "yoe_sweet_spot": "2+ Yrs"
+      },
+      {
+        "skill": "Docker & Helm",
+        "demand": "82%",
+        "priority": "STANDARD",
+        "yoe_sweet_spot": "2+ Yrs"
+      },
+      {
+        "skill": "CI/CD (Jenkins, GitLab CI)",
+        "demand": "85%",
+        "priority": "STANDARD",
+        "yoe_sweet_spot": "2+ Yrs"
+      }
     ],
     "Emerging 2026 High-Value Accelerators": [
-      {"skill": "Unity Catalog (Governance)", "demand": "64%", "trend": "Rapidly Growing", "salary_impact": "+15%"},
-      {"skill": "Apache Iceberg Open Table Format", "demand": "52%", "trend": "Trending in GCCs", "salary_impact": "+12%"},
-      {"skill": "dbt (data build tool)", "demand": "58%", "trend": "High Demand", "salary_impact": "+10%"},
-      {"skill": "Microsoft Fabric", "demand": "45%", "trend": "Adoption Phase", "salary_impact": "+15%"}
+      {
+        "skill": "Unity Catalog (Governance)",
+        "demand": "64%",
+        "trend": "Rapidly Growing",
+        "salary_impact": "+15%"
+      },
+      {
+        "skill": "Apache Iceberg Open Table Format",
+        "demand": "52%",
+        "trend": "Trending in GCCs",
+        "salary_impact": "+12%"
+      },
+      {
+        "skill": "dbt (data build tool)",
+        "demand": "58%",
+        "trend": "High Demand",
+        "salary_impact": "+10%"
+      },
+      {
+        "skill": "Microsoft Fabric",
+        "demand": "45%",
+        "trend": "Adoption Phase",
+        "salary_impact": "+15%"
+      }
     ]
   },
   "salary_benchmarks": {
-    "Bengaluru": {"min": 20, "median": 24, "max": 28, "open_vacancies_pct": "38%"},
-    "Hyderabad": {"min": 18, "median": 22, "max": 26, "open_vacancies_pct": "29%"},
-    "Pune": {"min": 16, "median": 20, "max": 24, "open_vacancies_pct": "18%"},
-    "Remote / Pan-India": {"min": 22, "median": 25, "max": 30, "open_vacancies_pct": "15%"}
+    "Bengaluru": {
+      "min": 20,
+      "median": 24,
+      "max": 28,
+      "open_vacancies_pct": "38%"
+    },
+    "Hyderabad": {
+      "min": 18,
+      "median": 22,
+      "max": 26,
+      "open_vacancies_pct": "29%"
+    },
+    "Pune": {
+      "min": 16,
+      "median": 20,
+      "max": 24,
+      "open_vacancies_pct": "18%"
+    },
+    "Remote / Pan-India": {
+      "min": 22,
+      "median": 25,
+      "max": 30,
+      "open_vacancies_pct": "15%"
+    }
   },
   "top_hiring_companies": [
-    {"name": "Lloyds Technology Centre", "hub": "Hyderabad", "focus": "Azure Databricks & Cloud Lakehouse", "package": "₹22 - 27 LPA"},
-    {"name": "PNC Bank GCC", "hub": "Hyderabad / Remote", "focus": "Platform & Data Infra", "package": "₹22 - 26 LPA"},
-    {"name": "JPMorgan Chase", "hub": "Bengaluru / Hyderabad", "focus": "Big Data PySpark & AWS/Azure", "package": "₹24 - 30 LPA"},
-    {"name": "Barclays", "hub": "Pune", "focus": "Data Engineering & Kafka", "package": "₹20 - 25 LPA"},
-    {"name": "Walmart Global Tech", "hub": "Bengaluru", "focus": "Lakehouse & Real-time Streaming", "package": "₹25 - 32 LPA"},
-    {"name": "HSBC Technology", "hub": "Hyderabad / Pune", "focus": "Data Platform & Kubernetes", "package": "₹21 - 26 LPA"},
-    {"name": "Cognizant / Infosys / TCS (High-growth Accounts)", "hub": "Pan-India", "focus": "Azure Databricks Migrations", "package": "₹16 - 22 LPA"}
+    {
+      "name": "Lloyds Technology Centre",
+      "hub": "Hyderabad",
+      "focus": "Azure Databricks & Cloud Lakehouse",
+      "package": "₹22 - 27 LPA"
+    },
+    {
+      "name": "PNC Bank GCC",
+      "hub": "Hyderabad / Remote",
+      "focus": "Platform & Data Infra",
+      "package": "₹22 - 26 LPA"
+    },
+    {
+      "name": "JPMorgan Chase",
+      "hub": "Bengaluru / Hyderabad",
+      "focus": "Big Data PySpark & AWS/Azure",
+      "package": "₹24 - 30 LPA"
+    },
+    {
+      "name": "Barclays",
+      "hub": "Pune",
+      "focus": "Data Engineering & Kafka",
+      "package": "₹20 - 25 LPA"
+    },
+    {
+      "name": "Walmart Global Tech",
+      "hub": "Bengaluru",
+      "focus": "Lakehouse & Real-time Streaming",
+      "package": "₹25 - 32 LPA"
+    },
+    {
+      "name": "HSBC Technology",
+      "hub": "Hyderabad / Pune",
+      "focus": "Data Platform & Kubernetes",
+      "package": "₹21 - 26 LPA"
+    },
+    {
+      "name": "Cognizant / Infosys / TCS (High-growth Accounts)",
+      "hub": "Pan-India",
+      "focus": "Azure Databricks Migrations",
+      "package": "₹16 - 22 LPA"
+    }
   ]
 }

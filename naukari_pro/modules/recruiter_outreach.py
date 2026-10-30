@@ -45,7 +45,7 @@ VALID_MESSAGE_TYPES = [
 
 CANDIDATE_FACTS = {
     "name": "Lavkush Kumar",
-    "email": "lavkushry@gmail.com",
+    "email": "lav84095@gmail.com",
     "phone": "+91-9122036484",
     "linkedin": "linkedin.com/in/lavkushry",
     "github": "github.com/lavkushry",
@@ -99,7 +99,7 @@ class RecruiterTemplateGenerator:
         self.first_name = self.name.split()[0] if self.name else "Lavkush"
         raw_phone = self.candidate.get("phone", "+91-9122036484")
         self.phone = raw_phone.replace(" ", "-") if raw_phone else "+91-9122036484"
-        self.email = self.candidate.get("email", "lavkushry@gmail.com")
+        self.email = self.candidate.get("email", "lav84095@gmail.com")
         self.linkedin = self.candidate.get("linkedin", "linkedin.com/in/lavkushry")
         self.notice = self.candidate.get("notice_period", "15 Days or less (Immediate Joiner)")
         self.yoe = str(self.candidate.get("total_experience_years", "2.5")) + " YOE"

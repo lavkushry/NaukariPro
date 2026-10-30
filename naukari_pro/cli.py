@@ -246,24 +246,23 @@ def handle_hiring_trends(headless=False):
             pass
     engine.display_market_report(live_data=live_samples)
 
-def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer", jd="", headless=False, dry_run=False):
+def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer", jd="", headless=False, dry_run=False, batch=False, limit=10):
     filler = CareerPortalFiller()
+    if batch or (not url and (headless or not sys.stdin.isatty() or dry_run)):
+        return filler.process_external_redirects(limit=limit, headless=headless, dry_run=dry_run)
+
     if not url:
-        if dry_run:
-            url = "https://boards.greenhouse.io/microsoft/jobs/123"
-        else:
-            print("\n" + "=" * 65)
-            print("  🌐 CAREER PORTAL AUTO-FILLER (Job-Apply Engine)")
-            print("  Supported: Greenhouse, Ashby, Lever, Workday, Rippling, Portals")
-            print("=" * 65)
-            url = input("Enter job application URL: ").strip()
-            if not url:
-                print("URL cannot be empty.")
-                return
-            c_in = input("Company name (optional, press Enter for auto): ").strip()
-            if c_in: company = c_in
-            r_in = input("Role title (optional, press Enter for 'Azure Data Engineer'): ").strip()
-            if r_in: role = r_in
+        print("\n" + "=" * 65)
+        print("  🌐 CAREER PORTAL AUTO-FILLER (Job-Apply Engine)")
+        print("  Supported: Greenhouse, Ashby, Lever, Workday, Rippling, Portals")
+        print("=" * 65)
+        url = input("Enter job application URL (or press Enter for batch mode): ").strip()
+        if not url:
+            return filler.process_external_redirects(limit=limit, headless=headless, dry_run=dry_run)
+        c_in = input("Company name (optional, press Enter for auto): ").strip()
+        if c_in: company = c_in
+        r_in = input("Role title (optional, press Enter for 'Azure Data Engineer'): ").strip()
+        if r_in: role = r_in
 
     return filler.fill(url, company=company, role=role, headless=headless, dry_run=dry_run, raw_jd=jd)
 
@@ -1160,6 +1159,7 @@ def main():
     portal_parser.add_argument("--company", default="Company", help="Company name")
     portal_parser.add_argument("--role", default="Azure Data Engineer", help="Role title")
     portal_parser.add_argument("--jd", default="", help="Target job description or keywords")
+    portal_parser.add_argument("--batch", action="store_true", default=False, help="Batch process eligible external redirects from tracker")
 
     sched_parser = subparsers.add_parser("agy-schedule", help="Manage Linux AGY Autonomous Scheduler (systemd timer + agy CLI)", parents=[common_parser])
     sched_parser.add_argument("action", nargs="?", default="status", choices=["install", "run", "status", "logs"], help="Action to perform: install | run | status | logs")
@@ -1239,7 +1239,9 @@ def main():
             role=args.role,
             jd=getattr(args, "jd", ""),
             headless=args.headless,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            batch=getattr(args, "batch", False),
+            limit=getattr(args, "limit", 10)
         )
     elif args.command == "auth":
         handle_auth()

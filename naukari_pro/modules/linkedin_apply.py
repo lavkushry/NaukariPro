@@ -262,6 +262,25 @@ class LinkedInApplicationTracker:
 
         excel_logged = False
 
+        # Tier 0: Persistent SQLite DB Record
+        try:
+            from naukari_pro.modules.db import record_applied_job
+            record_applied_job(
+                title=title,
+                company=company,
+                platform="linkedin",
+                location=location,
+                experience_req="2-5 Yrs",
+                match_score=score_val,
+                status=status,
+                application_type="LinkedIn Easy Apply",
+                job_url=url,
+                applicant_email="lav84095@gmail.com",
+                job_id=f"linkedin_{job_id}" if str(job_id).isdigit() else None
+            )
+        except Exception as e_db:
+            logger.warning("DB logging warning: %s", e_db)
+
         # Tier 1: Primary 'LinkedIn_Applications_Log' in Excel
         try:
             if not os.path.exists(self.excel_path):

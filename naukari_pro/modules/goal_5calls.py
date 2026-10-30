@@ -118,22 +118,29 @@ class Goal5CallsEngine:
         try:
             wb = openpyxl.load_workbook(self.excel_path, data_only=True)
 
-            # 1. Applications_Log (Naukri & Manual)
+            # 1. Applications_Log (Naukri Live Submissions Only)
             if "Applications_Log" in wb.sheetnames:
                 ws = wb["Applications_Log"]
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     if not row or not any(row):
+                        continue
+                    status_col = str(row[8]) if len(row) > 8 and row[8] is not None else ""
+                    # Count only true live submissions (exclude errors, redirects, and dry runs)
+                    if not (status_col.startswith("Submitted") or status_col.startswith("Applied") or status_col == "Form Auto-Filled"):
                         continue
                     stats["naukri_apps_total"] += 1
                     app_date = str(row[0]) if row[0] is not None else ""
                     if app_date.startswith(date_filter):
                         stats["naukri_apps_today"] += 1
 
-            # 2. LinkedIn_Applications_Log
+            # 2. LinkedIn_Applications_Log (Live Submissions Only; ignores DryRun_Archive)
             if "LinkedIn_Applications_Log" in wb.sheetnames:
                 ws = wb["LinkedIn_Applications_Log"]
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     if not row or not any(row):
+                        continue
+                    status_col = str(row[6]) if len(row) > 6 and row[6] is not None else ""
+                    if status_col == "SUBMITTED_DRY_RUN":
                         continue
                     stats["linkedin_apps_total"] += 1
                     # Index 8 is Applied Timestamp

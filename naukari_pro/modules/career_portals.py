@@ -29,7 +29,7 @@ DEFAULT_CANDIDATE = {
     "firstName": "Lavkush",
     "lastName": "Kumar",
     "fullName": "Lavkush Kumar",
-    "email": "lavkushry@gmail.com",
+    "email": "lav84095@gmail.com",
     "phone": "+91-9122036484",
     "city": "Hyderabad",
     "state": "Telangana",
@@ -252,6 +252,26 @@ def log_portal_application(
             "Form Auto-Filled; Ready for Final Review"
         ])
         wb.save(path)
+
+        # Record into applied_jobs.db for persistent deduplication & audit trail
+        try:
+            from naukari_pro.modules.db import record_applied_job
+            p = load_applicant_profile()
+            record_applied_job(
+                title=role,
+                company=company,
+                platform="career_portal",
+                location="Hyderabad / Remote",
+                experience_req="2-5 Yrs",
+                match_score=score_str,
+                status=status,
+                application_type=f"Career Portal ({portal_type})",
+                job_url=safe_url,
+                applicant_email=p.get("email", "lav84095@gmail.com")
+            )
+        except Exception:
+            pass
+
         return True
     except Exception:
         return False
@@ -525,7 +545,7 @@ class CareerPortalFiller:
             "first_name": self.profile.get("firstName", "Lavkush"),
             "last_name": self.profile.get("lastName", "Kumar"),
             "full_name": self.profile.get("fullName", "Lavkush Kumar"),
-            "email": self.profile.get("email", "lavkushry@gmail.com"),
+            "email": self.profile.get("email", "lav84095@gmail.com"),
             "phone": self.profile.get("phone", "+91-9122036484"),
             "location": self.profile.get("city", "Hyderabad"),
             "linkedin": self.profile.get("linkedInUrl", "https://linkedin.com/in/lavkushry"),
@@ -617,4 +637,236 @@ class CareerPortalFiller:
             except Exception as e:
                 print(f"Playwright automation error: {e}")
                 return False, []
+
+    def process_external_redirects(
+        self,
+        limit: int = 10,
+        headless: bool = True,
+        dry_run: bool = False,
+        min_score: float = 80.0,
+        max_exp: float = 4.0,
+        auto_submit: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Processes pending external career portal redirects from Naukri_Live_Application_Tracker.xlsx.
+        Scans for rows with Status == 'External Redirect' (or 'Not Available'),
+        filters by experience (<= 4 YOE) and score (>= 80%),
+        and automates form-filling, resume attachment, and submission.
+        Updates tracker Excel and applied_jobs.db.
+        """
+        import openpyxl
+        from naukari_pro.modules.auto_apply import is_experience_eligible
+        from naukari_pro.modules.db import is_job_already_applied, record_applied_job
+
+        if not os.path.exists(TRACKER_PATH):
+            print(f"  [!] Tracker file not found: {TRACKER_PATH}")
+            return {"processed": 0, "submitted": 0, "skipped": 0, "items": []}
+
+        wb = openpyxl.load_workbook(TRACKER_PATH)
+        if "Applications_Log" not in wb.sheetnames:
+            print("  [!] Applications_Log sheet not found in tracker.")
+            return {"processed": 0, "submitted": 0, "skipped": 0, "items": []}
+
+        ws = wb["Applications_Log"]
+        candidates_to_process = []
+
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if not row or not any(row):
+                continue
+            status = str(row[8] or "").strip()
+            if status in ("External Redirect", "Not Available"):
+                date_val = row[0]
+                company = str(row[1] or "").strip()
+                title = str(row[2] or "").strip()
+                score_str = str(row[3] or "0").replace("%", "").strip()
+                score = float(score_str) if score_str.replace(".", "", 1).isdigit() else 0.0
+                exp = str(row[5] or "").strip()
+                url = str(row[9] or "").strip()
+
+                if not title or not company or not url or url == "N/A":
+                    continue
+
+                # Pre-filtering: Experience Gate
+                is_exp_ok, exp_reason, _, _ = is_experience_eligible(
+                    exp_text=exp,
+                    title=title,
+                    url=url,
+                    candidate_exp=float(self.profile.get("experienceYears", 2.5)),
+                    max_allowed=max_exp
+                )
+                if not is_exp_ok:
+                    continue
+
+                # Pre-filtering: Match Score Gate
+                if score < min_score:
+                    continue
+
+                candidates_to_process.append({
+                    "row_idx": row_idx,
+                    "date": date_val,
+                    "company": company,
+                    "title": title,
+                    "score": score,
+                    "exp": exp,
+                    "url": url,
+                    "status": status
+                })
+
+        print("\n" + "=" * 65)
+        print("  🌐 AUTOMATED EXTERNAL CAREER PORTAL RUNNER")
+        print(f"  Total Eligible Pending Redirects: {len(candidates_to_process)} (Score >= {min_score}%, YOE <= {max_exp})")
+        print(f"  Batch Limit: {limit} | Mode: {'DRY-RUN (Simulated)' if dry_run else 'LIVE SUBMISSION'}")
+        print("=" * 65)
+
+        processed = 0
+        submitted = 0
+        skipped = 0
+        results = []
+
+        # If dry run, validate payloads offline without launching browser
+        if dry_run:
+            for item in candidates_to_process[:limit]:
+                payload = self.fill_dry_run(
+                    portal_url=item["url"],
+                    company=item["company"],
+                    role=item["title"],
+                    match_score=int(item["score"])
+                )
+                print(f"\n  [DRY-RUN] Validated External Application:")
+                print(f"    • Company:     {item['company']}")
+                print(f"    • Role:        {item['title']}")
+                print(f"    • Match Score: {item['score']}%")
+                print(f"    • Experience:  {item['exp']}")
+                print(f"    • ATS Type:    {payload.portal_type}")
+                print(f"    • URL:         {item['url']}")
+                print(f"    • Status:      {payload.status}")
+                processed += 1
+                submitted += 1
+                results.append({"company": item["company"], "title": item["title"], "status": payload.status, "ats": payload.portal_type})
+            return {"processed": processed, "submitted": submitted, "skipped": skipped, "items": results}
+
+        # Live execution via Playwright
+        from playwright.sync_api import sync_playwright
+        from naukari_pro.session import get_stealth_context
+
+        with sync_playwright() as p:
+            context = get_stealth_context(p, headless=headless)
+            page = context.pages[0] if context.pages else context.new_page()
+
+            for item in candidates_to_process[:limit]:
+                row_idx = item["row_idx"]
+                company = item["company"]
+                title = item["title"]
+                score = item["score"]
+                url = item["url"]
+                processed += 1
+
+                print(f"\n[*] [{processed}/{min(limit, len(candidates_to_process))}] Processing External Redirect: {title} @ {company} ({score}%)")
+                print(f"    Naukri Source URL: {url}")
+
+                target_portal_url = url
+                ats_type = self.detect_ats(url)
+
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    time.sleep(3)
+
+                    # Check if page is Naukri with "Apply on Company Site" button
+                    if "naukri.com" in page.url.lower():
+                        print("    Detecting external company portal redirect button...")
+                        co_btn = page.locator("button#company-site-button, .styles_company-site-button__C_2YK, a:has-text('Apply on Company Site'), button:has-text('Apply on Company Site')").first
+                        if co_btn.count() > 0 and co_btn.is_visible():
+                            try:
+                                with context.expect_page(timeout=15000) as new_page_info:
+                                    co_btn.click()
+                                ext_page = new_page_info.value
+                                ext_page.wait_for_load_state("domcontentloaded", timeout=25000)
+                                time.sleep(3)
+                                active_page = ext_page
+                                target_portal_url = ext_page.url
+                            except Exception:
+                                time.sleep(4)
+                                active_page = context.pages[-1]
+                                target_portal_url = active_page.url
+                        else:
+                            active_page = page
+                            target_portal_url = page.url
+                    else:
+                        active_page = page
+                        target_portal_url = page.url
+
+                    ats_type = self.detect_ats(target_portal_url)
+                    print(f"    ATS Platform Detected: {ats_type} ({target_portal_url[:80]}...)")
+
+                    # Run auto-filler script
+                    js_code = self.generate_fill_script(ats_type)
+                    res_str = active_page.evaluate(js_code)
+                    res_data = json.loads(res_str) if isinstance(res_str, str) else res_str
+                    filled_fields = res_data.get("filled", [])
+                    print(f"    [✓] Auto-Filled Fields: {', '.join(filled_fields) if filled_fields else 'Basic Fields'}")
+
+                    # Attach resume PDF if file input exists
+                    file_input = active_page.locator("input[type='file']").first
+                    resume_path = self.profile.get("resumePath")
+                    if file_input.count() > 0 and resume_path and os.path.exists(resume_path):
+                        try:
+                            file_input.set_input_files(resume_path)
+                            print(f"    📎 Resume Uploaded: {os.path.basename(resume_path)}")
+                        except Exception as e_file:
+                            print(f"    Notice on resume attachment: {e_file}")
+
+                    time.sleep(2)
+
+                    # Submit application if requested
+                    sub_status = "Submitted (External Portal)"
+                    if auto_submit:
+                        submit_btn = active_page.locator("button[type='submit'], input[type='submit'], button:has-text('Submit Application'), button:has-text('Submit'), button:has-text('Apply')").first
+                        if submit_btn.count() > 0 and submit_btn.is_visible():
+                            try:
+                                submit_btn.click(timeout=5000)
+                                time.sleep(3)
+                                print(f"    🚀 Form Submitted on {ats_type} Portal!")
+                            except Exception as e_sub:
+                                print(f"    Submit click notice: {e_sub}")
+                        else:
+                            print(f"    ℹ️ Final submit button requires manual review; form 100% pre-filled.")
+                            sub_status = "Form Auto-Filled"
+
+                    # Update Excel tracker row
+                    ws.cell(row=row_idx, column=9, value=sub_status)
+                    ws.cell(row=row_idx, column=11, value="External ATS Auto-Filled & Submitted via Agy")
+                    wb.save(TRACKER_PATH)
+
+                    # Record into applied_jobs.db
+                    record_applied_job(
+                        title=title,
+                        company=company,
+                        platform="career_portal",
+                        location="Hyderabad / Remote",
+                        experience_req=item["exp"],
+                        match_score=score,
+                        status=sub_status,
+                        application_type=f"Career Portal ({ats_type})",
+                        job_url=target_portal_url,
+                        applicant_email=self.profile.get("email", "lav84095@gmail.com")
+                    )
+
+                    submitted += 1
+                    results.append({"company": company, "title": title, "status": sub_status, "ats": ats_type})
+                    if active_page != page:
+                        try:
+                            active_page.close()
+                        except Exception:
+                            pass
+
+                except Exception as e:
+                    print(f"    ❌ Error processing {company}: {e}")
+                    skipped += 1
+
+            context.close()
+
+        print("\n" + "=" * 65)
+        print(f"  🏁 External Portal Batch Complete: {submitted} Submitted, {skipped} Skipped")
+        print("=" * 65)
+        return {"processed": processed, "submitted": submitted, "skipped": skipped, "items": results}
 

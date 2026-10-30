@@ -24,7 +24,8 @@ from naukari_pro.config import (
     RESUME_PDF_PATH,
     COOKIES_SEED_PATH,
     SESSION_DIR,
-    WORKSPACE_DIR
+    WORKSPACE_DIR,
+    load_config
 )
 from naukari_pro.modules.auto_apply import AutoApplyEngine
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
@@ -49,6 +50,7 @@ class ProAutoPilotEngine:
         self.headless = headless
         self.dry_run = dry_run
         self.force = force
+        self.config = load_config()
         self.profile_engine = ProfileEnhancerEngine()
         self.apply_engine = AutoApplyEngine(dry_run=dry_run)
         self.search_engine = UniversalJobSearchEngine()
@@ -179,40 +181,46 @@ class ProAutoPilotEngine:
             print(f"  [!] Naukri apply error (isolated): {e}")
 
         # ── STAGE 6/8: Autonomous LinkedIn Easy Apply Cycle ──
-        print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications, Min Score >= 70%)...")
         applied_linkedin = 0
         li_dry_run_verified = 0
         li_stats = {}
-        try:
-            if self.dry_run:
-                li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=70.0)
-                li_dry_run_verified = li_stats.get("dry_run_verified", 0)
-                applied_linkedin = li_dry_run_verified
-                print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
-            elif not li_session_valid:
-                print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
-                li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
-            else:
-                li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
-                    limit=self.limit,
-                    dry_run=False,
-                    headless=self.headless
-                ))
-                applied_linkedin = li_stats.get("applied", 0)
-                status = li_stats.get("status")
-                if applied_linkedin > 0:
-                    print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted.")
-                elif status == "RATE_LIMITED":
-                    print("  ⚠️ LinkedIn live auto-apply: RATE_LIMITED (HTTP 429 IP cooldown active; resumes next scheduled window).")
-                elif status in ("EXPIRED", "COOKIE_MISSING", "COOKIE_REFRESH_REQUIRED"):
-                    print(f"  [!] LinkedIn live auto-apply paused: {status} (cookie renewal needed).")
-                elif status == "CHECKPOINT":
-                    print("  ⚠️ LinkedIn live auto-apply paused: Security checkpoint or CAPTCHA detected.")
+        li_auto_enabled = self.config.get("search_settings", {}).get("linkedin_automation_enabled", False)
+        if not li_auto_enabled:
+            print("\n[STAGE 6/8] LinkedIn Easy Apply Stage: PAUSED / DISABLED")
+            print("  ℹ️ Automated LinkedIn applications disabled by config policy to protect account from datacenter IP blocks.")
+            print("  ℹ️ GCC outreach is running via Draft Queue (manual human execution).")
+        else:
+            print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications, Min Score >= {self.config.get('search_settings', {}).get('min_match_score', 80.0)}%)...")
+            try:
+                if self.dry_run:
+                    li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=self.config.get("search_settings", {}).get("min_match_score", 80.0))
+                    li_dry_run_verified = li_stats.get("dry_run_verified", 0)
+                    applied_linkedin = li_dry_run_verified
+                    print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
+                elif not li_session_valid:
+                    print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
+                    li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
                 else:
-                    print(f"  [*] LinkedIn Easy Apply cycle finished: {applied_linkedin} applied (Status: {status or 'IDLE'}).")
-        except Exception as e:
-            print(f"  [!] LinkedIn apply error (isolated): {e}")
-            li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
+                    li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
+                        limit=self.limit,
+                        dry_run=False,
+                        headless=self.headless
+                    ))
+                    applied_linkedin = li_stats.get("applied", 0)
+                    status = li_stats.get("status")
+                    if applied_linkedin > 0:
+                        print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted.")
+                    elif status == "RATE_LIMITED":
+                        print("  ⚠️ LinkedIn live auto-apply: RATE_LIMITED (HTTP 429 IP cooldown active; resumes next scheduled window).")
+                    elif status in ("EXPIRED", "COOKIE_MISSING", "COOKIE_REFRESH_REQUIRED"):
+                        print(f"  [!] LinkedIn live auto-apply paused: {status} (cookie renewal needed).")
+                    elif status == "CHECKPOINT":
+                        print("  ⚠️ LinkedIn live auto-apply paused: Security checkpoint or CAPTCHA detected.")
+                    else:
+                        print(f"  [*] LinkedIn Easy Apply cycle finished: {applied_linkedin} applied (Status: {status or 'IDLE'}).")
+            except Exception as e:
+                print(f"  [!] LinkedIn apply error (isolated): {e}")
+                li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
 
         # ── STAGE 7/8: Hot Job Alerts & Multi-Platform Sourcing ──
         print("\n[STAGE 7/8] Cross-Platform Hot Job Alerts & Precision Feeds...")
@@ -239,19 +247,30 @@ class ProAutoPilotEngine:
 
         # ── STAGE 8/8: Consolidated Multi-Platform Summary Report ──
         print("\n[STAGE 8/8] Generating Consolidated Multi-Platform Application Summary...")
-        total_tracked_naukri = 0
-        total_tracked_linkedin = 0
+        total_live_naukri = 0
+        total_live_linkedin = 0
+        total_archived_dry_run = 0
         try:
             if os.path.exists(TRACKER_PATH):
                 wb = openpyxl.load_workbook(TRACKER_PATH, read_only=True)
                 if "Applications_Log" in wb.sheetnames:
-                    total_tracked_naukri = max(0, wb["Applications_Log"].max_row - 1)
+                    for row in wb["Applications_Log"].iter_rows(min_row=2, values_only=True):
+                        if row and len(row) > 8 and row[8]:
+                            st = str(row[8])
+                            if st.startswith("Submitted") or st.startswith("Applied") or st == "Form Auto-Filled":
+                                total_live_naukri += 1
                 if "LinkedIn_Applications_Log" in wb.sheetnames:
-                    total_tracked_linkedin = max(0, wb["LinkedIn_Applications_Log"].max_row - 1)
+                    for row in wb["LinkedIn_Applications_Log"].iter_rows(min_row=2, values_only=True):
+                        if row and len(row) > 6 and row[6]:
+                            st = str(row[6])
+                            if st != "SUBMITTED_DRY_RUN":
+                                total_live_linkedin += 1
+                if "DryRun_Archive" in wb.sheetnames:
+                    total_archived_dry_run = max(0, wb["DryRun_Archive"].max_row - 1)
                 wb.close()
         except Exception:
             pass
-        total_tracked = total_tracked_naukri + total_tracked_linkedin
+        total_live_tracked = total_live_naukri + total_live_linkedin
 
         duration = (datetime.now() - start_time).total_seconds()
         print("\n" + "=" * 76)
@@ -265,9 +284,11 @@ class ProAutoPilotEngine:
         print(f"  📤 Naukri Applications (Run):    {applied_naukri}")
         print(f"  📤 LinkedIn Applications (Run):  {applied_linkedin}")
         print(f"  🚀 Total Submitted This Run:     {applied_naukri + applied_linkedin}")
-        print(f"  📊 Naukri Tracked Lifetime:      {total_tracked_naukri}")
-        print(f"  📊 LinkedIn Tracked Lifetime:    {total_tracked_linkedin}")
-        print(f"  📊 Total Career Apps Tracked:    {total_tracked}")
+        print(f"  📊 Live Naukri Apps Lifetime:    {total_live_naukri}")
+        print(f"  📊 Live LinkedIn Apps Lifetime:  {total_live_linkedin}")
+        print(f"  📊 Total Live Applications:      {total_live_tracked}")
+        if total_archived_dry_run > 0:
+            print(f"  🧪 Dry-Run Mock Simulations:     {total_archived_dry_run} [Archived in DryRun_Archive; Excluded from Live]")
         print(f"  📁 Master Excel Tracker:         {TRACKER_PATH}")
         print("=" * 76 + "\n")
 
@@ -276,9 +297,10 @@ class ProAutoPilotEngine:
             "applied_naukri": applied_naukri,
             "applied_linkedin": applied_linkedin,
             "li_dry_run_verified": li_dry_run_verified,
-            "total_tracked": total_tracked,
-            "total_tracked_naukri": total_tracked_naukri,
-            "total_tracked_linkedin": total_tracked_linkedin,
+            "total_tracked": total_live_tracked,
+            "total_tracked_naukri": total_live_naukri,
+            "total_tracked_linkedin": total_live_linkedin,
+            "total_archived_dry_run": total_archived_dry_run,
             "duration_seconds": duration,
             "seo_score": overall_score,
             "linkedin_status": li_stats.get("status", "SUCCESS" if applied_linkedin > 0 else ("DRY_RUN_VERIFIED" if self.dry_run else "IDLE")),

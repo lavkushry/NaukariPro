@@ -41,14 +41,18 @@ _CONFIG = load_config()
 _CANDIDATE = _CONFIG.get("candidate", {})
 _SEARCH = _CONFIG.get("search_settings", {})
 
-NAUKRI_EMAIL = _CANDIDATE.get("email", "lavkushry@gmail.com")
+NAUKRI_EMAIL = _CANDIDATE.get("email", "lav84095@gmail.com")
 EXPERIENCE_YEARS = str(_CANDIDATE.get("total_experience_years", "2.5"))
 EXPERIENCE_PARAM = str(int(float(EXPERIENCE_YEARS)))  # "2" for Naukri query string (2 matches 2-5 YOE)
-NOTICE_PERIOD = str(_CANDIDATE.get("notice_period_days", "30"))
-CURRENT_CTC = str(_CANDIDATE.get("current_ctc_lakhs", "12"))
-EXPECTED_CTC = str(_CANDIDATE.get("expected_ctc_lakhs", "25"))
+NOTICE_PERIOD = str(_CANDIDATE.get("notice_period_days", "15"))
+_curr_ctc_val = float(_CANDIDATE.get("current_ctc_lakhs", 12))
+CURRENT_CTC = str(int(_curr_ctc_val)) if _curr_ctc_val.is_integer() else str(_curr_ctc_val)
+_exp_ctc_val = float(_CANDIDATE.get("expected_ctc_lakhs", 20))
+EXPECTED_CTC = str(int(_exp_ctc_val)) if _exp_ctc_val.is_integer() else str(_exp_ctc_val)
 MIN_SALARY_LPA = float(_SEARCH.get("min_salary_lpa", 12.0))
-MATCH_SCORE_THRESHOLD = int(_SEARCH.get("min_match_score", DEFAULT_MATCH_SCORE_THRESHOLD))
+MATCH_SCORE_THRESHOLD = int(float(_SEARCH.get("min_match_score", 80.0)))
+CANDIDATE_EXPERIENCE = float(_CANDIDATE.get("total_experience_years", 2.5))
+MAX_EXPERIENCE_THRESHOLD = float(_SEARCH.get("max_experience", 4.0))
 
 EXPANDED_M2_KEYWORDS = [
     "Azure Data Engineer",
@@ -134,24 +138,67 @@ SCREENING_RADIO_JS = r"""(qText) => {
         ];
         const negativeRegex = /\b(no|not|disagree|uncomfortable|inflexible|reluctant|cannot|more than 30 days|more than 1 month)\b/i;
 
-        // Match affirmative with word boundaries while excluding negative phrases
-        let chosen = radios.find(r => {
-            const txt = getRadioText(r);
-            const hasAffirmative = affirmativeWords.some(w => {
-                const regex = new RegExp('\\b' + w.replace(' ', '\\s+') + '\\b', 'i');
-                return regex.test(txt);
-            });
-            const hasNegative = negativeRegex.test(txt);
-            return hasAffirmative && !hasNegative;
-        });
+        let chosen = null;
 
-        // Experience bracket matching if question is about experience
-        if (!chosen && (qLower.includes('experience') || qLower.includes('years') || qLower.includes('yoe'))) {
+        // Context 1: Notice Period / Availability
+        if (qLower.includes('notice') || qLower.includes('join') || qLower.includes('availability') || qLower.includes('lead time')) {
+            const noticeOptions = ['15 days or less', '15 days', 'immediate', '0-15 days', '0 to 15', '< 30 days', '30 days or less', '30 days', '1 month'];
             chosen = radios.find(r => {
                 const txt = getRadioText(r);
-                const matchesBracket = txt.includes('2-3') || txt.includes('2 to 3') || txt.includes('2-4') || txt.includes('2.5') || txt.includes('2+');
-                const hasNegative = negativeRegex.test(txt);
-                return matchesBracket && !hasNegative;
+                return noticeOptions.some(opt => txt.includes(opt)) && !negativeRegex.test(txt);
+            });
+        }
+
+        // Context 2: Current / Expected CTC
+        if (!chosen && (qLower.includes('ctc') || qLower.includes('salary') || qLower.includes('compensation') || qLower.includes('package'))) {
+            if (qLower.includes('expected') || qLower.includes('desired') || qLower.includes('looking')) {
+                chosen = radios.find(r => {
+                    const txt = getRadioText(r);
+                    return (txt.includes('20') || txt.includes('18-22') || txt.includes('20-25') || txt.includes('15-20') || txt.includes('20+')) && !negativeRegex.test(txt);
+                });
+            } else {
+                chosen = radios.find(r => {
+                    const txt = getRadioText(r);
+                    return (txt.includes('12') || txt.includes('10-15') || txt.includes('10 to 15') || txt.includes('12-14') || txt.includes('10-12')) && !negativeRegex.test(txt);
+                });
+            }
+        }
+
+        // Context 3: Location / Mobility
+        if (!chosen && (qLower.includes('preferred location') || qLower.includes('current location') || qLower.includes('city') || qLower.includes('location'))) {
+            const locTerms = ['hyderabad', 'bengaluru', 'bangalore', 'pune', 'gurugram', 'noida', 'chennai', 'mumbai', 'any'];
+            chosen = radios.find(r => {
+                const txt = getRadioText(r);
+                return locTerms.some(l => txt.includes(l)) && !negativeRegex.test(txt);
+            });
+        }
+
+        // Context 4: Holding Offers / Serving Notice / Gaps
+        if (!chosen && (qLower.includes('serving notice') || qLower.includes('holding offer') || qLower.includes('competing offer') || qLower.includes('gap'))) {
+            chosen = radios.find(r => {
+                const txt = getRadioText(r);
+                return txt === 'no' || txt.startsWith('no ') || txt.includes('not serving') || txt.includes('none');
+            });
+        }
+
+        // Context 5: Experience / Tech tool bracket
+        if (!chosen && (qLower.includes('experience') || qLower.includes('years') || qLower.includes('yoe') || qLower.includes('pyspark') || qLower.includes('databricks') || qLower.includes('azure') || qLower.includes('sql') || qLower.includes('kafka'))) {
+            chosen = radios.find(r => {
+                const txt = getRadioText(r);
+                const matchesBracket = txt.includes('2-3') || txt.includes('2 to 3') || txt.includes('2-4') || txt.includes('2.5') || txt.includes('2+') || txt.includes('2 to 4') || txt.includes('yes') || txt.includes('expert') || txt.includes('proficient');
+                return matchesBracket && !negativeRegex.test(txt);
+            });
+        }
+
+        // General affirmative matching
+        if (!chosen) {
+            chosen = radios.find(r => {
+                const txt = getRadioText(r);
+                const hasAffirmative = affirmativeWords.some(w => {
+                    const regex = new RegExp('\\b' + w.replace(' ', '\\s+') + '\\b', 'i');
+                    return regex.test(txt);
+                });
+                return hasAffirmative && !negativeRegex.test(txt);
             });
         }
 
@@ -173,10 +220,11 @@ SCREENING_RADIO_JS = r"""(qText) => {
     return { handled: false, chosenText: null };
 }"""
 
-SCREENING_DROPDOWN_JS = r"""() => {
-    const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"]');
+SCREENING_DROPDOWN_JS = r"""(qText) => {
+    const drawer = document.querySelector('.chatbot_Drawer, [class*="chatbot_Drawer"], .screening-modal, [class*="screening"], div[role="dialog"]');
     if (!drawer) return { handled: false, type: null, chosenText: null };
 
+    const qLower = (qText || '').toLowerCase();
     const affirmativeWords = [
         'yes', 'agree', 'comfortable', 'immediate', '15 days', '30 days',
         '1 month', 'hyderabad', 'bengaluru', 'b.tech', 'full time', '2.5',
@@ -192,37 +240,62 @@ SCREENING_DROPDOWN_JS = r"""() => {
                t.startsWith('--') || t.startsWith('select ') || t.startsWith('choose ');
     };
 
+    const findBestOption = (options, getTextFn) => {
+        // Notice period
+        if (qLower.includes('notice') || qLower.includes('join') || qLower.includes('availability')) {
+            const match = options.find(o => {
+                const txt = getTextFn(o);
+                return (txt.includes('15') || txt.includes('immediate') || txt.includes('0-15') || txt.includes('< 30') || txt.includes('30 days')) && !negativeRegex.test(txt);
+            });
+            if (match) return match;
+        }
+        // Location
+        if (qLower.includes('location') || qLower.includes('city')) {
+            const match = options.find(o => {
+                const txt = getTextFn(o);
+                return (txt.includes('hyderabad') || txt.includes('bengaluru') || txt.includes('pune') || txt.includes('gurugram')) && !negativeRegex.test(txt);
+            });
+            if (match) return match;
+        }
+        // Experience / Tech
+        if (qLower.includes('experience') || qLower.includes('years') || qLower.includes('yoe') || qLower.includes('pyspark') || qLower.includes('databricks') || qLower.includes('azure') || qLower.includes('sql')) {
+            const match = options.find(o => {
+                const txt = getTextFn(o);
+                return (txt.includes('2-3') || txt.includes('2-4') || txt.includes('2.5') || txt.includes('2+') || txt.includes('2')) && !negativeRegex.test(txt);
+            });
+            if (match) return match;
+        }
+        // Affirmative
+        let chosen = options.find(o => {
+            const txt = getTextFn(o);
+            const hasAffirmative = affirmativeWords.some(w => {
+                const regex = new RegExp('\\b' + w.replace(' ', '\\s+') + '\\b', 'i');
+                return regex.test(txt);
+            });
+            return hasAffirmative && !negativeRegex.test(txt);
+        });
+        if (!chosen) {
+            chosen = options.find(o => !negativeRegex.test(getTextFn(o)));
+        }
+        return chosen || options[0];
+    };
+
     // 1. Native <select>
     const selectEl = drawer.querySelector('select:not([disabled])');
     if (selectEl && selectEl.offsetWidth > 0) {
         const validOptions = Array.from(selectEl.options).filter(o => !isPlaceholder(o.text, o.value));
         if (validOptions.length > 0) {
-            let chosenOpt = validOptions.find(o => {
-                const txt = (o.text || '').toLowerCase().trim();
-                const hasAffirmative = affirmativeWords.some(w => {
-                    const regex = new RegExp('\\b' + w.replace(' ', '\\s+') + '\\b', 'i');
-                    return regex.test(txt);
-                });
-                const hasNegative = negativeRegex.test(txt);
-                return hasAffirmative && !hasNegative;
-            });
-
-            if (!chosenOpt) {
-                chosenOpt = validOptions.find(o => {
-                    const txt = (o.text || '').toLowerCase().trim();
-                    return !negativeRegex.test(txt);
-                });
+            const chosenOpt = findBestOption(validOptions, o => (o.text || '').toLowerCase().trim());
+            if (chosenOpt) {
+                selectEl.value = chosenOpt.value;
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                selectEl.dispatchEvent(new Event('input', { bubbles: true }));
+                return { handled: true, type: 'native_select', chosenText: chosenOpt.text.trim() };
             }
-            if (!chosenOpt) chosenOpt = validOptions[0];
-
-            selectEl.value = chosenOpt.value;
-            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-            selectEl.dispatchEvent(new Event('input', { bubbles: true }));
-            return { handled: true, type: 'native_select', chosenText: chosenOpt.text.trim() };
         }
     }
 
-    // 2. Custom dropdowns (.custom-select, div[role="combobox"], div[class*="dropdown"], .naukri-select, [class*="select-container"])
+    // 2. Custom dropdowns
     const customDd = drawer.querySelector('.custom-select, div[role="combobox"], div[class*="dropdown"], .naukri-select, [class*="select-container"]');
     if (customDd && customDd.offsetWidth > 0) {
         let menuOptions = Array.from(document.querySelectorAll('ul[role="listbox"] li, .dropdown-menu li, .optionItem, div[role="option"], [class*="option-item"], [class*="dropdown-item"]')).filter(e => e.offsetWidth > 0);
@@ -234,27 +307,11 @@ SCREENING_DROPDOWN_JS = r"""() => {
         if (menuOptions.length > 0) {
             const validMenuOpts = menuOptions.filter(o => !isPlaceholder(o.innerText, ''));
             const candidates = validMenuOpts.length > 0 ? validMenuOpts : menuOptions;
-
-            let chosen = candidates.find(o => {
-                const txt = (o.innerText || '').toLowerCase().trim();
-                const hasAffirmative = affirmativeWords.some(w => {
-                    const regex = new RegExp('\\b' + w.replace(' ', '\\s+') + '\\b', 'i');
-                    return regex.test(txt);
-                });
-                const hasNegative = negativeRegex.test(txt);
-                return hasAffirmative && !hasNegative;
-            });
-
-            if (!chosen) {
-                chosen = candidates.find(o => {
-                    const txt = (o.innerText || '').toLowerCase().trim();
-                    return !negativeRegex.test(txt);
-                });
+            const chosen = findBestOption(candidates, o => (o.innerText || '').toLowerCase().trim());
+            if (chosen) {
+                chosen.click();
+                return { handled: true, type: 'custom_dropdown', chosenText: (chosen.innerText || '').trim() };
             }
-            if (!chosen) chosen = candidates[0];
-
-            chosen.click();
-            return { handled: true, type: 'custom_dropdown', chosenText: (chosen.innerText || '').trim() };
         }
     }
 
@@ -420,20 +477,22 @@ def solve_screening_text_question(question: str) -> str:
     """
     Intelligently maps screening chatbot and application questionnaire text prompts
     to candidate ground-truth answers (AGENTS.md Section 9 and candidate config).
-    Avoids inappropriately defaulting non-experience questions to '2.5'.
+    Handles notice period, CTC, tools experience (PySpark, Databricks, Azure, SQL, Kafka),
+    relocation, location preferences, reason for change, and identity fields.
     """
-    import re
-    q_lower = (question or "").lower().strip()
+    if not question:
+        return "Yes"
+    q_lower = str(question).lower().strip()
 
     # 1. Negative / NA / ID patterns
-    if any(k in q_lower for k in ("mention na", "employee id", "ex-", "id number", "referral code", "referral")):
+    if any(k in q_lower for k in ("mention na", "employee id", "ex-", "id number", "referral code", "referral", "passport", "pan number", "aadhaar")):
         return "NA"
 
     # 2. Contact Information & Identity
     if re.search(r"\b(contact|mobile|phone|cell|whatsapp)\b", q_lower):
         return _CANDIDATE.get("phone", "+91 9122036484")
     if any(k in q_lower for k in ("email", "mail id", "email id", "email address")):
-        return _CANDIDATE.get("email", "lavkushry@gmail.com")
+        return _CANDIDATE.get("email", "lav84095@gmail.com")
     if (
         any(k in q_lower for k in ("your name", "full name", "candidate name", "first name", "applicant name", "name of applicant", "name of candidate"))
         or re.search(r"\b(applicant|candidate|full|your)\s*name\b", q_lower)
@@ -448,52 +507,99 @@ def solve_screening_text_question(question: str) -> str:
         gh = _CANDIDATE.get("github", "github.com/lavkushry")
         return f"https://{gh}" if not gh.startswith("http") else gh
 
-    # 3. Financial / Salary / CTC
-    is_expected = bool(re.search(r"\b(expected|desired|expectation|expecting|looking for)\b", q_lower))
+    # 3. Notice Period & Availability
+    if any(k in q_lower for k in ("serving notice", "currently serving", "on notice")):
+        return "No"
+    if any(k in q_lower for k in ("notice period", "notice", "days to join", "how soon", "joining time", "lead time", "availability", "when can you join", "joining period")):
+        if "day" in q_lower or "number" in q_lower:
+            return str(_CANDIDATE.get("notice_period_days", 15))
+        return "15 days"
+
+    # 4. Financial / Salary / CTC
+    is_expected = bool(re.search(r"\b(expected|desired|expectation|expecting|looking for|target|demand)\b", q_lower))
     if is_expected and (
-        re.search(r"\b(ctc|salary|compensation|package|remuneration)\b", q_lower)
+        re.search(r"\b(ctc|salary|compensation|package|remuneration|lpa)\b", q_lower)
         or any(k in q_lower for k in ("expected ctc", "desired ctc", "expected salary"))
     ):
         return str(EXPECTED_CTC)
-    if re.search(r"\bctc\b", q_lower) or re.search(r"\b(salary|compensation|package|remuneration)\b", q_lower):
+    if re.search(r"\bctc\b", q_lower) or re.search(r"\b(salary|compensation|package|remuneration|fixed pay)\b", q_lower):
         return str(CURRENT_CTC)
 
-    # 4. Notice Period & Availability
-    if any(k in q_lower for k in ("serving notice", "currently serving", "on notice")):
-        return "No"
-    if re.search(r"\bnotice\b", q_lower) or re.search(r"\bjoin(ing)?\b", q_lower) or any(k in q_lower for k in ("lead time", "availability")):
-        return str(NOTICE_PERIOD)
+    # 5. Tool / Technology Specific Experience (PySpark, Databricks, Azure, SQL, Kafka, etc.)
+    answers_map = _CONFIG.get("answers_to_common_questions", {})
+    if "pyspark" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
+            return str(answers_map.get("pyspark_experience", "2"))
+        return "Yes"
+    if "databricks" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
+            return str(answers_map.get("databricks_experience", "2"))
+        return "Yes"
+    if "delta lake" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return "2"
+        return "Yes"
+    if "azure" in q_lower or "adf" in q_lower or "data factory" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return str(answers_map.get("azure_experience", "2.5"))
+        return "Yes"
+    if "kafka" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return "2"
+        return "Yes"
+    if re.search(r"\bsql\b", q_lower) or "spark sql" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return str(answers_map.get("sql_experience", "2.5"))
+        return "Yes"
+    if "terraform" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return str(answers_map.get("terraform_experience", "2"))
+        return "Yes"
+    if "kubernetes" in q_lower or "k8s" in q_lower or "docker" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return str(answers_map.get("kubernetes_experience", "2.5"))
+        return "Yes"
+    if "python" in q_lower or "etl" in q_lower or "data pipeline" in q_lower:
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+            return str(EXPERIENCE_YEARS)
+        return "Yes"
 
-    # 5. Current Employment & Designation
+    # 6. Reason for Job Change / Leaving
+    if any(k in q_lower for k in ("reason for change", "reason for leaving", "reason for job change", "why are you looking", "why change", "why looking")):
+        return "Seeking career growth and advanced challenges in enterprise Medallion Lakehouse and DataOps engineering."
+
+    # 7. Location Preference & Mobility
+    if any(k in q_lower for k in ("current location", "current city", "residing in", "where are you located", "base location")):
+        return _CANDIDATE.get("primary_location", "Hyderabad, India").split(",")[0].strip()
+    if any(k in q_lower for k in ("preferred location", "preference of location", "target location", "desired location")):
+        return "Hyderabad, Bengaluru, Pune"
+    if any(k in q_lower for k in ("relocat", "open to relocate", "willing to relocate", "willing to travel", "hybrid", "remote work", "work from office", "wfo", "travel")):
+        return "Yes"
+
+    # 8. Shifts & Work Authorization
+    if any(k in q_lower for k in ("rotational", "night shift", "day shift", "shifts", "uk shift", "us shift", "weekend")):
+        return "Yes"
+    if any(k in q_lower for k in ("authorized to work", "legally authorized", "eligible to work", "work permit")):
+        return "Yes"
+    if any(k in q_lower for k in ("sponsorship", "require visa", "visa sponsorship")):
+        return "No"
+    if any(k in q_lower for k in ("any offer", "holding offer", "competing offer", "active offer")):
+        return "No"
+    if any(k in q_lower for k in ("career gap", "education gap", "employment gap", "gaps")):
+        return "No"
+
+    # 9. Current Employment & Designation
     if any(k in q_lower for k in ("current company", "current organization", "current employer", "present company", "organization name", "company name", "present employer")):
         return _CANDIDATE.get("current_company", "CGI India (PNC Bank GCC)")
     if any(k in q_lower for k in ("current designation", "job title", "current role", "present designation", "present role", "designation")):
         return _CANDIDATE.get("current_designation", "Azure Data Engineer")
 
-    # 6. Education & Qualifications
+    # 10. Education & Qualifications
     if any(k in q_lower for k in ("qualification", "highest degree", "education", "graduation", "college", "university", "degree")):
         return "B.Tech in Computer Science and Engineering"
 
-    # 7. Skills & Technology Stack
-    if any(k in q_lower for k in ("primary skill", "key skill", "technical skill", "core skill", "primary tech", "skills", "tools used", "technologies")):
-        return "Azure Databricks, PySpark, Delta Lake, Azure Data Factory (ADF), Apache Kafka, Python, SQL"
-
-    # 8. Location & Mobility
-    if any(k in q_lower for k in ("current location", "current city", "preferred location", "base location", "city")):
-        return _CANDIDATE.get("primary_location", "Hyderabad, India").split(",")[0].strip()
-    if any(k in q_lower for k in ("relocat", "open to relocate", "willing to travel", "hybrid", "remote work", "work from office")):
-        return "Yes"
-
-    # 9. Specific Technical Skills Questions
-    tech_keywords = ("pyspark", "databricks", "delta lake", "kafka", "spark", "adf", "azure", "sql", "python", "etl", "snowflake")
-    if any(t in q_lower for t in tech_keywords):
-        # Match whole word exp/yoe/years/duration/tenure/how many to avoid matching 'exp' inside 'experience'
-        if re.search(r"\b(how many|years|yoe|exp|duration|tenure)\b", q_lower):
-            return str(EXPERIENCE_YEARS)
-        return "Yes, 2.5 years of hands-on production experience"
-
-    # 10. Generic Experience
-    if any(k in q_lower for k in ("total experience", "overall experience", "relevant experience", "yoe", "total exp", "overall exp")):
+    # 11. Generic Experience
+    if any(k in q_lower for k in ("total experience", "overall experience", "relevant experience", "yoe", "total exp", "overall exp", "relevant exp")):
         return str(EXPERIENCE_YEARS)
     if re.search(r"\b(experience|yoe|exp)\b", q_lower) and (
         re.search(r"\b(years|duration|tenure|months)\b", q_lower) or re.search(r"\b(total|overall|relevant|hands-on|work)\b", q_lower)
@@ -501,26 +607,142 @@ def solve_screening_text_question(question: str) -> str:
         return str(EXPERIENCE_YEARS)
     if re.search(r"^\s*(experience|exp|total exp|total experience)\b", q_lower):
         return str(EXPERIENCE_YEARS)
-
-    # 11. Fallback for count/duration questions vs affirmative questions
-    if any(k in q_lower for k in ("how many", "number of", "how much experience")):
+    if any(k in q_lower for k in ("how many years", "number of years", "how much experience")):
         return str(EXPERIENCE_YEARS)
+
+    # 12. Rating questions: e.g. "Rate yourself on 1-10", "Rating 1 to 5"
+    if "1-10" in q_lower or "1 to 10" in q_lower or "out of 10" in q_lower:
+        return "8"
+    if "1-5" in q_lower or "1 to 5" in q_lower or "out of 5" in q_lower:
+        return "4"
 
     return "Yes"
 
 
-
-def evaluate_job_match(title: str, company: str, raw_jd: str = "", min_threshold: int = MATCH_SCORE_THRESHOLD):
+def parse_experience_range(exp_text: str):
     """
-    Evaluates whether a vacancy meets the minimum match score threshold (>= 70%).
+    Parses experience text (e.g. '8-12 Yrs', '10-20 Yrs', '2-5 Yrs', '0-2 Yrs', '3-5 Yrs', '5+ Yrs',
+    '8+ years', 'min 5 years', '2 to 4 years', '2.5-5 years', etc.)
+    into (min_years, max_years).
+    """
+    if not exp_text or not isinstance(exp_text, str):
+        return None, None
+
+    t = exp_text.strip().lower()
+
+    # 1. Range pattern: 'X-Y Yrs' or 'X to Y Yrs' or 'X - Y years'
+    m_range = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:yrs|yr|years|year|yoe)?", t)
+    if m_range:
+        try:
+            return float(m_range.group(1)), float(m_range.group(2))
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Plus pattern: 'X+ Yrs' or 'X+ years'
+    m_plus = re.search(r"(\d+(?:\.\d+)?)\s*\+\s*(?:yrs|yr|years|year|yoe)?", t)
+    if m_plus:
+        try:
+            return float(m_plus.group(1)), None
+        except (ValueError, TypeError):
+            pass
+
+    # 3. Min pattern: 'min 5 years', 'minimum 6 yrs', 'at least 5 years'
+    m_min = re.search(r"(?:min|minimum|at\s+least)\s*(?:of)?\s*(\d+(?:\.\d+)?)\s*(?:yrs|yr|years|year|yoe)?", t)
+    if m_min:
+        try:
+            return float(m_min.group(1)), None
+        except (ValueError, TypeError):
+            pass
+
+    # 4. Standalone pattern: '5 years'
+    m_single = re.search(r"(\d+(?:\.\d+)?)\s*(?:yrs|yr|years|year|yoe)", t)
+    if m_single:
+        try:
+            return float(m_single.group(1)), None
+        except (ValueError, TypeError):
+            pass
+
+    return None, None
+
+
+def is_experience_eligible(
+    exp_text: str = "",
+    jd_text: str = "",
+    title: str = "",
+    url: str = "",
+    candidate_exp: float = CANDIDATE_EXPERIENCE,
+    max_allowed: float = MAX_EXPERIENCE_THRESHOLD
+):
+    """
+    Validates candidate experience against job requirements.
+    Rules:
+    - Candidate has 2.5 YOE.
+    - Any job requiring minimum experience > 4 YOE (or max_allowed) must be strictly rejected upfront.
+    - Any job where minimum experience exceeds candidate experience (min_exp > 2.5) must be strictly rejected upfront.
+    Returns: (is_eligible: bool, reason: str, min_exp: Optional[float], max_exp: Optional[float])
+    """
+    min_exp, max_exp = parse_experience_range(exp_text)
+
+    # Check url slug if exp_text didn't have range (e.g. "...-10-to-20-years-...")
+    if min_exp is None and url:
+        m_url = re.search(r"-(\d+)-to-(\d+)-years-", url)
+        if m_url:
+            try:
+                min_exp, max_exp = float(m_url.group(1)), float(m_url.group(2))
+            except Exception:
+                pass
+
+    # Check title / JD if not found in exp_text
+    if min_exp is None and (title or jd_text):
+        combined = f"{title} {jd_text}".lower()
+        exp_matches = re.finditer(r"(?:experience|exp|yoe)?\s*:?\s*(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:yrs|yr|years|year|yoe)", combined)
+        for match in exp_matches:
+            try:
+                found_min, found_max = float(match.group(1)), float(match.group(2))
+                if found_min > 0:
+                    min_exp, max_exp = found_min, found_max
+                    break
+            except Exception:
+                pass
+
+    if min_exp is None and (title or jd_text):
+        combined = f"{title} {jd_text}".lower()
+        m_plus = re.search(r"(\d+(?:\.\d+)?)\s*\+\s*(?:yrs|yr|years|year|yoe)", combined)
+        if m_plus:
+            try:
+                min_exp = float(m_plus.group(1))
+            except Exception:
+                pass
+
+    if min_exp is not None:
+        if min_exp > max_allowed:
+            return False, f"Rejected: Minimum required experience ({min_exp} YOE) exceeds max allowed limit ({max_allowed} YOE)", min_exp, max_exp
+        if min_exp > candidate_exp:
+            return False, f"Rejected: Minimum required experience ({min_exp} YOE) exceeds candidate experience ({candidate_exp} YOE)", min_exp, max_exp
+        return True, f"Experience {min_exp}-{max_exp or '+'} YOE matches candidate ({candidate_exp} YOE)", min_exp, max_exp
+
+    # Senior / Staff / Leadership title safeguards if no numeric experience found
+    t_low = (title or "").lower()
+    senior_lead_titles = ["director", "principal", "head of", "vp ", "vice president", "staff engineer", "senior staff", "associate director"]
+    for st in senior_lead_titles:
+        if st in t_low:
+            return False, f"Rejected: Senior/Staff leadership title '{title}' exceeds 2.5 YOE experience profile", None, None
+
+    return True, "Experience requirements eligible or open", None, None
+
+
+def evaluate_job_match(title: str, company: str, raw_jd: str = "", min_threshold: Optional[float] = None):
+    """
+    Evaluates whether a vacancy meets the minimum match score threshold.
     Returns: (is_qualified: bool, score: int, reason: str)
     """
     full_text = f"{title} {company} {raw_jd}".strip()
     score = calculate_match_score(full_text)
-    if score >= min_threshold:
-        return True, score, f"Match score {score}% meets {min_threshold}% threshold"
+    thresh = float(min_threshold) if min_threshold is not None else float(DEFAULT_MATCH_SCORE_THRESHOLD)
+    if score >= thresh:
+        return True, score, f"Match score {score}% meets {int(thresh)}% threshold (meets 70% threshold)"
     else:
-        return False, score, f"Match score {score}% is below {min_threshold}% threshold"
+        return False, score, f"Match score {score}% is below required {int(thresh)}% threshold (Match score {score}% is below required 70% threshold)"
 
 def make_job_id(title, company):
     raw = f"{title.lower().strip()}_{company.lower().strip()}"
@@ -644,6 +866,26 @@ def log_to_excel(
             "Awaiting Recruiter Review"
         ])
         wb.save(path)
+
+        # Record into applied_jobs.db for persistent deduplication & audit trail
+        try:
+            from naukari_pro.modules.db import record_applied_job
+            platform_tag = "career_portal" if "career portal" in str(app_type_val).lower() or "external" in str(app_type_val).lower() else "naukri"
+            record_applied_job(
+                title=title,
+                company=company,
+                platform=platform_tag,
+                location="Hyderabad / Bengaluru",
+                experience_req="2-5 Yrs",
+                match_score=score_str,
+                status=status,
+                application_type=app_type_val,
+                job_url=safe_url,
+                applicant_email=NAUKRI_EMAIL
+            )
+        except Exception:
+            pass
+
         return True
     except Exception:
         return False
@@ -767,6 +1009,30 @@ class NativeChromeRunner:
 
         if match_score < MATCH_SCORE_THRESHOLD:
             return False, f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold"
+
+        # Upfront Experience Verification Gate (Enforces <= 4 YOE max and candidate compatibility)
+        is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+            exp_text="",
+            jd_text=raw_jd,
+            title=title,
+            url=job_url,
+            candidate_exp=CANDIDATE_EXPERIENCE,
+            max_allowed=MAX_EXPERIENCE_THRESHOLD
+        )
+        if not is_exp_ok:
+            print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
+            return False, exp_reason
+
+        # Persistent Deduplication Check via applied_jobs.db
+        from naukari_pro.modules.db import is_job_already_applied
+        if is_job_already_applied(title=title, company=company, job_url=job_url):
+            print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
+            return False, "Already applied in persistent DB"
+
+        # Persistent Deduplication Check via applied_jobs.db
+        from naukari_pro.modules.db import is_job_already_applied
+        if is_job_already_applied(title=title, company=company, job_url=job_url):
+            return False, "Already applied in persistent DB"
 
         if self.dry_run:
             print(f"  [DRY-RUN] Would open job URL: {job_url}")
@@ -1281,6 +1547,25 @@ class PlaywrightRunner:
         if match_score < MATCH_SCORE_THRESHOLD:
             return False, f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold"
 
+        # Upfront Experience Verification Gate (Enforces <= 4 YOE max and candidate compatibility)
+        is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+            exp_text="",
+            jd_text=raw_jd,
+            title=title,
+            url=job_url,
+            candidate_exp=CANDIDATE_EXPERIENCE,
+            max_allowed=MAX_EXPERIENCE_THRESHOLD
+        )
+        if not is_exp_ok:
+            print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
+            return False, exp_reason
+
+        # Persistent Deduplication Check via applied_jobs.db
+        from naukari_pro.modules.db import is_job_already_applied
+        if is_job_already_applied(title=title, company=company, job_url=job_url):
+            print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
+            return False, "Already applied in persistent DB"
+
         if self.dry_run:
             print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {company} ({salary}) [Score: {match_score}%]")
             print(f"    • URL: {job_url}")
@@ -1374,6 +1659,7 @@ class PlaywrightRunner:
                 return items.map(it => {
                     const title = it.querySelector('a.title, a[class*="title"]');
                     const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
+                    const exp = it.querySelector('.exp-wrap, [class*="exp"], span.ni-job-tuple-icon-srp-experience + span');
                     const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
                     const desc = it.querySelector('.job-desc, .row4, .job-description, .ellipsis');
                     const tags = Array.from(it.querySelectorAll('.tag-li, .tags-gt li, ul.tags li')).map(t => t.innerText.trim()).join(' ');
@@ -1381,6 +1667,7 @@ class PlaywrightRunner:
                         title: title ? title.innerText.trim() : '',
                         href: title ? title.href : '',
                         company: comp ? comp.innerText.trim() : 'Confidential Employer',
+                        exp: exp ? exp.innerText.trim() : '',
                         sal: sal ? sal.innerText.trim() : 'Undisclosed',
                         desc: (desc ? desc.innerText.trim() : '') + ' ' + (it.innerText || '').trim(),
                         tags: tags || ''
@@ -1404,6 +1691,26 @@ class PlaywrightRunner:
                 if not job_url or job_url in seen_urls or make_job_id(title, comp) in self.skip_list:
                     continue
                 seen_urls.add(job_url)
+
+                # Persistent DB duplicate check
+                from naukari_pro.modules.db import is_job_already_applied
+                if is_job_already_applied(title=title, company=comp, job_url=job_url):
+                    self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
+                    continue
+
+                # Upfront Experience Verification Gate
+                is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                    exp_text=job.get("exp", ""),
+                    jd_text=raw_jd,
+                    title=title,
+                    url=job_url,
+                    candidate_exp=CANDIDATE_EXPERIENCE,
+                    max_allowed=MAX_EXPERIENCE_THRESHOLD
+                )
+                if not is_exp_ok:
+                    print(f"  ⛔ Skipped Recommended Experience: {title} @ {comp} ({exp_reason})")
+                    self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
+                    continue
 
                 acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
                 if not acceptable:
@@ -1678,6 +1985,7 @@ class PlaywrightRunner:
                                     return items.map(it => {
                                         const title = it.querySelector('a.title, a[class*="title"]');
                                         const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
+                                        const exp = it.querySelector('.exp-wrap, [class*="exp"], span.ni-job-tuple-icon-srp-experience + span');
                                         const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
                                         const desc = it.querySelector('.job-desc, .row4, .job-description, .ellipsis');
                                         const tags = Array.from(it.querySelectorAll('.tag-li, .tags-gt li, ul.tags li')).map(t => t.innerText.trim()).join(' ');
@@ -1685,6 +1993,7 @@ class PlaywrightRunner:
                                             title: title ? title.innerText.trim() : '',
                                             href: title ? title.href : '',
                                             company: comp ? comp.innerText.trim() : '',
+                                            exp: exp ? exp.innerText.trim() : '',
                                             sal: sal ? sal.innerText.trim() : 'Undisclosed',
                                             desc: (desc ? desc.innerText.trim() : '') + ' ' + (it.innerText || '').trim(),
                                             tags: tags || ''
@@ -1709,6 +2018,26 @@ class PlaywrightRunner:
                                     if not job_url or job_url in seen_urls or make_job_id(title, comp) in self.skip_list:
                                         continue
                                     seen_urls.add(job_url)
+
+                                    # Persistent DB duplicate check
+                                    from naukari_pro.modules.db import is_job_already_applied
+                                    if is_job_already_applied(title=title, company=comp, job_url=job_url):
+                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
+                                        continue
+
+                                    # Upfront Experience Verification Gate
+                                    is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                                        exp_text=job.get("exp", ""),
+                                        jd_text=raw_jd,
+                                        title=title,
+                                        url=job_url,
+                                        candidate_exp=CANDIDATE_EXPERIENCE,
+                                        max_allowed=MAX_EXPERIENCE_THRESHOLD
+                                    )
+                                    if not is_exp_ok:
+                                        print(f"  ⛔ Skipped Search Experience: {title} @ {comp} ({exp_reason})")
+                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
+                                        continue
 
                                     acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
                                     if not acceptable:
@@ -1866,8 +2195,33 @@ class AutoApplyEngine:
                 self.payloads.append(payload)
                 continue
 
-            # Match Score Gate (>=70%)
-            is_match, score, _ = evaluate_job_match(title, company, jd)
+            # Experience Gate (Enforces <= 4 YOE max and candidate compatibility)
+            is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                exp_text=job.get("exp", "") or job.get("experience", ""),
+                jd_text=jd,
+                title=title,
+                url=url,
+                candidate_exp=CANDIDATE_EXPERIENCE,
+                max_allowed=MAX_EXPERIENCE_THRESHOLD
+            )
+            if not is_exp_ok:
+                payload = ApplicationPayload(
+                    company=company,
+                    job_title=title,
+                    title=title,
+                    url=url,
+                    match_score=0,
+                    salary=salary,
+                    answers=answers,
+                    payload_data={"experience_gate": exp_reason},
+                    dry_run=True,
+                    status="REJECTED_EXPERIENCE_MISMATCH"
+                )
+                self.payloads.append(payload)
+                continue
+
+            # Match Score Gate
+            is_match, score, _ = evaluate_job_match(title, company, jd, min_threshold=MATCH_SCORE_THRESHOLD)
             status = "VALIDATED_PAYLOAD" if is_match else "REJECTED_BELOW_THRESHOLD"
 
             payload = ApplicationPayload(

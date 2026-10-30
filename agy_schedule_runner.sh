@@ -78,34 +78,34 @@ fi
 # ==============================================================================
 # 5. Formulate Agentic Execution Prompt for agy
 # ==============================================================================
-AGY_PROMPT='You are the autonomous AI career agent running for Lavkush Kumar (Azure Data Engineer, 2.5 YOE, ₹20 LPA target CTC, 15 days or less notice).
+AGY_PROMPT='You are the autonomous AI career agent running for Lavkush Kumar (Azure Data Engineer, 2.5 YOE, ₹20 LPA target CTC, 15 days or less notice, email: lav84095@gmail.com).
 Execute the complete scheduled career cycle in this workspace:
 1. Run `./naukariPro pro --headless --limit 15 --force` to:
    - Bump and refresh the live Naukri profile to maintain "Active Today" Resdex visibility across all 3 daily runs (morning, afternoon, evening).
    - Scan recommended and search vacancies for Azure Data Engineer roles across 7 Tier-1 tech hubs (Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai) and Remote.
-   - Submit applications to high-match roles (1-click and chatbot screening).
+   - Enforce upfront pre-filtering (min_match_score >= 80%, experience <= 4 YOE).
+   - Submit applications to high-match roles (1-click and chatbot screening answering notice period, CTC, and tool experience).
    - Ingest off-market and startup roles across LinkedIn and Hacker News "Who'\''s Hiring".
-   - Check and fill external ATS portals (Greenhouse, Lever, Ashby, Workday).
-   - Log all submissions to `Naukri_Live_Application_Tracker.xlsx`.
-2. Run `./naukariPro linkedin-apply --headless --limit 25` to:
-   - Execute autonomous LinkedIn Easy Apply applications for qualified Azure Data Engineer vacancies (score >= 70.0%).
-   - Auto-answer screening questions (experience, notice period, CTC, work authorization).
-   - Attach ATS resume and uncheck "Follow company".
-   - Log submissions to `LinkedIn_Applications_Log` worksheet in `Naukri_Live_Application_Tracker.xlsx`.
-3. Run `./naukariPro goal-5calls --block 2` and `./naukariPro goal-5calls --pacing` to:
-   - Generate and refresh targeted recruiter outreach pitches for top GCCs (Microsoft, Walmart, JPMorgan, Amazon).
-   - Update `outreach_tracker.json` and sync the `Recruiter_Outreach_Log` worksheet in `Naukri_Live_Application_Tracker.xlsx`.
-   - Calculate real-time 5-calls/day funnel velocity, conversion rates, and bottleneck diagnostic remedies.
-4. Inspect the output and verify that profile recency, application counts, and the Excel tracker were updated.
-5. Print a concise, structured markdown report summarizing:
+   - Log all submissions to `Naukri_Live_Application_Tracker.xlsx` and `applied_jobs.db`.
+2. Run `./naukariPro portal-apply --batch --limit 10 --headless` to:
+   - Auto-fill and submit external career portal applications (Greenhouse, Lever, Ashby, Workday, generic ATS) for eligible vacancies.
+   - Attach resume PDF and record submissions into `applied_jobs.db` and tracker.
+3. Run `python3 -m naukari_pro.modules.db` to verify persistent SQLite audit trail.
+4. [PAUSED] LinkedIn Easy Apply is temporarily DISABLED on VM to prevent HTTP 429 datacenter IP blocks. All GCC outreach is queued to GCC_Outreach_Draft_Queue in Naukri_Live_Application_Tracker.xlsx for manual human send.
+5. Run `./naukariPro goal-5calls --block 2` and `./naukariPro goal-5calls --pacing` to:
+   - Generate and refresh targeted recruiter outreach drafts (<300 chars) for top GCCs (Microsoft, Walmart, JPMorgan, Amazon).
+   - Update `outreach_tracker.json` and sync the `GCC_Outreach_Draft_Queue` worksheet in `Naukri_Live_Application_Tracker.xlsx`.
+   - Calculate real-time funnel velocity, conversion rates, and bottleneck diagnostic remedies using live submissions only.
+6. Inspect the output and verify that profile recency, application counts, and the Excel tracker were updated.
+7. Print a concise, structured markdown report summarizing:
    - Profile bump status
-   - Total new applications submitted (Naukri + LinkedIn)
+   - Total new applications submitted (Naukri 1-Click + External Portals)
    - Recruiter outreach pitches generated & active pipeline status
    - Top 3 high-match roles applied
    - Any manual recruiter actions needed'
 
 # ==============================================================================
-# 6. Execute via agy CLI (with graceful fallback to direct ./naukariPro pro + linkedin-apply + goal-5calls)
+# 6. Execute via agy CLI (with graceful fallback to direct ./naukariPro pro + portal-apply + goal-5calls)
 # ==============================================================================
 if [ -n "$AGY_BIN" ]; then
     echo "[*] Executing autonomous cycle using agy CLI: $AGY_BIN" | tee -a "$RUN_LOG"
@@ -119,7 +119,10 @@ if [ -n "$AGY_BIN" ]; then
     else
         echo "[!] agy CLI exited with status $AGY_STATUS. Triggering autonomous fallback..." | tee -a "$RUN_LOG" "$HISTORY_LOG"
         ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG" || true
-        ./naukariPro linkedin-apply --headless --limit 25 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
+        ./naukariPro portal-apply --batch --limit 10 --headless 2>&1 | tee -a "$RUN_LOG" || true
+        python3 -m naukari_pro.modules.db 2>&1 | tee -a "$RUN_LOG" || true
+        # [DISABLED] ./naukariPro linkedin-apply is paused to protect account from datacenter IP cooldowns
+        echo "[*] LinkedIn live auto-apply: DISABLED (Manual GCC Draft Queue active)." | tee -a "$RUN_LOG"
         ./naukariPro goal-5calls --block 2 2>&1 | tee -a "$RUN_LOG" || echo "[!] Recruiter outreach block notice: non-critical." | tee -a "$RUN_LOG"
         ./naukariPro goal-5calls --pacing 2>&1 | tee -a "$RUN_LOG" || true
         echo "[✓] Fallback pipeline completed." | tee -a "$RUN_LOG" "$HISTORY_LOG"
@@ -127,7 +130,10 @@ if [ -n "$AGY_BIN" ]; then
 else
     echo "[!] agy CLI not found in PATH or ~/.local/bin/agy. Running direct Pro pipeline..." | tee -a "$RUN_LOG" "$HISTORY_LOG"
     ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG" || true
-    ./naukariPro linkedin-apply --headless --limit 25 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
+    ./naukariPro portal-apply --batch --limit 10 --headless 2>&1 | tee -a "$RUN_LOG" || true
+    python3 -m naukari_pro.modules.db 2>&1 | tee -a "$RUN_LOG" || true
+    # [DISABLED] ./naukariPro linkedin-apply is paused to protect account from datacenter IP cooldowns
+    echo "[*] LinkedIn live auto-apply: DISABLED (Manual GCC Draft Queue active)." | tee -a "$RUN_LOG"
     ./naukariPro goal-5calls --block 2 2>&1 | tee -a "$RUN_LOG" || echo "[!] Recruiter outreach block notice: non-critical." | tee -a "$RUN_LOG"
     ./naukariPro goal-5calls --pacing 2>&1 | tee -a "$RUN_LOG" || true
 fi

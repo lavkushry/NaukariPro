@@ -74,6 +74,18 @@ def load_config():
             search_settings["daily_application_limit"] = int(os.getenv("DAILY_APPLICATION_LIMIT"))
         except ValueError:
             pass
+    if os.getenv("MIN_MATCH_SCORE"):
+        try:
+            search_settings["min_match_score"] = float(os.getenv("MIN_MATCH_SCORE"))
+        except ValueError:
+            pass
+    elif "min_match_score" not in search_settings:
+        search_settings["min_match_score"] = 80.0
+
+    if os.getenv("LINKEDIN_AUTOMATION_ENABLED") is not None:
+        search_settings["linkedin_automation_enabled"] = os.getenv("LINKEDIN_AUTOMATION_ENABLED").lower() in ("true", "1", "yes")
+    elif "linkedin_automation_enabled" not in search_settings:
+        search_settings["linkedin_automation_enabled"] = False
 
     # Ensure screening answers are dynamically derived from candidate facts
     tot_exp = str(candidate.get("total_experience_years", "2.5"))

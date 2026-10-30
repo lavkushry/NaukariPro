@@ -86,7 +86,7 @@ LINKEDIN_100K_BLUEPRINT: Dict[str, Any] = {
         "📍 Current Location: Hyderabad, India\n"
         "🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote\n"
         "⏱ Notice Period: 15 Days or less (Immediate Joiner)\n"
-        "📫 Contact: lavkushry@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry"
+        "📫 Contact: lav84095@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry"
     ),
     "experience": [
         {

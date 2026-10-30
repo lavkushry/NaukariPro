@@ -278,7 +278,7 @@ def get_candidate_profile() -> Dict[str, Any]:
         "name": cand.get("name", "Lavkush Kumar"),
         "first_name": cand.get("first_name", "Lavkush"),
         "last_name": cand.get("last_name", "Kumar"),
-        "email": cand.get("email", "lavkushry@gmail.com"),
+        "email": cand.get("email", "lav84095@gmail.com"),
         "phone": cand.get("phone", "+91 9122036484"),
         "phone_national": cand.get("phone_national", "9122036484"),
         "phone_country_code": "+91",
@@ -665,7 +665,7 @@ class LinkedInScreeningSolver:
 
         # 2. Email
         if "email" in label_low:
-            return self.candidate.get("email", "lavkushry@gmail.com")
+            return self.candidate.get("email", "lav84095@gmail.com")
 
         # 3. Name fields
         if any(k in label_low for k in ["first name", "given name"]):
