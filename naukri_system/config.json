@@ -392,8 +392,15 @@
   ],
   "learning": {
     "enabled": true,
+    "match_threshold": 70.0,
+    "policy_version": "v2.1-linucb",
     "policy_algorithm": "LinUCB",
     "alpha": 0.2,
+    "bandit": {
+      "epsilon_warmup": 0.30,
+      "epsilon_greedy": 0.05,
+      "warmup_decisions": 200
+    },
     "refit_interval_outcomes": 50,
     "refit_interval_days": 7,
     "context_dimension": 7,
@@ -405,15 +412,30 @@
     "reward_schedule": {
       "callback": 1.0,
       "interview": 1.0,
-      "view": 0.3,
-      "rejection": -1.0,
-      "silence": -0.2,
+      "offer": 2.0,
+      "screening_request": 0.6,
+      "view": 0.2,
+      "viewed": 0.2,
+      "contacted": 0.6,
+      "confirmation": 0.1,
+      "silence": 0.0,
+      "ghosted": 0.0,
+      "rejection": -0.5,
+      "rejected": -0.5,
       "duplicate": -2.0
+    },
+    "volume": {
+      "min_applications_per_day": 10,
+      "circuit_breaker": {
+        "enabled": true,
+        "window_days": 7,
+        "drop_threshold_pct": 50
+      }
     },
     "quarantine_ambiguous": true,
     "threshold_reconciliation": {
       "reconciled_threshold": 70.0,
-      "legacy_prefilter_threshold": 80.0,
+      "legacy_prefilter_threshold": 70.0,
       "policy_active_gate": 70.0,
       "decision": "Reconciled single match threshold to 70.0% across all channels (Naukri & LinkedIn). LinUCB bandit selection policy actively models and optimizes vacancy selection between 70% and 80%, exploring high-yield opportunities while penalizing low-payoff applications."
     }

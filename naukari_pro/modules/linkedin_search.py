@@ -1566,6 +1566,7 @@ class LinkedInSearchEngine:
         qualified_jobs: List[Dict[str, Any]] = []
         seen_batch_ids: Set[str] = set()
         active_policy = policy if policy is not None else self.policy
+        policy_skipped_jobs: List[Dict[str, Any]] = []
 
         for page_idx in range(1, max_pages + 1):
             url = self.build_search_url(
@@ -1629,8 +1630,8 @@ class LinkedInSearchEngine:
                         "salary_lpa": 20.0,
                         "jd": f"{title} {snippet}",
                     }
-                    action, ucb_score, diag = active_policy.select_action(job_ctx)
-                    card["policy_version"] = getattr(active_policy, "policy_version", "v2.0-linucb")
+                    action, ucb_score, diag = active_policy.select_action(job_ctx, explore=True, increment_decision=True)
+                    card["policy_version"] = getattr(active_policy, "policy_version", "v2.1-linucb")
                     card["policy_action"] = action.name if hasattr(action, "name") else str(action)
                     card["policy_score"] = ucb_score
                     card["policy_propensity"] = diag.get("propensity", 1.0)
@@ -1638,6 +1639,7 @@ class LinkedInSearchEngine:
 
                     if match_res.score >= min_match_score:
                         if card["policy_action"] == "SKIP":
+                            policy_skipped_jobs.append(card)
                             self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_POLICY_BANDIT")
                             continue
                         self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
@@ -1651,8 +1653,21 @@ class LinkedInSearchEngine:
                     else:
                         self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
 
-        if active_policy is not None and qualified_jobs:
-            # Re-rank decisions by policy UCB score
-            qualified_jobs.sort(key=lambda j: j.get("policy_score", 0.0), reverse=True)
+        if active_policy is not None:
+            # Volume floor enforcement: top up with highest match_score skipped jobs if below floor
+            try:
+                from naukari_pro.modules.learning.volume_guard import VolumeGuard
+                vg = VolumeGuard()
+                qualified_jobs, promoted = vg.enforce_volume_floor(qualified_jobs, policy_skipped_jobs)
+                for pj in promoted:
+                    pjid = pj.get("job_id")
+                    if pjid:
+                        self.deduplicator.mark_seen(pjid, job_info=pj, status="QUALIFIED_APPLY_FLOOR")
+            except Exception as e_vg:
+                logger.debug("Volume guard check notice: %s", e_vg)
+
+            if qualified_jobs:
+                # Re-rank decisions by policy UCB score
+                qualified_jobs.sort(key=lambda j: j.get("policy_score", 0.0), reverse=True)
 
         return qualified_jobs

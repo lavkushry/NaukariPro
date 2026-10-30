@@ -811,7 +811,7 @@ def log_to_excel(
     url="N/A",
     tracker_path=None,
     evidence_path=None,
-    policy_version="v2.0-linucb"
+    policy_version="v2.1-linucb"
 ):
     """
     Appends 11-column record to Applications_Log:
@@ -2241,7 +2241,7 @@ class AutoApplyEngine:
                     "salary_lpa": 20.0,
                     "jd": f"{title} {company} {jd}",
                 }
-                action, ucb_score, diag = self.policy.select_action(job_ctx)
+                action, ucb_score, diag = self.policy.select_action(job_ctx, explore=True, increment_decision=True)
                 act_name = action.name if hasattr(action, "name") else str(action)
                 if act_name == "SKIP":
                     status = "REJECTED_POLICY_BANDIT"
@@ -2254,12 +2254,43 @@ class AutoApplyEngine:
                 match_score=score,
                 salary=salary,
                 answers=answers,
-                payload_data=answers,
+                payload_data=dict(answers) if isinstance(answers, dict) else {},
                 portal_type="Naukri 1-Click",
                 dry_run=True,
                 status=status
             )
             self.payloads.append(payload)
+
+        # Volume floor enforcement: top up with highest match_score skipped payloads if below floor
+        if getattr(self, "policy", None) is not None:
+            try:
+                from naukari_pro.modules.learning.volume_guard import VolumeGuard
+                from naukari_pro.modules.db import get_daily_application_count, record_policy_event
+                vg = VolumeGuard()
+                valid_count = sum(1 for p in self.payloads if p.status == "VALIDATED_PAYLOAD")
+                today_applied = get_daily_application_count()
+                shortfall = max(0, vg.min_applications_per_day - (today_applied + valid_count))
+                if shortfall > 0:
+                    skipped_payloads = [p for p in self.payloads if p.status == "REJECTED_POLICY_BANDIT"]
+                    skipped_payloads.sort(key=lambda p: float(p.match_score or 0.0), reverse=True)
+                    for p in skipped_payloads[:shortfall]:
+                        p.status = "VALIDATED_PAYLOAD"
+                        if isinstance(p.payload_data, dict):
+                            p.payload_data["policy_action"] = "APPLY_FLOOR"
+                            p.payload_data["policy_floor_override"] = True
+                        record_policy_event(
+                            event_type="APPLY_FLOOR_OVERRIDE",
+                            details={
+                                "company": p.company,
+                                "title": p.job_title,
+                                "match_score": p.match_score,
+                                "floor_target": vg.min_applications_per_day,
+                                "projected_before_override": today_applied + valid_count
+                            },
+                            mode="ACTIVE"
+                        )
+            except Exception as e_vg:
+                logger.debug("Volume guard check in auto_apply notice: %s", e_vg)
 
         return self.payloads
 

@@ -71,16 +71,26 @@ chmod +x "$SCRIPT_DIR/agy_schedule_runner.sh"
 if [ "$HAS_SYSTEMD" = true ]; then
     echo "[+] Systemd user manager detected. Installing authoritative systemd timer..."
 
-    # 3. Dynamic path substitution for service unit
-    sed "s|/home/ubuntu/Resume|$SCRIPT_DIR|g" "$SCRIPT_DIR/systemd/naukaripro-agy.service" > "$SYSTEMD_USER_DIR/naukaripro-agy.service"
-    cp "$SCRIPT_DIR/systemd/naukaripro-agy.timer" "$SYSTEMD_USER_DIR/"
+    # 3. Dynamic path substitution for service units
+    for unit in naukaripro-agy naukaripro-label naukaripro-mutate naukaripro-learn naukaripro-digest; do
+        if [ -f "$SCRIPT_DIR/systemd/${unit}.service" ]; then
+            sed "s|/home/ubuntu/Resume|$SCRIPT_DIR|g" "$SCRIPT_DIR/systemd/${unit}.service" > "$SYSTEMD_USER_DIR/${unit}.service"
+            if [ -f "$SCRIPT_DIR/systemd/${unit}.timer" ]; then
+                cp "$SCRIPT_DIR/systemd/${unit}.timer" "$SYSTEMD_USER_DIR/"
+            fi
+        fi
+    done
 
-    # 4. Enable and start systemd timer
+    # 4. Enable and start systemd timers
     systemctl --user daemon-reload
-    systemctl --user enable naukaripro-agy.timer
-    systemctl --user restart naukaripro-agy.timer
+    for unit in naukaripro-agy naukaripro-label naukaripro-mutate naukaripro-learn naukaripro-digest; do
+        if [ -f "$SYSTEMD_USER_DIR/${unit}.timer" ]; then
+            systemctl --user enable "${unit}.timer" 2>/dev/null || true
+            systemctl --user restart "${unit}.timer" 2>/dev/null || true
+        fi
+    done
 
-    echo "[✓] systemd timer 'naukaripro-agy.timer' enabled and started as authoritative scheduler!"
+    echo "[✓] systemd timers (agy, label, mutate, learn, digest) enabled and started as authoritative scheduler!"
 
     # 5. PURGE redundant crontab entry so ONLY systemd timer triggers the schedule
     purge_crontab_entries

@@ -38,6 +38,20 @@ from naukari_pro.modules.learning.evidence import (
     MIN_SCREENSHOT_BYTES,
 )
 
+from naukari_pro.modules.learning.policy import (
+    LinUCBBanditPolicy,
+    PolicyAction,
+    PolicyVersion,
+    DEFAULT_POLICY_VERSION,
+    extract_context_vector,
+    REWARD_SCHEDULE,
+    ingest_duplicate_reward,
+)
+from naukari_pro.modules.learning.volume_guard import (
+    VolumeGuard,
+    send_gmail_notification,
+)
+
 __all__ = [
     "BlacklistValidator",
     "BlacklistViolationError",
@@ -60,5 +74,14 @@ __all__ = [
     "EvidenceVerifier",
     "PNG_MAGIC_HEADER",
     "MIN_SCREENSHOT_BYTES",
+    "LinUCBBanditPolicy",
+    "PolicyAction",
+    "PolicyVersion",
+    "DEFAULT_POLICY_VERSION",
+    "extract_context_vector",
+    "REWARD_SCHEDULE",
+    "ingest_duplicate_reward",
+    "VolumeGuard",
+    "send_gmail_notification",
 ]
 

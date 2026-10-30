@@ -190,10 +190,10 @@ class ProAutoPilotEngine:
             print("  ℹ️ Automated LinkedIn applications disabled by config policy to protect account from datacenter IP blocks.")
             print("  ℹ️ GCC outreach is running via Draft Queue (manual human execution).")
         else:
-            print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications, Min Score >= {self.config.get('search_settings', {}).get('min_match_score', 80.0)}%)...")
+            print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications, Min Score >= {self.config.get('search_settings', {}).get('min_match_score', 70.0)}%)...")
             try:
                 if self.dry_run:
-                    li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=self.config.get("search_settings", {}).get("min_match_score", 80.0))
+                    li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=self.config.get("search_settings", {}).get("min_match_score", 70.0))
                     li_dry_run_verified = li_stats.get("dry_run_verified", 0)
                     applied_linkedin = li_dry_run_verified
                     print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")

@@ -83,13 +83,24 @@ def load_config():
             search_settings["daily_application_limit"] = int(os.getenv("DAILY_APPLICATION_LIMIT"))
         except ValueError:
             pass
+    canonical_threshold = float(cfg.get("learning", {}).get("match_threshold", 70.0))
     if os.getenv("MIN_MATCH_SCORE"):
         try:
             search_settings["min_match_score"] = float(os.getenv("MIN_MATCH_SCORE"))
         except ValueError:
             pass
     elif "min_match_score" not in search_settings:
-        search_settings["min_match_score"] = 80.0
+        search_settings["min_match_score"] = canonical_threshold
+
+    current_threshold = float(search_settings.get("min_match_score", canonical_threshold))
+    if current_threshold >= 80.0 or current_threshold != canonical_threshold:
+        import warnings
+        warnings.warn(
+            f"DEPRECATION / CONFLICT WARNING: Legacy match score threshold {current_threshold} is deprecated/retired. "
+            f"Canonical single gate is learning.match_threshold={canonical_threshold}.",
+            UserWarning,
+            stacklevel=2
+        )
 
     if os.getenv("LINKEDIN_AUTOMATION_ENABLED") is not None:
         search_settings["linkedin_automation_enabled"] = os.getenv("LINKEDIN_AUTOMATION_ENABLED").lower() in ("true", "1", "yes")

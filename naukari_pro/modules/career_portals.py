@@ -635,14 +635,14 @@ class CareerPortalFiller:
         limit: int = 10,
         headless: bool = True,
         dry_run: bool = False,
-        min_score: float = 80.0,
+        min_score: float = 70.0,
         max_exp: float = 4.0,
         auto_submit: bool = True
     ) -> Dict[str, Any]:
         """
         Processes pending external career portal redirects from Naukri_Live_Application_Tracker.xlsx.
         Scans for rows with Status == 'External Redirect' (or 'Not Available'),
-        filters by experience (<= 4 YOE) and score (>= 80%),
+        filters by experience (<= 4 YOE) and score (>= 70%),
         and automates form-filling, resume attachment, and submission.
         Updates tracker Excel and applied_jobs.db.
         """
@@ -703,6 +703,64 @@ class CareerPortalFiller:
                     "url": url,
                     "status": status
                 })
+
+        # Contextual bandit selection policy gating & volume floor enforcement (v2.1-linucb)
+        active_policy = getattr(self, "policy", None)
+        if active_policy is None:
+            try:
+                from naukari_pro.modules.learning.policy import LinUCBBanditPolicy
+                active_policy = LinUCBBanditPolicy()
+            except Exception:
+                active_policy = None
+
+        if active_policy is not None and candidates_to_process:
+            try:
+                from naukari_pro.modules.learning.volume_guard import VolumeGuard
+                from naukari_pro.modules.db import get_daily_application_count, record_policy_event
+                vg = VolumeGuard()
+                gated_candidates = []
+                skipped_candidates = []
+                for item in candidates_to_process:
+                    job_ctx = {
+                        "match_score": item["score"],
+                        "required_yoe": item["exp"],
+                        "posting_age_hours": 24.0,
+                        "company": item["company"],
+                        "platform": "Career Portal",
+                        "salary_lpa": 20.0,
+                        "jd": f"{item['title']} {item['company']}"
+                    }
+                    action, ucb_score, diag = active_policy.select_action(job_ctx, explore=True, increment_decision=True)
+                    act_name = action.name if hasattr(action, "name") else str(action)
+                    item["policy_action"] = act_name
+                    item["policy_score"] = ucb_score
+                    if act_name == "SKIP":
+                        skipped_candidates.append(item)
+                    else:
+                        gated_candidates.append(item)
+
+                today_applied = get_daily_application_count()
+                shortfall = max(0, vg.min_applications_per_day - (today_applied + len(gated_candidates)))
+                if shortfall > 0 and skipped_candidates:
+                    skipped_candidates.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+                    for item in skipped_candidates[:shortfall]:
+                        item["policy_action"] = "APPLY_FLOOR"
+                        item["policy_floor_override"] = True
+                        gated_candidates.append(item)
+                        record_policy_event(
+                            event_type="APPLY_FLOOR_OVERRIDE",
+                            details={
+                                "company": item.get("company"),
+                                "title": item.get("title"),
+                                "match_score": item.get("score"),
+                                "floor_target": vg.min_applications_per_day,
+                                "projected_before_override": today_applied + len(gated_candidates)
+                            },
+                            mode="ACTIVE"
+                        )
+                candidates_to_process = gated_candidates
+            except Exception as e_pol:
+                pass
 
         print("\n" + "=" * 65)
         print("  🌐 AUTOMATED EXTERNAL CAREER PORTAL RUNNER")
@@ -854,7 +912,8 @@ class CareerPortalFiller:
                         job_url=target_portal_url,
                         applicant_email=self.profile.get("email", "lav84095@gmail.com"),
                         evidence_path=evidence_file,
-                        policy_version="v2.0-linucb"
+                        raw_metadata={"policy_action": item.get("policy_action", "APPLY")},
+                        policy_version="v2.1-linucb"
                     )
 
                     submitted += 1

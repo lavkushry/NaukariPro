@@ -215,6 +215,33 @@ def init_db(db_path: Optional[str] = None):
         conn.execute("UPDATE keyword_utility SET observations = demand_frequency WHERE observations = 0 OR observations IS NULL;")
         conn.execute("UPDATE keyword_utility SET last_updated = updated_at WHERE last_updated IS NULL;")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_kw_utility ON keyword_utility(utility_score DESC);")
+
+        # Policy State & Circuit Breaker Telemetry (v2.1-linucb)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS policy_state (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                policy_version TEXT NOT NULL,
+                decisions_count INTEGER NOT NULL DEFAULT 0,
+                mode TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(mode IN ('ACTIVE', 'FALLBACK', 'PAUSED')),
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO policy_state (id, policy_version, decisions_count, mode, updated_at)
+            VALUES (1, 'v2.1-linucb', 0, 'ACTIVE', CURRENT_TIMESTAMP);
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS policy_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_events_type_time ON policy_events(event_type, created_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_events_version ON policy_events(policy_version);")
     conn.close()
 
 
@@ -305,7 +332,8 @@ def record_applied_job(
     evidence_path: Optional[str] = None,
     allow_duplicate: bool = False,
     policy_version: Optional[str] = None,
-    db_path: Optional[str] = None
+    db_path: Optional[str] = None,
+    policy: Optional[Any] = None
 ) -> Tuple[bool, str]:
     """
     Records or updates an applied job in SQLite DB.
@@ -319,13 +347,54 @@ def record_applied_job(
     # Gatekeeper 1: Repeat-application deduplication
     if not allow_duplicate:
         conn = get_db_connection(db_path)
+        is_dup = False
         try:
             existing_row = conn.execute("SELECT job_id FROM applied_jobs WHERE job_id = ?", (final_id,)).fetchone()
-            if not existing_row:
-                if is_job_already_applied(title=title, company=company, db_path=db_path):
-                    return False, f"BLOCKED_DUPLICATE_{final_id}"
+            if existing_row:
+                is_dup = True
+            elif is_job_already_applied(title=title, company=company, db_path=db_path):
+                is_dup = True
         finally:
             conn.close()
+
+        if is_dup:
+            # Wire DUPLICATE (-2.0) penalty to LinUCB policy if policy was provided or metadata chose APPLY
+            meta = raw_metadata or {}
+            policy_act = meta.get("policy_action") or meta.get("action")
+            if policy is not None or policy_act in ("APPLY", 0):
+                try:
+                    from naukari_pro.modules.learning.policy import extract_context_vector, PolicyAction
+                    job_ctx = {
+                        "match_score": match_score or 70.0,
+                        "required_yoe": experience_req,
+                        "posting_age_hours": 24.0,
+                        "company": company,
+                        "platform": application_type or platform,
+                        "salary_lpa": meta.get("salary_lpa", 20.0),
+                        "jd": f"{title} {company}"
+                    }
+                    x = extract_context_vector(job_ctx)
+                    if policy is not None:
+                        policy.update(x, PolicyAction.APPLY, reward=-2.0)
+                    record_policy_event(
+                        event_type="DUPLICATE_PENALTY_INGESTED",
+                        details={
+                            "job_id": final_id,
+                            "title": title,
+                            "company": company,
+                            "reward": -2.0,
+                            "match_score": match_score or 70.0,
+                            "experience_req": experience_req,
+                            "platform": application_type or platform,
+                            "salary_lpa": meta.get("salary_lpa", 20.0)
+                        },
+                        mode="ACTIVE",
+                        policy_version=policy_version or "v2.1-linucb",
+                        db_path=db_path
+                    )
+                except Exception as e_pol:
+                    pass
+            return False, f"BLOCKED_DUPLICATE_{final_id}"
 
     # Gatekeeper 2: Strict evidence verification gate
     if status == "Submitted (Confirmed)":
@@ -1080,6 +1149,116 @@ def can_apply_today(
     current_count = get_daily_application_count(platform=platform, db_path=db_path)
     can_apply = current_count < max_limit
     return can_apply, current_count, max_limit
+
+
+def get_policy_state(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieves current policy state (decisions_count, mode, version, updated_at)."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    conn = get_db_connection(target_path)
+    try:
+        row = conn.execute("SELECT id, policy_version, decisions_count, mode, updated_at FROM policy_state WHERE id = 1").fetchone()
+        if row:
+            return dict(row)
+        with conn:
+            conn.execute("""
+                INSERT OR IGNORE INTO policy_state (id, policy_version, decisions_count, mode, updated_at)
+                VALUES (1, 'v2.1-linucb', 0, 'ACTIVE', CURRENT_TIMESTAMP)
+            """)
+        row = conn.execute("SELECT id, policy_version, decisions_count, mode, updated_at FROM policy_state WHERE id = 1").fetchone()
+        return dict(row) if row else {"id": 1, "policy_version": "v2.1-linucb", "decisions_count": 0, "mode": "ACTIVE", "updated_at": None}
+    finally:
+        conn.close()
+
+
+def increment_policy_decisions(db_path: Optional[str] = None, policy_version: str = "v2.1-linucb") -> int:
+    """Atomically increments the policy decision counter in SQLite and returns the new count."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    conn = get_db_connection(target_path)
+    try:
+        with conn:
+            conn.execute("""
+                UPDATE policy_state
+                SET decisions_count = decisions_count + 1,
+                    policy_version = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+            """, (policy_version,))
+            row = conn.execute("SELECT decisions_count FROM policy_state WHERE id = 1").fetchone()
+            return int(row[0]) if row else 1
+    finally:
+        conn.close()
+
+
+def update_policy_mode(mode: str, reason: str = "", policy_version: str = "v2.1-linucb", db_path: Optional[str] = None) -> bool:
+    """Updates the policy mode (ACTIVE, FALLBACK, PAUSED) and logs a policy event."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    clean_mode = str(mode).upper().strip()
+    if clean_mode not in ("ACTIVE", "FALLBACK", "PAUSED"):
+        raise ValueError(f"Invalid mode '{mode}'. Must be ACTIVE, FALLBACK, or PAUSED.")
+    conn = get_db_connection(target_path)
+    try:
+        with conn:
+            conn.execute("""
+                UPDATE policy_state
+                SET mode = ?,
+                    policy_version = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+            """, (clean_mode, policy_version))
+    finally:
+        conn.close()
+
+    record_policy_event(
+        event_type=f"MODE_CHANGE_{clean_mode}",
+        details={"reason": reason, "new_mode": clean_mode},
+        mode=clean_mode,
+        policy_version=policy_version,
+        db_path=target_path
+    )
+    return True
+
+
+def record_policy_event(
+    event_type: str,
+    details: Union[Dict[str, Any], str],
+    mode: str = "ACTIVE",
+    policy_version: str = "v2.1-linucb",
+    db_path: Optional[str] = None
+) -> int:
+    """Appends an event record to policy_events audit table."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    details_str = json.dumps(details) if isinstance(details, (dict, list)) else str(details)
+    conn = get_db_connection(target_path)
+    try:
+        with conn:
+            cur = conn.execute("""
+                INSERT INTO policy_events (event_type, policy_version, mode, details, created_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (event_type, policy_version, mode, details_str))
+            return cur.lastrowid or 0
+    finally:
+        conn.close()
+
+
+def get_recent_policy_events(limit: int = 20, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieves recent policy events."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    conn = get_db_connection(target_path)
+    try:
+        rows = conn.execute("""
+            SELECT id, event_type, policy_version, mode, details, created_at
+            FROM policy_events
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

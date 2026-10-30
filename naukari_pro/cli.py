@@ -1123,10 +1123,24 @@ def handle_attribution(mutation_week: Optional[str] = None, benchmark_control_de
 
 
 def handle_policy_status(db_path: Optional[str] = None):
-    from naukari_pro.modules.learning.policy import LinUCBBanditPolicy, PolicyAction
+    from naukari_pro.modules.learning.policy import LinUCBBanditPolicy, PolicyAction, extract_context_vector
+    from naukari_pro.modules.learning.volume_guard import VolumeGuard
+    from naukari_pro.modules.db import get_policy_state
+
     print("\n[*] Contextual Bandit LinUCB Selection Policy Status...")
+    state = get_policy_state(db_path=db_path)
+    vg = VolumeGuard(db_path=db_path)
+    vol_stats = vg.get_volume_stats(db_path=db_path)
+    decisions = vol_stats["decision_distribution"]
+
     policy = LinUCBBanditPolicy()
     bootstrapped = policy.bootstrap_from_history(db_path=db_path)
+    effective_eps = policy.get_effective_epsilon(decisions_count=state.get("decisions_count", 0), db_path=db_path)
+
+    print(f"[+] Policy Mode: {state.get('mode', 'ACTIVE')} | Policy Version: {policy.policy_version}")
+    print(f"    Effective Epsilon (ε): {effective_eps:.4f} | Decisions to Date: {state.get('decisions_count', 0)}")
+    print(f"    Volume Guard (7d): Last 7d: {vol_stats['last_7d_count']} | Prior 7d: {vol_stats['prior_7d_count']} | Drop: {vol_stats['drop_pct']}%")
+    print(f"    Decision Mix: APPLY={decisions.get('APPLY', 0)} | SKIP={decisions.get('SKIP', 0)} | DEFER={decisions.get('DEFER', 0)} | APPLY_FLOOR={decisions.get('APPLY_FLOOR', 0)} | DEFER_FLOOR={decisions.get('APPLY_FLOOR', 0)}")
     print(f"[+] Bootstrap from SQLite: {bootstrapped} historical outcome samples incorporated.")
     print(f"    Policy Version: {policy.policy_version} | Feature Dimension: {policy.d} | Exploration Alpha: {policy.alpha}")
 
@@ -1139,7 +1153,12 @@ def handle_policy_status(db_path: Optional[str] = None):
         "jd": "Databricks PySpark Delta Lake Kafka ADF SQL",
         "salary": 24.0
     }
-    best_act, ucb, diag = policy.select_action(sample_job)
+    x_sample = extract_context_vector(sample_job)
+    _, apply_payoff, _ = policy.predict_ucb(x_sample, PolicyAction.APPLY)
+    print(f"    Historical Replay APPLY Expected Payoff: {apply_payoff:.4f} (Assert >= 0.0: {'PASS' if apply_payoff >= 0.0 else 'FAIL'})")
+    assert apply_payoff >= 0.0, f"Replayed APPLY expected payoff {apply_payoff} must be >= 0.0"
+
+    best_act, ucb, diag = policy.select_action(sample_job, db_path=db_path, explore=False)
     print(f"    Sample Action Prediction (Tier 1 Azure DE): {best_act.name} (UCB: {ucb:.4f})")
     for a_name, scores in diag.items():
         if isinstance(scores, dict) and "payoff" in scores:
@@ -1147,10 +1166,21 @@ def handle_policy_status(db_path: Optional[str] = None):
     return policy
 
 
-def handle_monday_digest(output: Optional[str] = None, db_path: Optional[str] = None):
-    from scripts.monday_digest import generate_monday_digest
+def handle_policy_arm(db_path: Optional[str] = None) -> bool:
+    from naukari_pro.modules.learning.volume_guard import VolumeGuard
+    vg = VolumeGuard(db_path=db_path)
+    ok = vg.rearm_policy(db_path=db_path)
+    if ok:
+        print("\n[✓] Policy circuit breaker manually re-armed. Mode: ACTIVE (LinUCB contextual bandit)")
+    return ok
+
+
+def handle_monday_digest(output: Optional[str] = None, db_path: Optional[str] = None, send_email: bool = False):
+    from naukari_pro.modules.learning.monday_digest import generate_monday_digest, send_monday_digest_email
     digest = generate_monday_digest(output_path=output, db_path=db_path)
     print(digest)
+    if send_email:
+        send_monday_digest_email(digest_content=digest)
     return digest
 
 
@@ -1310,9 +1340,11 @@ def main():
     attr_parser.add_argument("--control-delta", type=float, default=0.0, help="Benchmark control delta")
 
     subparsers.add_parser("policy-status", help="Inspect LinUCB contextual bandit parameters and predictions", parents=[common_parser])
+    subparsers.add_parser("policy-arm", help="Manually re-arm policy circuit breaker to ACTIVE mode", parents=[common_parser])
 
     digest_parser = subparsers.add_parser("monday-digest", help="Generate consolidated weekly Monday digest markdown report", parents=[common_parser])
     digest_parser.add_argument("--output", "-o", type=str, default=None, help="Output markdown path")
+    digest_parser.add_argument("--send-email", action="store_true", default=False, help="Send digest email via Gmail SMTP")
 
     args = parser.parse_args()
 
@@ -1332,8 +1364,10 @@ def main():
         handle_attribution(mutation_week=getattr(args, "mutation_week", None), benchmark_control_delta=getattr(args, "control_delta", 0.0))
     elif args.command == "policy-status":
         handle_policy_status()
+    elif args.command == "policy-arm":
+        handle_policy_arm()
     elif args.command == "monday-digest":
-        handle_monday_digest(output=getattr(args, "output", None))
+        handle_monday_digest(output=getattr(args, "output", None), send_email=getattr(args, "send_email", False))
     elif args.command == "pro":
         handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
     elif args.command == "weekly-report":
