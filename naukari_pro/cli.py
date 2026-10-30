@@ -1139,7 +1139,11 @@ def handle_policy_status(db_path: Optional[str] = None):
 
     print(f"[+] Policy Mode: {state.get('mode', 'ACTIVE')} | Policy Version: {policy.policy_version}")
     print(f"    Effective Epsilon (ε): {effective_eps:.4f} | Decisions to Date: {state.get('decisions_count', 0)}")
-    print(f"    Volume Guard (7d): Last 7d: {vol_stats['last_7d_count']} | Prior 7d: {vol_stats['prior_7d_count']} | Drop: {vol_stats['drop_pct']}%")
+    sub_last = vol_stats.get("submission_last_7d_count", vol_stats.get("last_7d_count", 0))
+    sub_prior = vol_stats.get("submission_prior_7d_count", vol_stats.get("prior_7d_count", 0))
+    raw_last = vol_stats.get("raw_last_7d_count", vol_stats.get("last_7d_count", 0))
+    raw_prior = vol_stats.get("raw_prior_7d_count", vol_stats.get("prior_7d_count", 0))
+    print(f"    Volume Guard (7d): Submissions: Last 7d: {sub_last} | Prior 7d: {sub_prior} | Drop: {vol_stats['drop_pct']}% | Raw: Last 7d: {raw_last} | Prior 7d: {raw_prior}")
     print(f"    Decision Mix: APPLY={decisions.get('APPLY', 0)} | SKIP={decisions.get('SKIP', 0)} | DEFER={decisions.get('DEFER', 0)} | APPLY_FLOOR={decisions.get('APPLY_FLOOR', 0)} | DEFER_FLOOR={decisions.get('APPLY_FLOOR', 0)}")
     print(f"[+] Bootstrap from SQLite: {bootstrapped} historical outcome samples incorporated.")
     print(f"    Policy Version: {policy.policy_version} | Feature Dimension: {policy.d} | Exploration Alpha: {policy.alpha}")

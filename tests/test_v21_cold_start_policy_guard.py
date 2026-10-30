@@ -315,12 +315,18 @@ class TestVolumeGuardAndCircuitBreaker:
         now = "2026-10-30 12:00:00"
         prior_week = "2026-10-20 12:00:00"
         with conn:
-            # Prior 7d: 20 applications
+            # Prior 7d: 20 applications with verified evidence
             for i in range(20):
-                conn.execute("INSERT INTO applied_jobs (job_id, platform, company, title, status, applied_at) VALUES (?, 'naukri', 'Comp', 'Role', 'Submitted', ?)", (f"p_{i}", prior_week))
+                conn.execute(
+                    "INSERT INTO applied_jobs (job_id, platform, company, title, status, applied_at, evidence_path, is_backfill) VALUES (?, 'naukri', 'Comp', 'Role', 'Submitted (Confirmed)', ?, '/evidence/proof.png', 0)",
+                    (f"p_{i}", prior_week)
+                )
             # Last 7d: only 5 applications (75% drop > 50%)
             for i in range(5):
-                conn.execute("INSERT INTO applied_jobs (job_id, platform, company, title, status, applied_at) VALUES (?, 'naukri', 'Comp', 'Role', 'Submitted', ?)", (f"l_{i}", now))
+                conn.execute(
+                    "INSERT INTO applied_jobs (job_id, platform, company, title, status, applied_at, evidence_path, is_backfill) VALUES (?, 'naukri', 'Comp', 'Role', 'Submitted (Confirmed)', ?, '/evidence/proof.png', 0)",
+                    (f"l_{i}", now)
+                )
         conn.close()
 
         # Check circuit breaker
@@ -349,6 +355,61 @@ class TestVolumeGuardAndCircuitBreaker:
         assert rearm_ok is True
         state_after = get_policy_state(db_path=temp_db)
         assert state_after["mode"] == "ACTIVE"
+
+    def test_366_backfill_and_33_organic_fixture_does_not_trip_breaker(self, temp_db):
+        """
+        Verifies that a fixture mirroring production state (366 backfill rows + 33 organic submissions
+        in prior window, and 33 organic submissions in last 7d) does NOT falsely trip the circuit breaker.
+        The 366 backfill rows (is_backfill=1) must be excluded from submission counts.
+        """
+        vg = VolumeGuard(db_path=temp_db)
+        vg.drop_threshold_pct = 50.0
+
+        conn = get_db_connection(temp_db)
+        with conn:
+            # Prior 7d window (e.g. 10 days ago):
+            # 366 synthetic / backfilled rows with is_backfill=1
+            for i in range(366):
+                conn.execute("""
+                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status, is_backfill)
+                    VALUES (?, 'naukri', 'Backfill Corp', 'Data Engineer', datetime('now', '-10 days'), 'Submitted', 1)
+                """, (f"bf_{i}",))
+
+            # 33 organic confirmed submissions in prior window with is_backfill=0 and non-empty evidence_path
+            for i in range(33):
+                conn.execute("""
+                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status, evidence_path, is_backfill)
+                    VALUES (?, 'naukri', 'Organic Corp Prior', 'Data Engineer', datetime('now', '-10 days'), 'Submitted (Confirmed)', '/evidence/proof.png', 0)
+                """, (f"org_prior_{i}",))
+
+            # Last 7d window (e.g. 2 days ago):
+            # 33 organic confirmed submissions with is_backfill=0 and non-empty evidence_path
+            for i in range(33):
+                conn.execute("""
+                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status, evidence_path, is_backfill)
+                    VALUES (?, 'naukri', 'Organic Corp Recent', 'Data Engineer', datetime('now', '-2 days'), 'Submitted (Confirmed)', '/evidence/proof.png', 0)
+                """, (f"org_recent_{i}",))
+        conn.close()
+
+        # Check volume stats: submission-only count vs raw counts
+        stats = vg.get_volume_stats(db_path=temp_db)
+        assert stats["submission_prior_7d_count"] == 33
+        assert stats["submission_last_7d_count"] == 33
+        assert stats["last_7d_count"] == 33
+        assert stats["prior_7d_count"] == 33
+        assert stats["raw_prior_7d_count"] == 399  # 366 backfill + 33 organic
+        assert stats["raw_last_7d_count"] == 33
+        assert stats["drop_pct"] == 0.0
+
+        # Check circuit breaker does NOT trip
+        cb_res = vg.check_circuit_breaker(db_path=temp_db, send_alert=False)
+        assert cb_res["triggered"] is False
+        assert cb_res["mode"] == "ACTIVE"
+        assert cb_res["drop_pct"] == 0.0
+
+        # Verify state in DB remains ACTIVE
+        state = get_policy_state(db_path=temp_db)
+        assert state["mode"] == "ACTIVE"
 
     def test_auto_apply_volume_floor_top_up(self, temp_db):
         """Verifies AutoApplyEngine offline dry run top-up when daily count is below floor."""
@@ -431,17 +492,17 @@ class TestMondayDigestAndEmailDispatcher:
         """Verifies generate_monday_digest triggers circuit breaker when drop > 50%."""
         conn = get_db_connection(temp_db)
         with conn:
-            # Prior 7d: 20 applications
+            # Prior 7d: 20 applications with verified evidence
             for i in range(20):
                 conn.execute("""
-                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status)
-                    VALUES (?, 'naukri', ?, 'Data Eng', datetime('now', '-10 days'), 'Submitted')
+                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status, evidence_path, is_backfill)
+                    VALUES (?, 'naukri', ?, 'Data Eng', datetime('now', '-10 days'), 'Submitted (Confirmed)', '/evidence/proof.png', 0)
                 """, (f"p_{i}", f"PriorCorp {i}"))
             # Last 7d: 4 applications (80% drop)
             for i in range(4):
                 conn.execute("""
-                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status)
-                    VALUES (?, 'naukri', ?, 'Data Eng', datetime('now', '-2 days'), 'Submitted')
+                    INSERT INTO applied_jobs (job_id, platform, company, title, applied_at, status, evidence_path, is_backfill)
+                    VALUES (?, 'naukri', ?, 'Data Eng', datetime('now', '-2 days'), 'Submitted (Confirmed)', '/evidence/proof.png', 0)
                 """, (f"l_{i}", f"LastCorp {i}"))
         conn.close()
 

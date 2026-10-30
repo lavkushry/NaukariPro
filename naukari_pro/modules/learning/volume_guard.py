@@ -91,6 +91,9 @@ class VolumeGuard:
     def get_volume_stats(self, db_path: Optional[str] = None, window_days: Optional[int] = None) -> Dict[str, Any]:
         """
         Calculates last-7d vs prior-7d volume and decision distribution from applied_jobs.
+        Enforces real submission tracking (status LIKE 'Submitted%', non-empty evidence_path,
+        excluding 'Form Auto-Filled' and synthetic backfill rows).
+        Also captures raw counts for telemetry audit.
         """
         target_db = db_path or self.db_path
         days = window_days or self.window_days
@@ -101,17 +104,48 @@ class VolumeGuard:
             t_mid = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
             t_prior = (now - timedelta(days=2 * days)).strftime("%Y-%m-%d %H:%M:%S")
 
-            q_last = """
+            # Check if is_backfill column exists in table
+            col_names = [col[1] for col in conn.execute("PRAGMA table_info(applied_jobs);").fetchall()]
+            has_backfill = "is_backfill" in col_names
+            backfill_clause = "AND (is_backfill IS NULL OR is_backfill = 0)" if has_backfill else ""
+
+            # 1. Real submission counts (only real confirmed submissions with non-empty evidence, excluding Form Auto-Filled and backfill rows)
+            q_sub_last = f"""
+                SELECT COUNT(*) FROM applied_jobs
+                WHERE applied_at >= ? AND applied_at <= ?
+                  AND status LIKE 'Submitted%'
+                  AND status NOT LIKE 'Form Auto-Filled%'
+                  AND evidence_path IS NOT NULL AND evidence_path != ''
+                  {backfill_clause}
+            """
+            sub_last_7d_count = conn.execute(q_sub_last, (t_mid, t_now)).fetchone()[0]
+
+            q_sub_prior = f"""
+                SELECT COUNT(*) FROM applied_jobs
+                WHERE applied_at >= ? AND applied_at < ?
+                  AND status LIKE 'Submitted%'
+                  AND status NOT LIKE 'Form Auto-Filled%'
+                  AND evidence_path IS NOT NULL AND evidence_path != ''
+                  {backfill_clause}
+            """
+            sub_prior_7d_count = conn.execute(q_sub_prior, (t_prior, t_mid)).fetchone()[0]
+
+            # 2. Raw total application counts (unfiltered volume for audit/telemetry)
+            q_raw_last = """
                 SELECT COUNT(*) FROM applied_jobs
                 WHERE applied_at >= ? AND applied_at <= ?
             """
-            last_7d_count = conn.execute(q_last, (t_mid, t_now)).fetchone()[0]
+            raw_last_7d_count = conn.execute(q_raw_last, (t_mid, t_now)).fetchone()[0]
 
-            q_prior = """
+            q_raw_prior = """
                 SELECT COUNT(*) FROM applied_jobs
                 WHERE applied_at >= ? AND applied_at < ?
             """
-            prior_7d_count = conn.execute(q_prior, (t_prior, t_mid)).fetchone()[0]
+            raw_prior_7d_count = conn.execute(q_raw_prior, (t_prior, t_mid)).fetchone()[0]
+
+            # Primary 7-day counts strictly track real submissions
+            last_7d_count = sub_last_7d_count
+            prior_7d_count = sub_prior_7d_count
 
             if prior_7d_count > 0:
                 drop_pct = round(max(0.0, (prior_7d_count - last_7d_count) / float(prior_7d_count) * 100.0), 2)
@@ -154,6 +188,10 @@ class VolumeGuard:
                 "window_days": days,
                 "last_7d_count": last_7d_count,
                 "prior_7d_count": prior_7d_count,
+                "submission_last_7d_count": sub_last_7d_count,
+                "submission_prior_7d_count": sub_prior_7d_count,
+                "raw_last_7d_count": raw_last_7d_count,
+                "raw_prior_7d_count": raw_prior_7d_count,
                 "drop_pct": drop_pct,
                 "daily_count_today": today_count,
                 "decision_distribution": decisions,

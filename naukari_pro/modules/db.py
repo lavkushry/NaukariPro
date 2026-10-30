@@ -60,7 +60,8 @@ def init_db(db_path: Optional[str] = None):
                 evidence_path TEXT,
                 outcome_label TEXT,
                 outcome_observed_at TIMESTAMP,
-                policy_version TEXT
+                policy_version TEXT,
+                is_backfill INTEGER NOT NULL DEFAULT 0
             );
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_applied_jobs_job_id ON applied_jobs(job_id);")
@@ -79,10 +80,13 @@ def init_db(db_path: Optional[str] = None):
             conn.execute("ALTER TABLE applied_jobs ADD COLUMN outcome_observed_at TIMESTAMP;")
         if "policy_version" not in existing_cols:
             conn.execute("ALTER TABLE applied_jobs ADD COLUMN policy_version TEXT;")
+        if "is_backfill" not in existing_cols:
+            conn.execute("ALTER TABLE applied_jobs ADD COLUMN is_backfill INTEGER NOT NULL DEFAULT 0;")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_status_time ON applied_jobs(status, applied_at);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_apps_evidence ON applied_jobs(evidence_path);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_applied_jobs_outcome ON applied_jobs(outcome_label);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_applied_jobs_backfill ON applied_jobs(is_backfill);")
 
         # Profile mutations ledger table
         conn.execute("""
@@ -333,7 +337,8 @@ def record_applied_job(
     allow_duplicate: bool = False,
     policy_version: Optional[str] = None,
     db_path: Optional[str] = None,
-    policy: Optional[Any] = None
+    policy: Optional[Any] = None,
+    is_backfill: int = 0
 ) -> Tuple[bool, str]:
     """
     Records or updates an applied job in SQLite DB.
@@ -433,8 +438,8 @@ def record_applied_job(
                 INSERT INTO applied_jobs (
                     job_id, platform, company, title, location,
                     experience_req, match_score, status, application_type,
-                    job_url, applied_at, applicant_email, raw_metadata, evidence_path, policy_version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    job_url, applied_at, applicant_email, raw_metadata, evidence_path, policy_version, is_backfill
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     status=excluded.status,
                     match_score=COALESCE(excluded.match_score, applied_jobs.match_score),
@@ -443,7 +448,8 @@ def record_applied_job(
                     raw_metadata=COALESCE(excluded.raw_metadata, applied_jobs.raw_metadata),
                     applied_at=COALESCE(applied_jobs.applied_at, excluded.applied_at),
                     evidence_path=COALESCE(excluded.evidence_path, applied_jobs.evidence_path),
-                    policy_version=COALESCE(excluded.policy_version, applied_jobs.policy_version);
+                    policy_version=COALESCE(excluded.policy_version, applied_jobs.policy_version),
+                    is_backfill=COALESCE(excluded.is_backfill, applied_jobs.is_backfill);
             """, (
                 final_id,
                 platform.lower(),
@@ -459,7 +465,8 @@ def record_applied_job(
                 applicant_email,
                 meta_json,
                 evidence_path,
-                policy_version
+                policy_version,
+                int(is_backfill)
             ))
         return True, final_id
     except Exception as e:

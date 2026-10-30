@@ -23,3 +23,7 @@ CREATE TABLE IF NOT EXISTS policy_events (
 
 CREATE INDEX IF NOT EXISTS idx_policy_events_type_time ON policy_events(event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_policy_events_version ON policy_events(policy_version);
+
+-- Track backfill and rewrite status to isolate synthetic test/bootstrap rows from organic volume tracking
+-- ALTER TABLE applied_jobs ADD COLUMN is_backfill INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_applied_jobs_backfill ON applied_jobs(is_backfill);
