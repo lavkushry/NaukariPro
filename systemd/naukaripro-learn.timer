@@ -1,0 +1,12 @@
+[Unit]
+Description=Monday Closed-Loop Learning Digest Timer (Monday 06:00 IST)
+PartOf=naukaripro-learn.service
+
+[Timer]
+# Monday at 06:00 AM IST
+OnCalendar=Mon *-*-* 06:00:00 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

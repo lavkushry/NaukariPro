@@ -1059,6 +1059,101 @@ def handle_goal_5calls_interactive():
         input("\nPress Enter to continue...")
     return 0
 
+
+def handle_mutate(platform: str = "naukri", field: str = "headline", auto_bump: bool = False, dry_run: bool = False, headless: bool = True):
+    from naukari_pro.modules.learning.mutator import ProfileMutator, CadenceScheduler
+    mutator = ProfileMutator()
+    can_kw = mutator.can_mutate(platform)
+    print(f"\n[Controlled Profile Mutation Engine] Target: {platform.upper()} | Field: {field}")
+    print(f"Weekly keyword mutation quota available: {can_kw}")
+    if auto_bump:
+        eligible, allow_kw, reason = CadenceScheduler.evaluate_mutation_eligibility(platform=platform)
+        print(f"Cadence Schedule Status: {reason}")
+    if dry_run:
+        print("[DRY RUN] Simulation mode active. No live profile edits executed.")
+        if platform == "naukri":
+            prop = mutator.propose_naukri_mutation(field=field)
+            print(f"Proposed Naukri Mutation:\n  Field: {prop.field.value}\n  New Value ({len(prop.new_value)} chars): {prop.new_value}\n  New Hash: {prop.new_hash}\n  Rationale: {prop.rationale}")
+        elif platform == "linkedin":
+            from naukari_pro.modules.learning.mutator import LinkedInTokenRotator
+            rot = LinkedInTokenRotator()
+            hl = rot.generate_rotated_headline()
+            print(f"Proposed LinkedIn Rotated Headline ({len(hl)} chars):\n  {hl}")
+
+
+def handle_label_outcomes(min_age_hours: float = 24.0, dry_run: bool = False, db_path: Optional[str] = None):
+    from naukari_pro.modules.learning.outcome_labeler import label_unlabeled_outcomes, get_unlabeled_count
+    print(f"\n[*] Running Daily Recruitment Outcome Labeler (min_age_hours={min_age_hours}, dry_run={dry_run})...")
+    res = label_unlabeled_outcomes(min_age_hours=min_age_hours, dry_run=dry_run, db_path=db_path)
+    print(f"[+] Scanned: {res['scanned']} | Labeled: {res['labeled']}")
+    print(f"    Outcome Breakdown: {res['breakdown']}")
+    unresolved_72h = get_unlabeled_count(hours=72.0, db_path=db_path)
+    print(f"    SLA Check (>72h unlabeled count): {unresolved_72h} rows")
+    return res
+
+
+def handle_mine_keywords(limit: int = 10, claimable_only: bool = True, db_path: Optional[str] = None):
+    from naukari_pro.modules.learning.keyword_miner import KeywordMiner
+    print("\n[*] Mining Keyword Utility from Job Descriptions (U = Demand / Saturation)...")
+    miner = KeywordMiner(db_path=db_path)
+    miner.mine_and_store()
+    top = miner.get_top_utility_keywords(limit=limit, claimable_only=claimable_only)
+    print(f"[+] Top {len(top)} Keyword Utility Rankings (Claimable: {claimable_only}):")
+    print(f"    {'TOKEN':<22} | {'UTILITY':<8} | {'DEMAND':<6} | {'SATURATION':<10} | {'CLAIMABLE'}")
+    print("    " + "-" * 65)
+    for k in top:
+        print(f"    {k['token']:<22} | {k['utility_score']:<8.2f} | {k['demand_frequency']:<6} | {k['saturation_count']:<10} | {k['claimable']}")
+    return top
+
+
+def handle_attribution(mutation_week: Optional[str] = None, benchmark_control_delta: float = 0.0, db_path: Optional[str] = None):
+    from naukari_pro.modules.learning.attribution import AttributionEngine
+    print("\n[*] Evaluating Difference-in-Differences (DiD) Profile Mutation Attribution...")
+    engine = AttributionEngine(db_path=db_path)
+    history = engine.get_weekly_history()
+    print(f"[+] Total weekly appearance records: {len(history)}")
+    target_week = mutation_week or (history[-1]["week_start_date"] if history else "2026-10-15")
+    res = engine.evaluate_mutation_impact(mutation_week=target_week, benchmark_control_delta=benchmark_control_delta)
+    print(f"    Target Mutation Week: {target_week}")
+    print(f"    DiD Net Estimate: {res['did_estimate']}")
+    print(f"    Status: {res['status']}")
+    print(f"    Causal Assertion Allowed: {res['causal_assertion_allowed']}")
+    print(f"    Diagnostic Reason: {res['reason']}")
+    return res
+
+
+def handle_policy_status(db_path: Optional[str] = None):
+    from naukari_pro.modules.learning.policy import LinUCBBanditPolicy, PolicyAction
+    print("\n[*] Contextual Bandit LinUCB Selection Policy Status...")
+    policy = LinUCBBanditPolicy()
+    bootstrapped = policy.bootstrap_from_history(db_path=db_path)
+    print(f"[+] Bootstrap from SQLite: {bootstrapped} historical outcome samples incorporated.")
+    print(f"    Policy Version: {policy.policy_version} | Feature Dimension: {policy.d} | Exploration Alpha: {policy.alpha}")
+
+    sample_job = {
+        "match_score": 85.0,
+        "required_yoe": 2.5,
+        "posting_age_hours": 12.0,
+        "company": "Microsoft",
+        "platform": "1-Click Direct",
+        "jd": "Databricks PySpark Delta Lake Kafka ADF SQL",
+        "salary": 24.0
+    }
+    best_act, ucb, diag = policy.select_action(sample_job)
+    print(f"    Sample Action Prediction (Tier 1 Azure DE): {best_act.name} (UCB: {ucb:.4f})")
+    for a_name, scores in diag.items():
+        if isinstance(scores, dict) and "payoff" in scores:
+            print(f"     * Action {a_name:<16}: payoff={scores['payoff']:.4f}, width={scores['width']:.4f}, ucb={scores['ucb']:.4f}")
+    return policy
+
+
+def handle_monday_digest(output: Optional[str] = None, db_path: Optional[str] = None):
+    from scripts.monday_digest import generate_monday_digest
+    digest = generate_monday_digest(output_path=output, db_path=db_path)
+    print(digest)
+    return digest
+
+
 def interactive_loop():
     while True:
         print_menu()
@@ -1198,9 +1293,48 @@ def main():
     goal_parser.add_argument("--lead-id", type=str, default=None, help="Lead ID or recruiter identifier to update")
     goal_parser.add_argument("--notes", type=str, default=None, help="Optional notes for status update or lead logging")
 
+    mutate_parser = subparsers.add_parser("mutate", help="Controlled profile mutation engine (Naukri & LinkedIn)", parents=[common_parser])
+    mutate_parser.add_argument("--platform", type=str, default="naukri", choices=["naukri", "linkedin"], help="Platform to mutate")
+    mutate_parser.add_argument("--field", type=str, default="headline", help="Field to mutate (headline, key_skills, summary, about)")
+    mutate_parser.add_argument("--auto-bump", action="store_true", help="Execute scheduled cadence bump or keyword mutation")
+
+    label_parser = subparsers.add_parser("label-outcomes", help="Run daily outcome labeling on applied jobs", parents=[common_parser])
+    label_parser.add_argument("--min-age-hours", type=float, default=24.0, help="Minimum age in hours to label outcomes (default: 24.0)")
+
+    mine_parser = subparsers.add_parser("mine-keywords", help="Mine keyword and skill utility (U = Demand / Saturation)", parents=[common_parser])
+    mine_parser.set_defaults(limit=10)
+    mine_parser.add_argument("--all", dest="claimable_only", action="store_false", default=True, help="Include unclaimable/forbidden keywords")
+
+    attr_parser = subparsers.add_parser("attribution", help="Compute Difference-in-Differences profile mutation impact", parents=[common_parser])
+    attr_parser.add_argument("--mutation-week", type=str, default=None, help="Target mutation week start date (YYYY-MM-DD)")
+    attr_parser.add_argument("--control-delta", type=float, default=0.0, help="Benchmark control delta")
+
+    subparsers.add_parser("policy-status", help="Inspect LinUCB contextual bandit parameters and predictions", parents=[common_parser])
+
+    digest_parser = subparsers.add_parser("monday-digest", help="Generate consolidated weekly Monday digest markdown report", parents=[common_parser])
+    digest_parser.add_argument("--output", "-o", type=str, default=None, help="Output markdown path")
+
     args = parser.parse_args()
 
-    if args.command == "pro":
+    if args.command == "mutate":
+        handle_mutate(
+            platform=getattr(args, "platform", "naukri"),
+            field=getattr(args, "field", "headline"),
+            auto_bump=getattr(args, "auto_bump", False),
+            dry_run=args.dry_run,
+            headless=args.headless
+        )
+    elif args.command == "label-outcomes":
+        handle_label_outcomes(min_age_hours=getattr(args, "min_age_hours", 24.0), dry_run=args.dry_run)
+    elif args.command == "mine-keywords":
+        handle_mine_keywords(limit=getattr(args, "limit", 10), claimable_only=getattr(args, "claimable_only", True))
+    elif args.command == "attribution":
+        handle_attribution(mutation_week=getattr(args, "mutation_week", None), benchmark_control_delta=getattr(args, "control_delta", 0.0))
+    elif args.command == "policy-status":
+        handle_policy_status()
+    elif args.command == "monday-digest":
+        handle_monday_digest(output=getattr(args, "output", None))
+    elif args.command == "pro":
         handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
     elif args.command == "weekly-report":
         handle_weekly_report(headless=args.headless)

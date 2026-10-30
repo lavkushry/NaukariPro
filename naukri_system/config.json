@@ -1,8 +1,10 @@
 {
   "candidate": {
     "name": "Lavkush Kumar",
-    "email": "lav84095@gmail.com",
-    "phone": "+91 9122036484",
+    "email": "lavkushry@gmail.com",
+    "applicant_email": "lav84095@gmail.com",
+    "naukri_email": "lav84095@gmail.com",
+    "phone": "+91-9122036484",
     "current_company": "CGI India (PNC Bank GCC)",
     "current_designation": "Azure Data Engineer",
     "current_ctc_lakhs": 12,
@@ -54,10 +56,10 @@
     ],
     "max_experience": 4,
     "min_salary_lpa": 12.0,
-    "min_match_score": 80.0,
+    "min_match_score": 70.0,
     "posted_within_days": 1,
     "daily_application_limit": 15,
-    "linkedin_automation_enabled": false
+    "linkedin_automation_enabled": true
   },
   "profile_summary": "Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF within enterprise Medallion Lakehouses. Engineered scalable batch and real-time streaming architectures (Apache Kafka, ADLS Gen2, Unity Catalog) processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second latency. Automated DataOps CI/CD release cycles and infrastructure provisioning via Terraform, cutting ETL execution runtime by 35% and sustaining 99.95% cloud data platform availability.",
   "technical_competencies": {
@@ -224,7 +226,7 @@
     },
     "protocol": "Keep constant for 7 days. Day 8 compare against baseline variance. Declare win ONLY if delta > normal variance."
   },
-  "headline_template": "Azure Data Engineer | 2.5 YOE | Azure Databricks · PySpark · Delta Lake · ADF | Medallion Lakehouse (2M+ events/day) | 15 Days Notice (Immediate Joiner)",
+  "headline_template": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
   "tracker_excel_path": "Naukri_Live_Application_Tracker.xlsx",
   "skill_demand_data": {
     "Core Data Engineering": [
@@ -387,5 +389,73 @@
       "focus": "Azure Databricks Migrations",
       "package": "₹16 - 22 LPA"
     }
-  ]
+  ],
+  "learning": {
+    "enabled": true,
+    "policy_algorithm": "LinUCB",
+    "alpha": 0.2,
+    "refit_interval_outcomes": 50,
+    "refit_interval_days": 7,
+    "context_dimension": 7,
+    "actions": [
+      "APPLY",
+      "SKIP",
+      "DEFER_TO_REVIEW"
+    ],
+    "reward_schedule": {
+      "callback": 1.0,
+      "interview": 1.0,
+      "view": 0.3,
+      "rejection": -1.0,
+      "silence": -0.2,
+      "duplicate": -2.0
+    },
+    "quarantine_ambiguous": true,
+    "threshold_reconciliation": {
+      "reconciled_threshold": 70.0,
+      "legacy_prefilter_threshold": 80.0,
+      "policy_active_gate": 70.0,
+      "decision": "Reconciled single match threshold to 70.0% across all channels (Naukri & LinkedIn). LinUCB bandit selection policy actively models and optimizes vacancy selection between 70% and 80%, exploring high-yield opportunities while penalizing low-payoff applications."
+    }
+  },
+  "mutation": {
+    "enabled": true,
+    "weekly_keyword_limit": 2,
+    "allowed_windows_ist": [
+      {
+        "days": [
+          "Tuesday",
+          "Wednesday",
+          "Thursday"
+        ],
+        "start": "08:00",
+        "target_start": "09:30",
+        "target_end": "11:30",
+        "end": "13:00"
+      }
+    ],
+    "daily_freshness_bump_enabled": true,
+    "freshness_cooldown_seconds": 7200,
+    "naukri_whitelist": [
+      "headline",
+      "key_skills",
+      "summary"
+    ],
+    "linkedin_whitelist": [
+      "headline",
+      "about",
+      "skills",
+      "open_to_work"
+    ],
+    "hard_blacklist": [
+      "total_experience_years",
+      "current_ctc_lakhs",
+      "expected_ctc_lakhs",
+      "notice_period_days",
+      "employment_dates",
+      "employers",
+      "education",
+      "certifications"
+    ]
+  }
 }

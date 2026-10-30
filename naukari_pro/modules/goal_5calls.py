@@ -126,7 +126,7 @@ class Goal5CallsEngine:
                         continue
                     status_col = str(row[8]) if len(row) > 8 and row[8] is not None else ""
                     # Count only true live submissions (exclude errors, redirects, and dry runs)
-                    if not (status_col.startswith("Submitted") or status_col.startswith("Applied") or status_col == "Form Auto-Filled"):
+                    if len(row) > 8 and status_col and not (status_col.startswith("Submitted") or status_col.startswith("Applied") or status_col == "Form Auto-Filled"):
                         continue
                     stats["naukri_apps_total"] += 1
                     app_date = str(row[0]) if row[0] is not None else ""

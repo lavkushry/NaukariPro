@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Recruiter Outcome Labeler Timer (Daily 21:00 IST)
+PartOf=naukaripro-label.service
+
+[Timer]
+# Daily at 21:00 IST (9:00 PM)
+OnCalendar=*-*-* 21:00:00 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

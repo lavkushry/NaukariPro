@@ -1,0 +1,12 @@
+[Unit]
+Description=Cadence Profile Mutation Timer (Tue/Thu 09:30 IST)
+PartOf=naukaripro-mutate.service
+
+[Timer]
+# Tuesday and Thursday at 09:30 AM IST
+OnCalendar=Tue,Thu *-*-* 09:30:00 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

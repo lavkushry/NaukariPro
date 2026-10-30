@@ -22,15 +22,81 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from playwright.sync_api import sync_playwright
+from typing import Optional, Callable, Any
 from naukari_pro.config import load_config, RESUME_PDF_PATH, WORKSPACE_DIR
 from naukari_pro.session import get_stealth_context, ensure_authenticated
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
 from naukari_pro.modules.resume_maker import AIResumeMaker
+from naukari_pro.modules.learning.mutator import BlacklistValidator, BlacklistViolationError, ProfileMutator, HashEngine
+from naukari_pro.modules.db import record_profile_mutation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("NaukriLiveSync")
 
 STATE_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "session_state.json")
+
+
+def execute_controlled_sync_field(
+    page,
+    field_name: str,
+    new_value: str,
+    dom_read_fn: Callable[[Any], str],
+    dom_write_fn: Callable[[Any, str], bool],
+    rationale: str = "controlled_sync",
+    expected_effect: str = "seo_discoverability",
+    mutator: Optional[ProfileMutator] = None
+) -> bool:
+    """
+    Wraps a live Naukri profile DOM synchronization action:
+    1. Validates proposed content against BlacklistValidator (01_FACT_MATRIX.md).
+    2. Validates field is in Naukri whitelist ('headline', 'key_skills', 'summary').
+    3. Reads current DOM value and computes SHA-256 hashes.
+    4. If value unchanged (old_hash == new_hash), exits cleanly without redundant DOM write.
+    5. If changed, executes DOM write and logs the mutation event to `profile_mutations`.
+    """
+    BlacklistValidator.enforce(new_value, field_name=field_name)
+
+    naukri_whitelist = {"headline", "key_skills", "summary"}
+    if field_name not in naukri_whitelist:
+        raise ValueError(f"Field '{field_name}' is not in Naukri mutation whitelist: {naukri_whitelist}")
+
+    try:
+        old_value = dom_read_fn(page) or ""
+    except Exception as e:
+        logger.warning("Could not read current live value for %s: %s", field_name, e)
+        old_value = ""
+
+    old_hash = HashEngine.compute_text_hash(old_value)
+    new_hash = HashEngine.compute_text_hash(new_value)
+
+    if old_hash == new_hash:
+        logger.info("Field '%s' already matches target value (hash: %s). Skipping write.", field_name, old_hash[:8])
+        return True
+
+    write_success = dom_write_fn(page, new_value)
+    if not write_success:
+        logger.error("Failed to apply DOM update for field '%s'. Ledger not updated.", field_name)
+        return False
+
+    try:
+        db_p = mutator.db_path if mutator else None
+        record_profile_mutation(
+            platform="naukri",
+            field=field_name,
+            old_hash=old_hash,
+            new_hash=new_hash,
+            old_value=old_value,
+            new_value=new_value,
+            rationale=rationale,
+            expected_effect=expected_effect,
+            approved_by="controlled_sync_profile",
+            db_path=db_p
+        )
+        logger.info("✓ Recorded mutation for Naukri '%s' to ledger (%s -> %s)", field_name, old_hash[:8], new_hash[:8])
+    except Exception as e:
+        logger.error("Failed to write mutation to profile_mutations table: %s", e)
+
+    return True
 
 def _load_state():
     if os.path.exists(STATE_FILE):
@@ -152,9 +218,10 @@ def sync_employment_designation(page, target_title="Azure Data Engineer"):
     logger.info("Successfully updated CGI current designation.")
     return True
 
-def sync_profile_summary(page, summary_text):
+def sync_profile_summary(page, summary_text, mutator=None):
     if not summary_text:
         return False
+    BlacklistValidator.enforce(summary_text, field_name="summary")
     logger.info("Synchronizing boosted Profile Summary...")
     if "profile" not in page.url:
         page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
@@ -180,6 +247,7 @@ def sync_profile_summary(page, summary_text):
         logger.warning("Profile Summary textarea did not open.")
         return False
 
+    curr_sum = ta.input_value().strip()
     ta.click()
     ta.fill("")
     time.sleep(0.3)
@@ -190,6 +258,23 @@ def sync_profile_summary(page, summary_text):
     if save_btn.count() > 0 and save_btn.is_visible():
         save_btn.click()
         time.sleep(4)
+
+        try:
+            db_p = mutator.db_path if mutator else None
+            record_profile_mutation(
+                platform="naukri",
+                field="summary",
+                old_value=curr_sum,
+                new_value=summary_text,
+                is_keyword_mutation=True,
+                rationale="resdex_summary_sync",
+                expected_effect="boost_long_tail_keyword_matches",
+                approved_by="sync_naukri_live_profile",
+                db_path=db_p
+            )
+        except Exception as le:
+            logger.warning("Could not record summary mutation: %s", le)
+
         logger.info("Successfully updated Profile Summary on live Naukri profile.")
         return True
     return False
@@ -376,9 +461,10 @@ def sync_projects(page, projects_data):
         logger.info("Project %d saved successfully.", idx + 1)
     return True
 
-def sync_resume_headline(page, target_headline=None):
+def sync_resume_headline(page, target_headline=None, mutator=None):
     """
-    Ensures the complete 247-char Azure Data Engineer headline is persisted on live profile.
+    Ensures the complete 247-char Azure Data Engineer headline is persisted on live profile
+    and recorded into profile_mutations ledger.
     """
     cfg = load_config()
     default_hl = (
@@ -389,6 +475,8 @@ def sync_resume_headline(page, target_headline=None):
     hl = (target_headline or cfg.get("headline_template", default_hl)).strip()
     if not hl:
         hl = default_hl
+
+    BlacklistValidator.enforce(hl, field_name="headline")
 
     logger.info("Synchronizing Resume Headline (%d chars)...", len(hl))
     if "profile" not in page.url:
@@ -427,6 +515,23 @@ def sync_resume_headline(page, target_headline=None):
                     if save_btn.count() > 0 and save_btn.is_visible():
                         save_btn.click()
                         time.sleep(3)
+
+                        try:
+                            db_p = mutator.db_path if mutator else None
+                            record_profile_mutation(
+                                platform="naukri",
+                                field="headline",
+                                old_value=curr_val,
+                                new_value=hl,
+                                is_keyword_mutation=True,
+                                rationale="resdex_headline_sync",
+                                expected_effect="boost_resdex_recruiter_appearances",
+                                approved_by="sync_naukri_live_profile",
+                                db_path=db_p
+                            )
+                        except Exception as le:
+                            logger.warning("Could not record headline mutation: %s", le)
+
                         logger.info("Successfully updated Resume Headline on live profile.")
                         return True
                 else:
@@ -600,11 +705,13 @@ def sync_preferred_locations(page, locations=None):
         return True
     return False
 
-def sync_key_skills(page, keywords=None):
+def sync_key_skills(page, keywords=None, mutator=None):
     """
-    Automates Key Skills tag cloud in #lazyKeySkills with top 25 Azure Data Engineering keywords.
+    Automates Key Skills tag cloud in #lazyKeySkills with top 25 Azure Data Engineering keywords
+    and records mutation to profile_mutations ledger.
     """
     target_skills = keywords or DEFAULT_TOP_25_KEY_SKILLS
+    BlacklistValidator.enforce(", ".join(target_skills), field_name="key_skills")
     logger.info("Synchronizing top %d Key Skills to live profile...", len(target_skills))
 
     if "profile" not in page.url:
@@ -664,6 +771,23 @@ def sync_key_skills(page, keywords=None):
         save_btn.scroll_into_view_if_needed()
         save_btn.click()
         time.sleep(4)
+
+        try:
+            db_p = mutator.db_path if mutator else None
+            record_profile_mutation(
+                platform="naukri",
+                field="key_skills",
+                old_value=None,
+                new_value=", ".join(target_skills),
+                is_keyword_mutation=True,
+                rationale="resdex_key_skills_cloud_sync",
+                expected_effect="saturate_top_recruiter_facets",
+                approved_by="sync_naukri_live_profile",
+                db_path=db_p
+            )
+        except Exception as le:
+            logger.warning("Could not record key_skills mutation: %s", le)
+
         logger.info("Successfully updated Key Skills.")
         return True
     return False
@@ -780,6 +904,14 @@ def sync_full_naukri_profile(page, config=None, force=False):
     preferred_locs = cfg.get("candidate", {}).get("preferred_locations", DEFAULT_PREFERRED_LOCATIONS)
     key_skills = cfg.get("default_keywords", DEFAULT_TOP_25_KEY_SKILLS)
     headline = cfg.get("headline_template", None)
+
+    # Enforce structural candidate truth invariants against 01_FACT_MATRIX.md
+    BlacklistValidator.enforce(target_desig, field_name="current_designation")
+    BlacklistValidator.enforce(target_notice, field_name="notice_period")
+    if headline:
+        BlacklistValidator.enforce(headline, field_name="headline")
+    if summary:
+        BlacklistValidator.enforce(summary, field_name="profile_summary")
 
     # 1. Regenerate 1-page ATS Resume PDF
     logger.info("Compiling canonical 1-page ATS Resume PDF from unified facts...")

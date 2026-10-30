@@ -185,7 +185,7 @@ class ProAutoPilotEngine:
         li_dry_run_verified = 0
         li_stats = {}
         li_auto_enabled = self.config.get("search_settings", {}).get("linkedin_automation_enabled", False)
-        if not li_auto_enabled:
+        if not (self.dry_run or li_auto_enabled):
             print("\n[STAGE 6/8] LinkedIn Easy Apply Stage: PAUSED / DISABLED")
             print("  ℹ️ Automated LinkedIn applications disabled by config policy to protect account from datacenter IP blocks.")
             print("  ℹ️ GCC outreach is running via Draft Queue (manual human execution).")
@@ -254,17 +254,9 @@ class ProAutoPilotEngine:
             if os.path.exists(TRACKER_PATH):
                 wb = openpyxl.load_workbook(TRACKER_PATH, read_only=True)
                 if "Applications_Log" in wb.sheetnames:
-                    for row in wb["Applications_Log"].iter_rows(min_row=2, values_only=True):
-                        if row and len(row) > 8 and row[8]:
-                            st = str(row[8])
-                            if st.startswith("Submitted") or st.startswith("Applied") or st == "Form Auto-Filled":
-                                total_live_naukri += 1
+                    total_live_naukri = max(0, wb["Applications_Log"].max_row - 1)
                 if "LinkedIn_Applications_Log" in wb.sheetnames:
-                    for row in wb["LinkedIn_Applications_Log"].iter_rows(min_row=2, values_only=True):
-                        if row and len(row) > 6 and row[6]:
-                            st = str(row[6])
-                            if st != "SUBMITTED_DRY_RUN":
-                                total_live_linkedin += 1
+                    total_live_linkedin = max(0, wb["LinkedIn_Applications_Log"].max_row - 1)
                 if "DryRun_Archive" in wb.sheetnames:
                     total_archived_dry_run = max(0, wb["DryRun_Archive"].max_row - 1)
                 wb.close()

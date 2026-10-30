@@ -29,7 +29,8 @@ DEFAULT_CANDIDATE = {
     "firstName": "Lavkush",
     "lastName": "Kumar",
     "fullName": "Lavkush Kumar",
-    "email": "lav84095@gmail.com",
+    "email": "lavkushry@gmail.com",
+    "applicantEmail": "lav84095@gmail.com",
     "phone": "+91-9122036484",
     "city": "Hyderabad",
     "state": "Telangana",
@@ -102,7 +103,28 @@ DEFAULT_CANDIDATE = {
 def load_applicant_profile():
     data = json.loads(json.dumps(DEFAULT_CANDIDATE))
 
-    # 1. Overlay config.json candidate facts
+    # 1. Overlay ~/.job-apply/profile.json if it exists
+    if PROFILE_PATH.exists():
+        try:
+            with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+                prof = doc.get("profile", doc)
+                if prof.get("firstName"):
+                    data["firstName"] = prof.get("firstName", data["firstName"])
+                    data["lastName"] = prof.get("lastName", data["lastName"])
+                    data["fullName"] = f"{data['firstName']} {data['lastName']}".strip()
+                    data["email"] = prof.get("email", data["email"])
+                    data["phone"] = prof.get("phone", data["phone"])
+                    data["linkedInUrl"] = prof.get("linkedInUrl", data["linkedInUrl"])
+                    data["githubUrl"] = prof.get("githubUrl", data["githubUrl"])
+                    data["resumePath"] = prof.get("resumePath", data["resumePath"])
+                    if isinstance(prof.get("location"), dict):
+                        loc = prof["location"]
+                        data["city"] = loc.get("city", data["city"])
+        except Exception:
+            pass
+
+    # 2. Overlay config.json candidate facts (authoritative single source of truth)
     try:
         cfg = load_config()
         cand = cfg.get("candidate", {})
@@ -143,36 +165,6 @@ def load_applicant_profile():
             data["education"] = cfg["education"]
     except Exception:
         pass
-
-    # 2. Overlay ~/.job-apply/profile.json if it exists
-    if PROFILE_PATH.exists():
-        try:
-            with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-                doc = json.load(f)
-                prof = doc.get("profile", doc)
-                if prof.get("firstName"):
-                    data["firstName"] = prof.get("firstName", data["firstName"])
-                    data["lastName"] = prof.get("lastName", data["lastName"])
-                    data["fullName"] = f"{data['firstName']} {data['lastName']}".strip()
-                    data["email"] = prof.get("email", data["email"])
-                    data["phone"] = prof.get("phone", data["phone"])
-                    data["linkedInUrl"] = prof.get("linkedInUrl", data["linkedInUrl"])
-                    data["githubUrl"] = prof.get("githubUrl", data["githubUrl"])
-                    data["resumePath"] = prof.get("resumePath", data["resumePath"])
-                    if isinstance(prof.get("location"), dict):
-                        loc = prof["location"]
-                        data["city"] = loc.get("city", data["city"])
-                        data["country"] = loc.get("country", data["country"])
-                if prof.get("currentCompany"):
-                    data["currentCompany"] = prof.get("currentCompany", data.get("currentCompany"))
-                if prof.get("currentTitle"):
-                    data["currentTitle"] = prof.get("currentTitle", data.get("currentTitle"))
-                if prof.get("workHistory") and isinstance(prof["workHistory"], list):
-                    data["workHistory"] = prof["workHistory"]
-                if prof.get("education") and isinstance(prof["education"], list):
-                    data["education"] = prof["education"]
-        except Exception:
-            pass
 
     return data
 
@@ -545,7 +537,7 @@ class CareerPortalFiller:
             "first_name": self.profile.get("firstName", "Lavkush"),
             "last_name": self.profile.get("lastName", "Kumar"),
             "full_name": self.profile.get("fullName", "Lavkush Kumar"),
-            "email": self.profile.get("email", "lav84095@gmail.com"),
+            "email": self.profile.get("email", "lavkushry@gmail.com"),
             "phone": self.profile.get("phone", "+91-9122036484"),
             "location": self.profile.get("city", "Hyderabad"),
             "linkedin": self.profile.get("linkedInUrl", "https://linkedin.com/in/lavkushry"),
@@ -817,20 +809,32 @@ class CareerPortalFiller:
 
                     time.sleep(2)
 
-                    # Submit application if requested
-                    sub_status = "Submitted (External Portal)"
+                    # Submit application if requested with 3-point evidence state machine
+                    from naukari_pro.modules.learning.evidence import EvidenceVerifier
+                    ev = EvidenceVerifier()
+                    evidence_file = None
+                    sub_status = "Form Auto-Filled (Ready for Review)"
+
                     if auto_submit:
                         submit_btn = active_page.locator("button[type='submit'], input[type='submit'], button:has-text('Submit Application'), button:has-text('Submit'), button:has-text('Apply')").first
                         if submit_btn.count() > 0 and submit_btn.is_visible():
                             try:
                                 submit_btn.click(timeout=5000)
                                 time.sleep(3)
-                                print(f"    🚀 Form Submitted on {ats_type} Portal!")
+                                sc_path = ev.capture_screenshot_sync(active_page, company, title)
+                                if sc_path and ev.verify_screenshot_file(sc_path):
+                                    sub_status = "Submitted (Confirmed)"
+                                    evidence_file = sc_path
+                                    print(f"    🚀 Form Submitted on {ats_type} Portal with verified evidence: {sc_path}")
+                                else:
+                                    sub_status = "Form Auto-Filled (Ready for Review)"
+                                    print(f"    ⚠️ Submitted but unconfirmed; status strictly maintained as Ready for Review.")
                             except Exception as e_sub:
                                 print(f"    Submit click notice: {e_sub}")
+                                sub_status = "Form Auto-Filled (Ready for Review)"
                         else:
                             print(f"    ℹ️ Final submit button requires manual review; form 100% pre-filled.")
-                            sub_status = "Form Auto-Filled"
+                            sub_status = "Form Auto-Filled (Ready for Review)"
 
                     # Update Excel tracker row
                     ws.cell(row=row_idx, column=9, value=sub_status)
@@ -848,7 +852,9 @@ class CareerPortalFiller:
                         status=sub_status,
                         application_type=f"Career Portal ({ats_type})",
                         job_url=target_portal_url,
-                        applicant_email=self.profile.get("email", "lav84095@gmail.com")
+                        applicant_email=self.profile.get("email", "lav84095@gmail.com"),
+                        evidence_path=evidence_file,
+                        policy_version="v2.0-linucb"
                     )
 
                     submitted += 1

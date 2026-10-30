@@ -1,0 +1,17 @@
+[Unit]
+Description=NaukariPro Daily Recruitment Outcome Labeler (Milestone 5 / R5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/Resume
+Environment=HOME=/home/ubuntu
+Environment=WORKSPACE=/home/ubuntu/Resume
+ExecStart=/home/ubuntu/Resume/naukariPro label-outcomes
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target

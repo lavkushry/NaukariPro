@@ -23,6 +23,7 @@ SESSION_DIR = os.path.join(BASE_DIR, "naukri_system", "browser_session")
 LOG_PATH = os.path.expanduser("~/naukari_pro.log")
 CONFIG_FILE = os.path.join(BASE_DIR, "naukri_system", "config.json")
 CONFIG_PATH = CONFIG_FILE
+DB_PATH = os.path.join(WORKSPACE_DIR, "applied_jobs.db")
 
 def load_config():
     """
@@ -42,8 +43,14 @@ def load_config():
     common_answers = cfg.setdefault("answers_to_common_questions", {})
 
     # Overlay environment variables from .env if present
+    if os.getenv("CANDIDATE_EMAIL"):
+        candidate["email"] = os.getenv("CANDIDATE_EMAIL")
+    elif "email" not in candidate:
+        candidate["email"] = "lavkushry@gmail.com"
+
     if os.getenv("NAUKRI_EMAIL"):
-        candidate["email"] = os.getenv("NAUKRI_EMAIL")
+        candidate["applicant_email"] = os.getenv("NAUKRI_EMAIL")
+        candidate["naukri_email"] = os.getenv("NAUKRI_EMAIL")
     if os.getenv("TOTAL_EXPERIENCE"):
         try:
             candidate["total_experience_years"] = float(os.getenv("TOTAL_EXPERIENCE"))
@@ -51,12 +58,14 @@ def load_config():
             pass
     if os.getenv("CURRENT_CTC"):
         try:
-            candidate["current_ctc_lakhs"] = float(os.getenv("CURRENT_CTC"))
+            val = float(os.getenv("CURRENT_CTC"))
+            candidate["current_ctc_lakhs"] = int(val) if val.is_integer() else val
         except ValueError:
             pass
     if os.getenv("EXPECTED_CTC"):
         try:
-            candidate["expected_ctc_lakhs"] = float(os.getenv("EXPECTED_CTC"))
+            val = float(os.getenv("EXPECTED_CTC"))
+            candidate["expected_ctc_lakhs"] = int(val) if val.is_integer() else val
         except ValueError:
             pass
     if os.getenv("NOTICE_PERIOD"):

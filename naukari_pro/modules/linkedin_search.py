@@ -1451,11 +1451,13 @@ class LinkedInSearchEngine:
         deduplicator: Optional[JobDeduplicator] = None,
         scorer: Optional[JobMatchScorer] = None,
         card_parser: Optional[LinkedInJobCardParser] = None,
+        policy: Optional[Any] = None,
     ):
         self.url_builder = LinkedInSearchUrlBuilder()
         self.deduplicator = deduplicator or JobDeduplicator()
         self.scorer = scorer or JobMatchScorer()
         self.card_parser = card_parser or LinkedInJobCardParser()
+        self.policy = policy
 
     def build_search_url(
         self,
@@ -1549,6 +1551,7 @@ class LinkedInSearchEngine:
         freshness_sec: int = 86400,
         min_match_score: float = 70.0,
         candidate_skills: Optional[List[str]] = None,
+        policy: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
         """
         Orchestrates full search execution:
@@ -1556,11 +1559,13 @@ class LinkedInSearchEngine:
         2. Navigates page and extracts job cards via progressive de-occlusion.
         3. Deduplicates against seen and applied IDs.
         4. Evaluates match score and gates at >= min_match_score (default 70.0%).
-        5. Marks evaluated jobs in deduplication cache.
-        6. Returns list of qualified, unapplied jobs.
+        5. Intercepts match gate with LinUCB contextual bandit selection policy when available.
+        6. Marks evaluated jobs in deduplication cache.
+        7. Returns list of qualified, unapplied jobs (re-ranked by policy score).
         """
         qualified_jobs: List[Dict[str, Any]] = []
         seen_batch_ids: Set[str] = set()
+        active_policy = policy if policy is not None else self.policy
 
         for page_idx in range(1, max_pages + 1):
             url = self.build_search_url(
@@ -1614,10 +1619,40 @@ class LinkedInSearchEngine:
                 card["match_score"] = match_res.score
                 card["match_result"] = asdict(match_res)
 
-                if match_res.score >= min_match_score:
-                    self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
-                    qualified_jobs.append(card)
+                if active_policy is not None:
+                    job_ctx = {
+                        "match_score": match_res.score,
+                        "required_yoe": 2.5,
+                        "posting_age_hours": 24.0,
+                        "company": card.get("company", ""),
+                        "platform": "LinkedIn Easy Apply",
+                        "salary_lpa": 20.0,
+                        "jd": f"{title} {snippet}",
+                    }
+                    action, ucb_score, diag = active_policy.select_action(job_ctx)
+                    card["policy_version"] = getattr(active_policy, "policy_version", "v2.0-linucb")
+                    card["policy_action"] = action.name if hasattr(action, "name") else str(action)
+                    card["policy_score"] = ucb_score
+                    card["policy_propensity"] = diag.get("propensity", 1.0)
+                    card["policy_diagnostics"] = diag
+
+                    if match_res.score >= min_match_score:
+                        if card["policy_action"] == "SKIP":
+                            self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_POLICY_BANDIT")
+                            continue
+                        self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
+                        qualified_jobs.append(card)
+                    else:
+                        self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
                 else:
-                    self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
+                    if match_res.score >= min_match_score:
+                        self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
+                        qualified_jobs.append(card)
+                    else:
+                        self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
+
+        if active_policy is not None and qualified_jobs:
+            # Re-rank decisions by policy UCB score
+            qualified_jobs.sort(key=lambda j: j.get("policy_score", 0.0), reverse=True)
 
         return qualified_jobs

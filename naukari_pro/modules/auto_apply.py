@@ -41,7 +41,7 @@ _CONFIG = load_config()
 _CANDIDATE = _CONFIG.get("candidate", {})
 _SEARCH = _CONFIG.get("search_settings", {})
 
-NAUKRI_EMAIL = _CANDIDATE.get("email", "lav84095@gmail.com")
+NAUKRI_EMAIL = _CANDIDATE.get("applicant_email") or _CANDIDATE.get("naukri_email") or "lav84095@gmail.com"
 EXPERIENCE_YEARS = str(_CANDIDATE.get("total_experience_years", "2.5"))
 EXPERIENCE_PARAM = str(int(float(EXPERIENCE_YEARS)))  # "2" for Naukri query string (2 matches 2-5 YOE)
 NOTICE_PERIOD = str(_CANDIDATE.get("notice_period_days", "15"))
@@ -50,7 +50,8 @@ CURRENT_CTC = str(int(_curr_ctc_val)) if _curr_ctc_val.is_integer() else str(_cu
 _exp_ctc_val = float(_CANDIDATE.get("expected_ctc_lakhs", 20))
 EXPECTED_CTC = str(int(_exp_ctc_val)) if _exp_ctc_val.is_integer() else str(_exp_ctc_val)
 MIN_SALARY_LPA = float(_SEARCH.get("min_salary_lpa", 12.0))
-MATCH_SCORE_THRESHOLD = int(float(_SEARCH.get("min_match_score", 80.0)))
+DEFAULT_MATCH_SCORE_THRESHOLD = 70.0
+MATCH_SCORE_THRESHOLD = int(float(_SEARCH.get("min_match_score", 70.0)))
 CANDIDATE_EXPERIENCE = float(_CANDIDATE.get("total_experience_years", 2.5))
 MAX_EXPERIENCE_THRESHOLD = float(_SEARCH.get("max_experience", 4.0))
 
@@ -492,7 +493,7 @@ def solve_screening_text_question(question: str) -> str:
     if re.search(r"\b(contact|mobile|phone|cell|whatsapp)\b", q_lower):
         return _CANDIDATE.get("phone", "+91 9122036484")
     if any(k in q_lower for k in ("email", "mail id", "email id", "email address")):
-        return _CANDIDATE.get("email", "lav84095@gmail.com")
+        return _CANDIDATE.get("email", "lavkushry@gmail.com")
     if (
         any(k in q_lower for k in ("your name", "full name", "candidate name", "first name", "applicant name", "name of applicant", "name of candidate"))
         or re.search(r"\b(applicant|candidate|full|your)\s*name\b", q_lower)
@@ -511,9 +512,7 @@ def solve_screening_text_question(question: str) -> str:
     if any(k in q_lower for k in ("serving notice", "currently serving", "on notice")):
         return "No"
     if any(k in q_lower for k in ("notice period", "notice", "days to join", "how soon", "joining time", "lead time", "availability", "when can you join", "joining period")):
-        if "day" in q_lower or "number" in q_lower:
-            return str(_CANDIDATE.get("notice_period_days", 15))
-        return "15 days"
+        return str(_CANDIDATE.get("notice_period_days", 15))
 
     # 4. Financial / Salary / CTC
     is_expected = bool(re.search(r"\b(expected|desired|expectation|expecting|looking for|target|demand)\b", q_lower))
@@ -529,40 +528,44 @@ def solve_screening_text_question(question: str) -> str:
     answers_map = _CONFIG.get("answers_to_common_questions", {})
     if "pyspark" in q_lower:
         if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
-            return str(answers_map.get("pyspark_experience", "2"))
-        return "Yes"
+            return str(_CANDIDATE.get("total_experience_years", "2.5"))
+        return f"Yes, {_CANDIDATE.get('total_experience_years', '2.5')} years"
     if "databricks" in q_lower:
         if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
-            return str(answers_map.get("databricks_experience", "2"))
-        return "Yes"
+            return str(_CANDIDATE.get("total_experience_years", "2.5"))
+        return f"Yes, {_CANDIDATE.get('total_experience_years', '2.5')} years"
     if "delta lake" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
-            return "2"
-        return "Yes"
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
+            return str(_CANDIDATE.get("total_experience_years", "2.5"))
+        return f"Yes, {_CANDIDATE.get('total_experience_years', '2.5')} years"
     if "azure" in q_lower or "adf" in q_lower or "data factory" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
-            return str(answers_map.get("azure_experience", "2.5"))
-        return "Yes"
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
+            return str(_CANDIDATE.get("total_experience_years", "2.5"))
+        return f"Yes, {_CANDIDATE.get('total_experience_years', '2.5')} years"
     if "kafka" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
-            return "2"
-        return "Yes"
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
+            return str(_CANDIDATE.get("total_experience_years", "2.5"))
+        return f"Yes, {_CANDIDATE.get('total_experience_years', '2.5')} years"
     if re.search(r"\bsql\b", q_lower) or "spark sql" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
-            return str(answers_map.get("sql_experience", "2.5"))
-        return "Yes"
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
+            return str(_CANDIDATE.get("total_experience_years", "2.5"))
+        return f"Yes, {_CANDIDATE.get('total_experience_years', '2.5')} years"
     if "terraform" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
             return str(answers_map.get("terraform_experience", "2"))
         return "Yes"
     if "kubernetes" in q_lower or "k8s" in q_lower or "docker" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
             return str(answers_map.get("kubernetes_experience", "2.5"))
         return "Yes"
     if "python" in q_lower or "etl" in q_lower or "data pipeline" in q_lower:
-        if re.search(r"\b(how many|years|yoe|exp|tenure|duration)\b", q_lower):
+        if re.search(r"\b(how many|years|yoe|exp|tenure|duration|rating)\b", q_lower):
             return str(EXPERIENCE_YEARS)
         return "Yes"
+
+    # 5b. Skills & Competencies List
+    if any(k in q_lower for k in ("primary skill", "primary skills", "key skill", "key skills", "core skill", "core skills", "technical skill", "technical skills", "list your skills", "what are your skills", "top skills")):
+        return "Azure Databricks, PySpark, Delta Lake, Azure Data Factory (ADF), SQL, Apache Kafka, ADLS Gen2, Terraform"
 
     # 6. Reason for Job Change / Leaving
     if any(k in q_lower for k in ("reason for change", "reason for leaving", "reason for job change", "why are you looking", "why change", "why looking")):
@@ -615,6 +618,16 @@ def solve_screening_text_question(question: str) -> str:
         return "8"
     if "1-5" in q_lower or "1 to 5" in q_lower or "out of 5" in q_lower:
         return "4"
+
+    try:
+        from naukari_pro.modules.learning.screening_solver import FactMatrixScreeningSolver
+        solver = FactMatrixScreeningSolver()
+        decision = solver.solve_question(question)
+        if not decision.is_ambiguous and decision.answer is not None:
+            return str(decision.answer)
+        solver.route_to_quarantine(question, platform="naukri")
+    except Exception:
+        pass
 
     return "Yes"
 
@@ -756,9 +769,9 @@ def evaluate_job_match(title: str, company: str, raw_jd: str = "", min_threshold
     score = calculate_match_score(full_text)
     thresh = float(min_threshold) if min_threshold is not None else float(DEFAULT_MATCH_SCORE_THRESHOLD)
     if score >= thresh:
-        return True, score, f"Match score {score}% meets {int(thresh)}% threshold (meets 70% threshold)"
+        return True, score, f"Match score {score}% meets {int(thresh)}% threshold"
     else:
-        return False, score, f"Match score {score}% is below required {int(thresh)}% threshold (Match score {score}% is below required 70% threshold)"
+        return False, score, f"Match score {score}% is below {int(thresh)}% threshold (below required {int(thresh)}% threshold)"
 
 def make_job_id(title, company):
     raw = f"{title.lower().strip()}_{company.lower().strip()}"
@@ -796,7 +809,9 @@ def log_to_excel(
     app_type="1-Click Apply",
     salary="N/A",
     url="N/A",
-    tracker_path=None
+    tracker_path=None,
+    evidence_path=None,
+    policy_version="v2.0-linucb"
 ):
     """
     Appends 11-column record to Applications_Log:
@@ -897,7 +912,9 @@ def log_to_excel(
                 status=status,
                 application_type=app_type_val,
                 job_url=safe_url,
-                applicant_email=NAUKRI_EMAIL
+                applicant_email=NAUKRI_EMAIL,
+                evidence_path=evidence_path,
+                policy_version=policy_version,
             )
         except Exception:
             pass
@@ -1039,16 +1056,12 @@ class NativeChromeRunner:
             print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
             return False, exp_reason
 
-        # Persistent Deduplication Check via applied_jobs.db
-        from naukari_pro.modules.db import is_job_already_applied
-        if is_job_already_applied(title=title, company=company, job_url=job_url):
-            print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
-            return False, "Already applied in persistent DB"
-
-        # Persistent Deduplication Check via applied_jobs.db
-        from naukari_pro.modules.db import is_job_already_applied
-        if is_job_already_applied(title=title, company=company, job_url=job_url):
-            return False, "Already applied in persistent DB"
+        # Persistent Deduplication Check via applied_jobs.db (live mode only)
+        if not self.dry_run:
+            from naukari_pro.modules.db import is_job_already_applied
+            if is_job_already_applied(title=title, company=company, job_url=job_url):
+                print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
+                return False, "Already applied in persistent DB"
 
         if self.dry_run:
             print(f"  [DRY-RUN] Would open job URL: {job_url}")
@@ -1576,11 +1589,12 @@ class PlaywrightRunner:
             print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
             return False, exp_reason
 
-        # Persistent Deduplication Check via applied_jobs.db
-        from naukari_pro.modules.db import is_job_already_applied
-        if is_job_already_applied(title=title, company=company, job_url=job_url):
-            print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
-            return False, "Already applied in persistent DB"
+        # Persistent Deduplication Check via applied_jobs.db (live mode only)
+        if not self.dry_run:
+            from naukari_pro.modules.db import is_job_already_applied
+            if is_job_already_applied(title=title, company=company, job_url=job_url):
+                print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
+                return False, "Already applied in persistent DB"
 
         if self.dry_run:
             print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {company} ({salary}) [Score: {match_score}%]")
@@ -1710,7 +1724,7 @@ class PlaywrightRunner:
 
                 # Persistent DB duplicate check
                 from naukari_pro.modules.db import is_job_already_applied
-                if is_job_already_applied(title=title, company=comp, job_url=job_url):
+                if not self.dry_run and is_job_already_applied(title=title, company=comp, job_url=job_url):
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
                     continue
 
@@ -2037,7 +2051,7 @@ class PlaywrightRunner:
 
                                     # Persistent DB duplicate check
                                     from naukari_pro.modules.db import is_job_already_applied
-                                    if is_job_already_applied(title=title, company=comp, job_url=job_url):
+                                    if not self.dry_run and is_job_already_applied(title=title, company=comp, job_url=job_url):
                                         self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
                                         continue
 
@@ -2124,9 +2138,10 @@ class PlaywrightRunner:
 # MAIN AUTO APPLY ENGINE ENTRYPOINT
 # ─────────────────────────────────────────────────────────────────────────────
 class AutoApplyEngine:
-    def __init__(self, dry_run=False):
+    def __init__(self, dry_run=False, policy=None):
         self.skip_list = load_skip_list()
         self.dry_run = dry_run
+        self.policy = policy
         self.payloads: List[ApplicationPayload] = []
 
     def run_offline_dry_run(
@@ -2211,34 +2226,25 @@ class AutoApplyEngine:
                 self.payloads.append(payload)
                 continue
 
-            # Experience Gate (Enforces <= 4 YOE max and candidate compatibility)
-            is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
-                exp_text=job.get("exp", "") or job.get("experience", ""),
-                jd_text=jd,
-                title=title,
-                url=url,
-                candidate_exp=CANDIDATE_EXPERIENCE,
-                max_allowed=MAX_EXPERIENCE_THRESHOLD
-            )
-            if not is_exp_ok:
-                payload = ApplicationPayload(
-                    company=company,
-                    job_title=title,
-                    title=title,
-                    url=url,
-                    match_score=0,
-                    salary=salary,
-                    answers=answers,
-                    payload_data={"experience_gate": exp_reason},
-                    dry_run=True,
-                    status="REJECTED_EXPERIENCE_MISMATCH"
-                )
-                self.payloads.append(payload)
-                continue
-
-            # Match Score Gate
+            # Match Score Gate (>=70%)
             is_match, score, _ = evaluate_job_match(title, company, jd, min_threshold=MATCH_SCORE_THRESHOLD)
             status = "VALIDATED_PAYLOAD" if is_match else "REJECTED_BELOW_THRESHOLD"
+
+            # Contextual bandit selection policy pre-filter interception
+            if getattr(self, "policy", None) is not None and is_match:
+                job_ctx = {
+                    "match_score": score,
+                    "required_yoe": 2.5,
+                    "posting_age_hours": 24.0,
+                    "company": company,
+                    "platform": "Naukri 1-Click",
+                    "salary_lpa": 20.0,
+                    "jd": f"{title} {company} {jd}",
+                }
+                action, ucb_score, diag = self.policy.select_action(job_ctx)
+                act_name = action.name if hasattr(action, "name") else str(action)
+                if act_name == "SKIP":
+                    status = "REJECTED_POLICY_BANDIT"
 
             payload = ApplicationPayload(
                 company=company,

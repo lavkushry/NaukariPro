@@ -774,6 +774,14 @@ class LinkedInScreeningSolver:
         ]):
             return False
 
+        # Foreign jurisdiction negative guard (Candidate is Indian citizen residing in India)
+        if any(w in p_low for w in [
+            "us citizen", "u.s. citizen", "united states citizen", "green card",
+            "authorized to work in us", "authorized to work in the us", "authorized to work in the united states",
+            "authorized to work in uk", "authorized to work in canada", "reside in the us", "live in the us"
+        ]):
+            return False
+
         # Explicit Affirmative Qualifiers (Must return True / Yes)
         if any(k in p_low for k in [
             "authorized to work", "legally authorized", "right to work", "eligible to work",
@@ -784,6 +792,17 @@ class LinkedInScreeningSolver:
             "18 years", "full-time", "notice period", "immediate"
         ]):
             return True
+
+        # Delegate unmapped radio prompts to FactMatrixScreeningSolver and quarantine ledger
+        try:
+            from naukari_pro.modules.learning.screening_solver import FactMatrixScreeningSolver
+            solver = FactMatrixScreeningSolver()
+            decision = solver.solve_question(prompt_text, {"type": "radio"})
+            if not decision.is_ambiguous and decision.answer is not None:
+                return decision.answer.lower() in ("yes", "true", "1")
+            solver.route_to_quarantine(prompt_text, platform="linkedin", reason="ambiguous_radio_screening")
+        except Exception:
+            pass
 
         # Default affirmative for general suitability questions
         return True

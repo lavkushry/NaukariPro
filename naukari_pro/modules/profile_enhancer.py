@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 import logging
 from naukari_pro.config import load_config, RESUME_PDF_PATH, WORKSPACE_DIR
+from naukari_pro.modules.learning.mutator import ProfileMutator, BlacklistValidator
+from naukari_pro.modules.db import record_profile_mutation
 
 logger = logging.getLogger("naukariPro.ProfileEnhancer")
 
@@ -29,9 +31,10 @@ class ProfileChecklistItem(tuple):
         return False
 
 class ProfileEnhancerEngine:
-    def __init__(self, state_file=None):
+    def __init__(self, state_file=None, mutator=None):
         self.cfg = load_config()
         self.state_file = state_file or STATE_FILE
+        self.mutator = mutator or ProfileMutator(config=self.cfg)
 
     def _load_state(self):
         if os.path.exists(self.state_file):
@@ -52,10 +55,11 @@ class ProfileEnhancerEngine:
 
     def bump_profile(self, page, force=False, cooldown_seconds=7200):
         """
-        Micro-toggles the headline punctuation to force Naukri backend to update 'Last updated today'.
+        Micro-toggles the headline punctuation or executes controlled keyword mutation
+        to force Naukri backend to update 'Last updated today'.
         Enforces a cooldown throttle (default 2 hours / 7200s): skips redundant edits if bumped within
         the cooldown period unless force=True, enabling 3x/day scheduled boosts.
-        Ensures the full 247-char Azure Data Engineer headline is persisted if missing or truncated.
+        Ensures the full 247-char Azure Data Engineer headline is persisted and logged to profile_mutations ledger.
         """
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
@@ -113,19 +117,41 @@ class ProfileEnhancerEngine:
                 if not template:
                     template = default_target_headline
 
-                # Overwrite full 247-char Azure Data Engineer headline if missing, truncated, or incomplete
                 core_keywords = ["Azure Data Engineer", "Databricks", "Delta Lake", "ADF"]
                 is_complete = len(curr_val) >= 200 and all(kw.lower() in curr_val.lower() for kw in core_keywords)
+
+                can_kw = self.mutator.can_mutate("naukri")
 
                 if not is_complete:
                     logger.info("Headline missing or truncated (current len: %d). Overwriting with full %d-char Azure Data Engineer headline.", len(curr_val), len(template))
                     new_val = template.rstrip(".")
+                    is_kw = True
+                    rationale = "resdex_headline_saturation_recovery"
+                    expected_effect = "restore_canonical_headline"
+                elif can_kw:
+                    try:
+                        proposal = self.mutator.propose_naukri_mutation(field="headline")
+                        new_val = proposal.new_value
+                        is_kw = True
+                        rationale = proposal.rationale
+                        expected_effect = proposal.expected_effect
+                    except Exception:
+                        new_val = template.rstrip(".")
+                        is_kw = True
+                        rationale = "resdex_seo_headline_saturation"
+                        expected_effect = "boost_search_appearances"
                 else:
-                    # Micro-toggle trailing period to create an authentic edit event
+                    # Micro-toggle trailing period to create an authentic edit event without keyword drift
                     if curr_val.endswith("."):
                         new_val = template.rstrip(".")
                     else:
                         new_val = template.rstrip(".") + "."
+                    is_kw = False
+                    rationale = "cadence_freshness_bump_only"
+                    expected_effect = "refresh_resdex_active_today_badge"
+
+                # Safety guard check
+                BlacklistValidator.enforce(new_val, field_name="headline")
 
                 textarea.click()
                 textarea.fill("")
@@ -145,6 +171,23 @@ class ProfileEnhancerEngine:
                     state["last_bumped_date"] = today
                     state["last_bumped_timestamp"] = datetime.now().isoformat()
                     self._save_state(state)
+
+                    # Record in persistent profile_mutations ledger
+                    try:
+                        record_profile_mutation(
+                            platform="naukri",
+                            field="headline",
+                            old_value=curr_val,
+                            new_value=new_val,
+                            is_keyword_mutation=is_kw,
+                            rationale=rationale,
+                            expected_effect=expected_effect,
+                            approved_by="profile_enhancer",
+                            db_path=self.mutator.db_path
+                        )
+                    except Exception as le:
+                        logger.warning("Could not record profile mutation ledger entry: %s", le)
+
                     logger.info("SUCCESS: Profile timestamp touched! Status is 'Last updated today'. Headline len: %d", len(new_val))
                     return True
                 else:

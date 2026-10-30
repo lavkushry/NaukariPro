@@ -681,6 +681,32 @@ class ProfilePerformanceEngine:
         """Generates performance report."""
         return self.display_weekly_report(page=page)
 
+    def record_weekly_telemetry(
+        self,
+        week_start_date: Optional[str] = None,
+        search_appearances: Optional[int] = None,
+        profile_views: int = 0,
+        contact_views: int = 0,
+        platform: str = "naukri",
+        week_start: Optional[str] = None,
+        appearances: Optional[int] = None,
+        screenshot_path: Optional[str] = None,
+        db_path: Optional[str] = None
+    ) -> bool:
+        """Stores weekly telemetry directly into SQLite search_appearance_weekly table conforming to §4.6 and §4.7."""
+        from naukari_pro.modules.learning.attribution import AttributionEngine
+        engine = AttributionEngine(db_path=db_path)
+        return engine.record_weekly_appearances(
+            week_start_date=week_start_date,
+            search_appearances=search_appearances,
+            profile_views=profile_views,
+            contact_views=contact_views,
+            platform=platform,
+            week_start=week_start,
+            appearances=appearances,
+            screenshot_path=screenshot_path
+        )
+
 
 # Canonical alias for CLI and module compatibility
 ProfilePerformanceTracker = ProfilePerformanceEngine

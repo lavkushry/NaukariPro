@@ -18,6 +18,9 @@ import json
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 
+from naukari_pro.modules.learning.mutator import LinkedInTokenRotator, LinkedInWhitelist
+from naukari_pro.modules.db import record_profile_mutation
+
 logger = logging.getLogger("naukariPro.LinkedInOptimizer")
 
 # ==============================================================================
@@ -86,7 +89,7 @@ LINKEDIN_100K_BLUEPRINT: Dict[str, Any] = {
         "📍 Current Location: Hyderabad, India\n"
         "🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote\n"
         "⏱ Notice Period: 15 Days or less (Immediate Joiner)\n"
-        "📫 Contact: lav84095@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry"
+        "📫 Contact: lavkushry@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry"
     ),
     "experience": [
         {
@@ -527,3 +530,35 @@ To generate **100,000+ monthly search appearances** (~3,300 appearances/day):
         f.write(md_content)
 
     return target_path
+
+
+def get_rotated_headline(cycle: int = 0) -> str:
+    """Returns a dynamic LinkedIn headline with 8 primary tokens preserved and secondary rotated (<=220 chars)."""
+    rotator = LinkedInTokenRotator()
+    return rotator.generate_rotated_headline(cycle)
+
+
+def get_injected_about(token: str, base_about: Optional[str] = None) -> str:
+    """Injects a single validated competency sentence into the About section (<=2600 chars)."""
+    rotator = LinkedInTokenRotator()
+    about_text = base_about or LINKEDIN_100K_BLUEPRINT.get("about", "")
+    return rotator.inject_about_sentence(about_text, token)
+
+
+def rotate_and_record_headline(cycle: int = 0, db_path: Optional[str] = None) -> Tuple[str, int]:
+    """Generates rotated headline, validates against blacklists, and records to profile_mutations ledger."""
+    rotator = LinkedInTokenRotator()
+    new_hl = rotator.generate_rotated_headline(cycle)
+    old_hl = LINKEDIN_100K_BLUEPRINT.get("headline", "")
+    mut_id = record_profile_mutation(
+        platform="linkedin",
+        field="headline",
+        old_value=old_hl,
+        new_value=new_hl,
+        is_keyword_mutation=True,
+        rationale="linkedin_token_rotation_cycle",
+        expected_effect="boost_recruiter_search_impressions",
+        approved_by="linkedin_optimizer",
+        db_path=db_path
+    )
+    return new_hl, int(mut_id)
