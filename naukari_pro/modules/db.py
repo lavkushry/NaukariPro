@@ -354,9 +354,12 @@ def record_applied_job(
         conn = get_db_connection(db_path)
         is_dup = False
         try:
-            existing_row = conn.execute("SELECT job_id FROM applied_jobs WHERE job_id = ?", (final_id,)).fetchone()
+            existing_row = conn.execute("SELECT job_id, status FROM applied_jobs WHERE job_id = ?", (final_id,)).fetchone()
             if existing_row:
-                is_dup = True
+                if existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy"):
+                    is_dup = False
+                else:
+                    is_dup = True
             elif is_job_already_applied(title=title, company=company, db_path=db_path):
                 is_dup = True
         finally:

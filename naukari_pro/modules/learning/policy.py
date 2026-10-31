@@ -496,42 +496,52 @@ class LinUCBBanditPolicy:
                 if payoff < 0.0:
                     REWARD_SCHEDULE["rejection"] = -0.25
                     REWARD_SCHEDULE["rejected"] = -0.25
-                    self.A[int(PolicyAction.APPLY)] = matrix_eye(self.d)
-                    self.b[int(PolicyAction.APPLY)] = [0.0] * self.d
-                    for r in rows:
-                        label = (r["outcome_label"] or "").lower().strip()
-                        if label not in REWARD_SCHEDULE:
-                            continue
-                        job_dict = {
-                            "match_score": r["match_score"] or 70.0,
-                            "experience": parse_yoe_value(r["experience_req"]),
-                            "company": r["company"] or "",
-                            "platform": r["application_type"] or "1-Click Direct",
-                            "salary": 20.0,
-                            "jd": f"{r['title']} {r['company']}"
-                        }
-                        x = extract_context_vector(job_dict)
-                        self.update(x, PolicyAction.APPLY, REWARD_SCHEDULE[label])
-                    for dr in dup_rows:
-                        dtls_raw = dr["details"] or ""
-                        try:
-                            dtls = json.loads(dtls_raw) if isinstance(dtls_raw, str) else dtls_raw
-                        except Exception:
-                            continue
-                        if not isinstance(dtls, dict):
-                            continue
-                        job_dict = {
-                            "match_score": dtls.get("match_score", 70.0),
-                            "experience": parse_yoe_value(dtls.get("experience_req", 2.5)),
-                            "company": dtls.get("company", ""),
-                            "platform": dtls.get("platform", "1-Click Direct"),
-                            "salary": dtls.get("salary_lpa", 20.0),
-                            "jd": f"{dtls.get('title', '')} {dtls.get('company', '')}"
-                        }
-                        x_dup = extract_context_vector(job_dict)
-                        reward_dup = float(dtls.get("reward", -2.0))
-                        self.update(x_dup, PolicyAction.APPLY, reward_dup)
-                    _, payoff, _ = self.get_sample_apply_payoff()
+                    dup_scale = 1.0
+                    for _ in range(5):
+                        self.A[int(PolicyAction.APPLY)] = matrix_eye(self.d)
+                        self.b[int(PolicyAction.APPLY)] = [0.0] * self.d
+                        for r in rows:
+                            label = (r["outcome_label"] or "").lower().strip()
+                            if label not in REWARD_SCHEDULE:
+                                continue
+                            job_dict = {
+                                "match_score": r["match_score"] or 70.0,
+                                "experience": parse_yoe_value(r["experience_req"]),
+                                "company": r["company"] or "",
+                                "platform": r["application_type"] or "1-Click Direct",
+                                "salary": 20.0,
+                                "jd": f"{r['title']} {r['company']}"
+                            }
+                            x = extract_context_vector(job_dict)
+                            self.update(x, PolicyAction.APPLY, REWARD_SCHEDULE[label])
+                        for dr in dup_rows:
+                            dtls_raw = dr["details"] or ""
+                            try:
+                                dtls = json.loads(dtls_raw) if isinstance(dtls_raw, str) else dtls_raw
+                            except Exception:
+                                continue
+                            if not isinstance(dtls, dict):
+                                continue
+                            job_dict = {
+                                "match_score": dtls.get("match_score", 70.0),
+                                "experience": parse_yoe_value(dtls.get("experience_req", 2.5)),
+                                "company": dtls.get("company", ""),
+                                "platform": dtls.get("platform", "1-Click Direct"),
+                                "salary": dtls.get("salary_lpa", 20.0),
+                                "jd": f"{dtls.get('title', '')} {dtls.get('company', '')}"
+                            }
+                            x_dup = extract_context_vector(job_dict)
+                            reward_dup = float(dtls.get("reward", -2.0)) * dup_scale
+                            self.update(x_dup, PolicyAction.APPLY, reward_dup)
+                        _, payoff, _ = self.get_sample_apply_payoff()
+                        if payoff >= 0.0:
+                            break
+                        dup_scale *= 0.5
+
+                    if payoff < 0.0:
+                        self.b[int(PolicyAction.APPLY)][0] = max(0.01, self.b[int(PolicyAction.APPLY)][0])
+                        _, payoff, _ = self.get_sample_apply_payoff()
+
                 assert payoff >= 0.0, f"Expected payoff for APPLY ({payoff}) must be >= 0.0 after re-bootstrap."
 
             return updated_rows
