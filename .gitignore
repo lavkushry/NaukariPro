@@ -105,3 +105,4 @@ scroll_*.py
 linkedin_system/*.png
 linkedin_system/*.html
 linkedin_system/*.json
+linkedin_applications_fallback.csv

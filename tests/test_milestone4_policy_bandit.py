@@ -21,6 +21,7 @@ import os
 import json
 import tempfile
 import pytest
+from unittest.mock import patch
 
 from naukari_pro.modules.db import init_db, record_applied_job
 from naukari_pro.modules.learning.policy import (
@@ -246,7 +247,8 @@ class TestLinUCBBanditPolicy:
             "jd": "Azure Databricks PySpark Delta Lake Medallion"
         }]
 
-        engine = AutoApplyEngine(dry_run=True, policy=policy)
-        payloads = engine.run_offline_dry_run(job_feed=feed, limit=1)
+        with patch("naukari_pro.modules.db.get_daily_application_count", return_value=50):
+            engine = AutoApplyEngine(dry_run=True, policy=policy)
+            payloads = engine.run_offline_dry_run(job_feed=feed, limit=1)
         assert len(payloads) == 1
         assert payloads[0].status == "REJECTED_POLICY_BANDIT"

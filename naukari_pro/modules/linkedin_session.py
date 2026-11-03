@@ -155,6 +155,18 @@ def sanitize_cookie_token(token: Optional[str]) -> Optional[str]:
     return curr if curr else None
 
 
+def format_jsessionid_token(token: Optional[str]) -> Optional[str]:
+    """
+    Sanitizes and ensures JSESSIONID token preserves exact LinkedIn format with quotes: "ajax:..."
+    LinkedIn client-side JavaScript reads document.cookie and extracts this quoted string for CSRF header generation.
+    Returns None if token is empty, whitespace-only, or contains only quotes/placeholders.
+    """
+    raw = sanitize_cookie_token(token)
+    if not raw:
+        return None
+    return f'"{raw}"'
+
+
 def mask_cookie_token(token: Optional[str]) -> str:
     """Masks a cookie token for safe logging/display without revealing credentials."""
     t = sanitize_cookie_token(token)
@@ -304,6 +316,96 @@ class LinkedInSessionManager:
             logger.debug("Notice reading cookie candidate %s: %s", file_path, e)
         return None
 
+    def get_jsessionid_cookie(self, raise_if_missing: bool = False) -> Optional[str]:
+        """
+        Retrieves the JSESSIONID cookie token following strict 3-tier priority:
+        1. Environment variable LINKEDIN_JSESSIONID or JSESSIONID
+        2. Workspace .env file directly (if unexported)
+        3. Primary dedicated cookie file (self.cookie_path)
+        4. Fallback files (cookies_seed.json, session_cookies.json)
+        Preserves outer quotes ("ajax:...") as required by LinkedIn client-side CSRF reader.
+        """
+        # Tier 1: Environment variables
+        for env_var in ["LINKEDIN_JSESSIONID", "JSESSIONID"]:
+            val = os.getenv(env_var)
+            if val and val.strip():
+                token = format_jsessionid_token(val)
+                if token:
+                    return token
+
+        # Tier 2: Check .env directly in workspace root
+        target_ws = os.getenv("WORKSPACE_DIR") or WORKSPACE_DIR
+        env_file = os.path.join(target_ws, ".env")
+        if os.path.exists(env_file):
+            try:
+                with open(env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        for prefix in [
+                            "LINKEDIN_JSESSIONID=",
+                            "export LINKEDIN_JSESSIONID=",
+                            "JSESSIONID=",
+                            "export JSESSIONID=",
+                        ]:
+                            if line.startswith(prefix):
+                                raw_val = line.split("=", 1)[1].split("#", 1)[0]
+                                token = format_jsessionid_token(raw_val)
+                                if token:
+                                    return token
+            except Exception as e:
+                logger.debug("Notice reading workspace .env for JSESSIONID: %s", e)
+
+        # Tier 3: Dedicated cookie files and fallbacks
+        candidate_files = [
+            self.cookie_path,
+            os.path.join(target_ws, "linkedin_system", "cookies_seed.json"),
+            os.path.join(target_ws, "linkedin_system", "session_cookies.json"),
+        ]
+
+        for path in candidate_files:
+            if not path or not os.path.exists(path):
+                continue
+            token = self._extract_jsessionid_from_file(path)
+            if token:
+                return token
+
+        if raise_if_missing:
+            raise LinkedInSessionError(
+                "LinkedIn CSRF cookie (JSESSIONID) missing.\n"
+                "Action Required: Set LINKEDIN_JSESSIONID in .env or provide session_cookies.json."
+            )
+        return None
+
+    def _extract_jsessionid_from_file(self, file_path: str) -> Optional[str]:
+        """Extracts JSESSIONID token from JSON list, JSON dict, or raw text."""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    return None
+                try:
+                    data = json.loads(content)
+                    if isinstance(data, list):
+                        for cookie in data:
+                            if isinstance(cookie, dict) and cookie.get("name") == "JSESSIONID":
+                                val = cookie.get("value")
+                                token = format_jsessionid_token(val)
+                                if token:
+                                    return token
+                    elif isinstance(data, dict):
+                        for key in ["JSESSIONID", "LINKEDIN_JSESSIONID", "jsessionid"]:
+                            if key in data:
+                                token = format_jsessionid_token(data[key])
+                                if token:
+                                    return token
+                except json.JSONDecodeError:
+                    match = re.search(r'(?:LINKEDIN_)?JSESSIONID\s*=\s*(["\']?[^\s;"\']+["\']?)', content)
+                    if match:
+                        return format_jsessionid_token(match.group(1))
+        except Exception as e:
+            logger.debug("Notice reading JSESSIONID candidate %s: %s", file_path, e)
+        return None
+
     def format_cookie(self, token: str) -> Dict[str, Any]:
         """Formats li_at string into a Playwright-compliant cookie dictionary."""
         sanitized_token = sanitize_cookie_token(token) or token
@@ -317,6 +419,28 @@ class LinkedInSessionManager:
             "sameSite": "Lax",
         }
 
+    def format_jsessionid_cookie(self, token: str) -> Dict[str, Any]:
+        """
+        Formats JSESSIONID string into a Playwright-compliant cookie dictionary.
+        Requires domain: ".www.linkedin.com", path: "/", httpOnly: False,
+        secure: True, sameSite: "None", preserving quotes ("ajax:...").
+        """
+        formatted_val = format_jsessionid_token(token) or token
+        return {
+            "name": "JSESSIONID",
+            "value": formatted_val,
+            "domain": ".www.linkedin.com",
+            "path": "/",
+            "httpOnly": False,
+            "secure": True,
+            "sameSite": "None",
+        }
+
+    def get_jsessionid_dict(self) -> Optional[Dict[str, Any]]:
+        """Returns single Playwright JSESSIONID cookie dict or None if not configured."""
+        token = self.get_jsessionid_cookie(raise_if_missing=False)
+        return self.format_jsessionid_cookie(token) if token else None
+
     def get_cookie_dict(self) -> Dict[str, Any]:
         """Returns single Playwright cookie dict or raises LinkedInCookieMissingError."""
         token = self.get_li_at_cookie(raise_if_missing=True)
@@ -326,9 +450,10 @@ class LinkedInSessionManager:
         """
         Returns Playwright cookie list or raises LinkedInCookieMissingError.
         If a rich session_cookies.json file is available, loads all companion cookies
-        (JSESSIONID, bcookie, bscookie, etc.) while ensuring li_at is updated with the active token.
+        (JSESSIONID, bcookie, bscookie, etc.) while ensuring li_at and JSESSIONID are synchronized.
         """
         token = self.get_li_at_cookie(raise_if_missing=True)
+        jsessionid_token = self.get_jsessionid_cookie(raise_if_missing=False)
         cookies = []
         if self.cookie_path and os.path.exists(self.cookie_path):
             try:
@@ -342,12 +467,44 @@ class LinkedInSessionManager:
         has_li_at = False
         for c in cookies:
             if c.get("name") == "li_at":
-                c["value"] = token
+                c["value"] = sanitize_cookie_token(token) or token
+                c["domain"] = ".linkedin.com"
+                c["path"] = "/"
+                c["httpOnly"] = True
+                c["secure"] = True
+                c["sameSite"] = "Lax"
                 has_li_at = True
                 break
 
         if not has_li_at:
             cookies.append(self.format_cookie(token))
+
+        # Synchronize or append JSESSIONID
+        if jsessionid_token:
+            has_jsessionid = False
+            for c in cookies:
+                if c.get("name") == "JSESSIONID":
+                    c["value"] = format_jsessionid_token(jsessionid_token)
+                    c["domain"] = ".www.linkedin.com"
+                    c["path"] = "/"
+                    c["httpOnly"] = False
+                    c["secure"] = True
+                    c["sameSite"] = "None"
+                    has_jsessionid = True
+                    break
+            if not has_jsessionid:
+                cookies.append(self.format_jsessionid_cookie(jsessionid_token))
+        else:
+            # Format any existing JSESSIONID in cookies to adhere to required schema
+            for c in cookies:
+                if c.get("name") == "JSESSIONID":
+                    c["value"] = format_jsessionid_token(c.get("value"))
+                    c["domain"] = ".www.linkedin.com"
+                    c["path"] = "/"
+                    c["httpOnly"] = False
+                    c["secure"] = True
+                    c["sameSite"] = "None"
+                    break
 
         return cookies
 

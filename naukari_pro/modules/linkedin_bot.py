@@ -117,11 +117,13 @@ class EasyApplySelectors:
     NEXT_BUTTONS = [
         "button[data-easy-apply-next-button]",
         "button[aria-label='Continue to next step']",
+        "button[data-control-name='continue_unify']",
         "button:has-text('Next')",
         "footer button.artdeco-button--primary:has-text('Next')",
     ]
     REVIEW_BUTTONS = [
         "button[aria-label='Review your application']",
+        "button[data-control-name='review_unify']",
         "button:has-text('Review')",
         "footer button.artdeco-button--primary:has-text('Review')",
     ]
@@ -201,7 +203,12 @@ async def safe_count(loc: Any) -> int:
         return 0
     try:
         res = loc.count()
-        return await res if inspect.isawaitable(res) else res
+        val = await res if inspect.isawaitable(res) else res
+        if isinstance(val, (int, float)) and not isinstance(val, bool):
+            return int(val)
+        if isinstance(val, str) and val.strip().isdigit():
+            return int(val.strip())
+        return 0
     except Exception:
         return 0
 
@@ -1199,8 +1206,15 @@ class LinkedInEasyApplyBot:
         """Triggers the Easy Apply modal and waits for DOM mount."""
         return await self.open_easy_apply_modal(self.page)
 
-    async def open_easy_apply_modal(self, page: Optional[Any] = None) -> Optional[Any]:
-        """Clicks the Easy Apply button and returns the active modal container."""
+    async def open_easy_apply_modal(
+        self,
+        page: Optional[Any] = None,
+        timeout_ms: int = 3000
+    ) -> Optional[Any]:
+        """
+        Clicks the Easy Apply button and awaits active modal container DOM attachment.
+        Eliminates zero-wait race conditions via explicit async wait_for_selector.
+        """
         target_page = page or self.page
         if not target_page:
             return None
@@ -1218,13 +1232,49 @@ class LinkedInEasyApplyBot:
                         clicked = True
                         break
                     except Exception:
-                        continue
+                        try:
+                            # Resilient fallback: force click if button is obscured by banner
+                            res = loc.first.click(force=True) if hasattr(loc.first, "click") else None
+                            if inspect.isawaitable(res):
+                                await res
+                            clicked = True
+                            break
+                        except Exception:
+                            continue
 
         if not clicked:
             self.current_state = ModalState.TERMINAL_FAILED
             return None
 
-        # Wait for modal container mount
+        # 1. Fast-path check: modal container already present in DOM (e.g. offline unit test mocks)
+        for m_sel in self.selectors.MODAL_CONTAINERS:
+            if hasattr(target_page, "locator"):
+                m_loc = target_page.locator(m_sel)
+                if await safe_count(m_loc) > 0:
+                    self.current_state = ModalState.MODAL_MOUNTED
+                    return m_loc.first
+
+        # 2. Explicit async wait via Playwright wait_for_selector (eliminates zero-wait race conditions)
+        combined_sel = ", ".join(self.selectors.MODAL_CONTAINERS)
+        if hasattr(target_page, "wait_for_selector"):
+            try:
+                res_w = target_page.wait_for_selector(combined_sel, state="attached", timeout=timeout_ms)
+                if inspect.isawaitable(res_w):
+                    await res_w
+            except Exception as e:
+                logger.debug("Combined modal wait_for_selector timed out (%sms): %s", timeout_ms, e)
+                # Resilient fallback: attempt wait on primary modal selectors individually
+                for m_sel in self.selectors.MODAL_CONTAINERS[:3]:
+                    try:
+                        res_w = target_page.wait_for_selector(m_sel, state="attached", timeout=1000)
+                        if inspect.isawaitable(res_w):
+                            elem = await res_w
+                            if elem:
+                                break
+                    except Exception:
+                        continue
+
+        # 3. Post-wait locator resolution
         for m_sel in self.selectors.MODAL_CONTAINERS:
             if hasattr(target_page, "locator"):
                 m_loc = target_page.locator(m_sel)

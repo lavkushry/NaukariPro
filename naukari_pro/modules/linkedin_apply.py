@@ -624,25 +624,54 @@ class LinkedInApplyEngine:
                                     stats["skipped"] += 1
                                     continue
 
-                                # 3. Match Scoring Gate (>= 70.0%)
-                                score_res = self.scorer.evaluate(
-                                    job_title=job.get("title", ""),
-                                    job_description=job.get("raw_snippet", "")
-                                )
+                                # 3. Match Scoring Gate (Stage 1 / Preliminary Evaluation)
+                                # Check if vacancy qualified Stage 1 during search or requested two-stage scoring
+                                is_two_stage = bool(job.get("stage1_passed") or job.get("two_stage_scoring"))
 
-                                if not score_res.passed or score_res.score < self.min_score:
+                                if job.get("stage1_passed") is False and not job.get("two_stage_scoring"):
                                     logger.info(
-                                        "Job %s ('%s') gated out: score %.1f%% < %.1f%%",
-                                        job_id, job.get("title"), score_res.score, self.min_score
+                                        "Job %s ('%s') gated out: Stage 1 title alignment failed",
+                                        job_id, job.get("title")
                                     )
                                     stats["skipped"] += 1
                                     continue
 
-                                stats["scored_above_threshold"] += 1
-                                logger.info(
-                                    "Target Vacancy Qualified: '%s' at '%s' (Score: %.1f%%). Navigating to Easy Apply...",
-                                    job.get("title"), job.get("company"), score_res.score
-                                )
+                                score_res = None
+                                if not is_two_stage:
+                                    # Evaluate snippet against min_score threshold
+                                    score_res = self.scorer.evaluate(
+                                        job_title=job.get("title", ""),
+                                        job_description=job.get("raw_snippet", "")
+                                    )
+                                    if score_res.passed and score_res.score >= self.min_score:
+                                        # Directly qualified by rich snippet
+                                        stats["scored_above_threshold"] += 1
+                                        logger.info(
+                                            "Target Vacancy Qualified (Pre-scored): '%s' at '%s' (Score: %.1f%%). Navigating to Easy Apply...",
+                                            job.get("title"), job.get("company"), score_res.score
+                                        )
+                                    else:
+                                        # Snippet lacks details; verify if title qualifies for Stage 2 right-pane JD evaluation
+                                        title_score, _, disq_title, _ = self.scorer.evaluate_title(job.get("title", ""))
+                                        title_pct = (title_score / 35.0) * 100.0 if not disq_title else 0.0
+                                        if not disq_title and title_pct >= 30.0:
+                                            is_two_stage = True
+                                            logger.info(
+                                                "Job %s ('%s') snippet score %.1f%% < %.1f%%, but title alignment %.1f%% >= 30%%. Deferring to Stage 2 full JD evaluation.",
+                                                job_id, job.get("title"), score_res.score, self.min_score, title_pct
+                                            )
+                                        else:
+                                            logger.info(
+                                                "Job %s ('%s') gated out: score %.1f%% < %.1f%%",
+                                                job_id, job.get("title"), score_res.score, self.min_score
+                                            )
+                                            stats["skipped"] += 1
+                                            continue
+                                else:
+                                    logger.info(
+                                        "Job %s ('%s') Stage 1 qualified. Navigating to job page for Stage 2 full JD evaluation...",
+                                        job_id, job.get("title")
+                                    )
 
                                 # 4. Navigate directly to job view URL
                                 try:
@@ -656,6 +685,70 @@ class LinkedInApplyEngine:
                                     self.circuit_breaker.record_failure(f"NAV_ERROR: {e}")
                                     continue
 
+                                # Stage 2: Post-Navigation Full Job Description Evaluation
+                                if is_two_stage:
+                                    full_jd_text = ""
+                                    if hasattr(self.search_engine, "extract_right_pane_jd"):
+                                        try:
+                                            ext_res = self.search_engine.extract_right_pane_jd(page)
+                                            full_jd_text = await ext_res if inspect.isawaitable(ext_res) else (ext_res or "")
+                                        except Exception as e_ext:
+                                            logger.debug("Notice extracting right-pane JD for job %s: %s", job_id, e_ext)
+
+                                    # Hydration retry if right pane not immediately mounted
+                                    if not full_jd_text and hasattr(page, "wait_for_selector"):
+                                        try:
+                                            w_res = page.wait_for_selector(
+                                                "div#job-details, div.jobs-description__content, article.jobs-description__container",
+                                                timeout=2000
+                                            )
+                                            if inspect.isawaitable(w_res):
+                                                await w_res
+                                            if hasattr(self.search_engine, "extract_right_pane_jd"):
+                                                ext_res = self.search_engine.extract_right_pane_jd(page)
+                                                full_jd_text = await ext_res if inspect.isawaitable(ext_res) else (ext_res or "")
+                                        except Exception:
+                                            pass
+
+                                    if hasattr(self.search_engine, "evaluate_stage2_jd"):
+                                        try:
+                                            stage2_passed, score_res = self.search_engine.evaluate_stage2_jd(
+                                                job,
+                                                full_jd_text,
+                                                min_match_score=self.min_score
+                                            )
+                                        except Exception as e_eval:
+                                            logger.debug("Notice evaluating stage2 JD via search_engine: %s", e_eval)
+                                            score_res = self.scorer.evaluate(
+                                                job_title=job.get("title", ""),
+                                                job_description=full_jd_text or job.get("raw_snippet", "")
+                                            )
+                                            stage2_passed = score_res.passed and score_res.score >= self.min_score
+                                            job["stage2_passed"] = stage2_passed
+                                            job["match_score"] = score_res.score
+                                    else:
+                                        score_res = self.scorer.evaluate(
+                                            job_title=job.get("title", ""),
+                                            job_description=full_jd_text or job.get("raw_snippet", "")
+                                        )
+                                        stage2_passed = score_res.passed and score_res.score >= self.min_score
+                                        job["stage2_passed"] = stage2_passed
+                                        job["match_score"] = score_res.score
+
+                                    if not stage2_passed:
+                                        logger.info(
+                                            "Job %s ('%s') gated out at Stage 2: full JD score %.1f%% < %.1f%%",
+                                            job_id, job.get("title"), getattr(score_res, "score", 0.0), self.min_score
+                                        )
+                                        stats["skipped"] += 1
+                                        continue
+
+                                    stats["scored_above_threshold"] += 1
+                                    logger.info(
+                                        "Target Vacancy Stage 2 Qualified: '%s' at '%s' (Score: %.1f%%). Proceeding to Easy Apply...",
+                                        job.get("title"), job.get("company"), score_res.score
+                                    )
+
                                 # 5. Execute Easy Apply Workflow
                                 app_res = await self.navigator.execute_easy_apply(
                                     page=page,
@@ -668,7 +761,7 @@ class LinkedInApplyEngine:
                                     "job_id": job_id,
                                     "title": job.get("title"),
                                     "company": job.get("company"),
-                                    "score": score_res.score,
+                                    "score": score_res.score if score_res and hasattr(score_res, "score") else job.get("match_score", 0.0),
                                     "status": app_res.get("status"),
                                     "success": app_res.get("success", False)
                                 }

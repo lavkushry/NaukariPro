@@ -220,22 +220,25 @@ class LinkedInSearchUrlBuilder:
         """
         Normalizes freshness input (int seconds, 'r86400', or semantic aliases) to 'r<seconds>' or None.
         """
-        if freshness is None or freshness == 0 or freshness == "all" or freshness == "any":
+        if freshness is None:
             return None
 
-        if isinstance(freshness, int):
-            if freshness <= 0:
-                return None
-            return f"r{freshness}"
+        if isinstance(freshness, (int, float)):
+            sec = int(freshness)
+            return f"r{sec}" if sec > 0 else None
 
         if isinstance(freshness, str):
             f_clean = freshness.strip().lower()
+            if not f_clean or f_clean in {"0", "r0", "all", "any"}:
+                return None
             if f_clean in FRESHNESS_MAP:
                 return FRESHNESS_MAP[f_clean]
             if f_clean.startswith("r") and f_clean[1:].isdigit():
-                return f_clean
+                sec = int(f_clean[1:])
+                return f"r{sec}" if sec > 0 else None
             if f_clean.isdigit():
-                return f"r{f_clean}"
+                sec = int(f_clean)
+                return f"r{sec}" if sec > 0 else None
 
         return None
 
@@ -246,7 +249,7 @@ class LinkedInSearchUrlBuilder:
         location: str = "Bengaluru",
         freshness_sec: Optional[Union[int, str]] = 86400,
         easy_apply_only: bool = True,
-        experience_levels: Optional[str] = "2,3",
+        experience_levels: Optional[str] = "2,3,4",
         workplace_types: Optional[str] = None,
         sort_by: str = "DD",
         start: int = 0,
@@ -374,6 +377,27 @@ class LinkedInSearchUrlBuilder:
 
 DEFAULT_APPLIED_FILE = "linkedin_system/applied_jobs.json"
 DEFAULT_SEEN_FILE = "linkedin_system/seen_jobs.json"
+
+# ==============================================================================
+# Deduplication Status Filter Standards
+# ==============================================================================
+
+CONFIRMED_APPLICATION_STATUSES = {
+    "submitted",
+    "submitted (confirmed)",
+    "applied",
+    "success",
+}
+
+IGNORED_APPLICATION_STATUSES = {
+    "submitted_dry_run",
+    "failed",
+    "modal_failed",
+    "checkpoint_blocked",
+    "skipped_low_match",
+    "skipped_policy_bandit",
+    "error",
+}
 
 
 class JobDeduplicator:
@@ -516,6 +540,8 @@ class JobDeduplicator:
         """
         Scans Naukri_Live_Application_Tracker.xlsx under LinkedIn_Applications_Log
         and Applications_Log to backfill any applied job IDs missing from JSON cache.
+        Strictly includes only confirmed submission statuses (Submitted, Submitted (Confirmed),
+        Applied, SUCCESS) and ignores dry-run, failed, or blocked statuses.
         """
         path = tracker_path or self.tracker_path or "Naukri_Live_Application_Tracker.xlsx"
         if not os.path.exists(path):
@@ -527,15 +553,104 @@ class JobDeduplicator:
             for sheetname in ["LinkedIn_Applications_Log", "Applications_Log"]:
                 if sheetname in wb.sheetnames:
                     ws = wb[sheetname]
+                    status_col = None
+                    url_col = None
+                    id_col = None
+                    is_first_row = True
+
                     for row in ws.iter_rows(values_only=True):
-                        for cell in row:
-                            if cell and isinstance(cell, str) and "linkedin.com/jobs/view/" in cell:
-                                match = re.search(r"/jobs/view/(\d+)", cell)
-                                if match:
-                                    jid = match.group(1)
-                                    if jid not in self._applied_ids:
-                                        self._applied_ids.add(jid)
-                                        added_count += 1
+                        if not row or not any(row):
+                            continue
+
+                        # Header detection on first non-empty row
+                        if is_first_row:
+                            is_first_row = False
+                            row_header_candidates = [
+                                str(c).strip().lower() for c in row if c is not None
+                            ]
+                            is_header = any(
+                                h in {
+                                    "status", "job url", "url", "link", "job id", "id",
+                                    "job title", "title", "company", "company name",
+                                    "application date", "applied timestamp", "platform",
+                                    "location", "match score", "match score (%)", "header1", "header2"
+                                }
+                                for h in row_header_candidates
+                            )
+                            if is_header:
+                                for idx, c in enumerate(row):
+                                    if c is None:
+                                        continue
+                                    c_low = str(c).strip().lower()
+                                    if c_low == "status" or "status" in c_low:
+                                        status_col = idx
+                                    elif c_low in {"job url", "url", "link"} or "url" in c_low:
+                                        url_col = idx
+                                    elif c_low in {"job id", "id"} or "job id" in c_low:
+                                        id_col = idx
+                                continue  # Skip processing the header row itself
+
+                        # Extract Job ID
+                        jid = None
+                        if url_col is not None and url_col < len(row):
+                            c = row[url_col]
+                            if c and isinstance(c, str) and "linkedin.com/jobs/view/" in c:
+                                m = re.search(r"/jobs/view/(\d+)", c)
+                                if m:
+                                    jid = m.group(1)
+
+                        if not jid:
+                            for cell in row:
+                                if cell and isinstance(cell, str) and "linkedin.com/jobs/view/" in cell:
+                                    match = re.search(r"/jobs/view/(\d+)", cell)
+                                    if match:
+                                        jid = match.group(1)
+                                        break
+
+                        if not jid and id_col is not None and id_col < len(row):
+                            c = row[id_col]
+                            if c and (isinstance(c, int) or (isinstance(c, str) and c.strip().isdigit())):
+                                jid = str(c).strip()
+
+                        if not jid:
+                            continue
+
+                        # Inspect Status column
+                        row_status = None
+                        if status_col is not None and status_col < len(row):
+                            row_status = row[status_col]
+                        elif sheetname == "LinkedIn_Applications_Log" and len(row) > 6:
+                            row_status = row[6]
+                        elif sheetname == "Applications_Log" and len(row) > 8:
+                            row_status = row[8]
+                        else:
+                            for cell in row:
+                                if cell and isinstance(cell, str):
+                                    c_low = cell.strip().lower()
+                                    if c_low in CONFIRMED_APPLICATION_STATUSES or c_low in IGNORED_APPLICATION_STATUSES:
+                                        row_status = cell
+                                        break
+
+                        # Evaluate confirmed vs unconfirmed
+                        if row_status is not None and str(row_status).strip():
+                            status_clean = str(row_status).strip().lower()
+                            if status_clean in CONFIRMED_APPLICATION_STATUSES:
+                                if jid not in self._applied_ids:
+                                    self._applied_ids.add(jid)
+                                    added_count += 1
+                            else:
+                                # Explicitly unconfirmed status (e.g. SUBMITTED_DRY_RUN, FAILED)
+                                continue
+                        else:
+                            # If sheet defined a Status header but row cell is empty, skip
+                            if status_col is not None:
+                                continue
+                            else:
+                                # Backward compatibility for mock/legacy rows with no status column
+                                if jid not in self._applied_ids:
+                                    self._applied_ids.add(jid)
+                                    added_count += 1
+
             if added_count > 0:
                 self._atomic_save(self.applied_file, {
                     "applied_job_ids": sorted(list(self._applied_ids)),
@@ -754,6 +869,13 @@ class JobMatchScorer:
             reasons.append("TITLE_MATCH_NONE: Title did not match data engineering taxonomy (0.0/35.0)")
 
         return title_score, penalty, disqualified, reasons
+
+    def evaluate_title(self, job_title: str) -> Tuple[float, float, bool, List[str]]:
+        """
+        Public facade for title evaluation against data engineering taxonomy.
+        Returns: (title_score, penalty, disqualified, reasons)
+        """
+        return self._evaluate_title(job_title)
 
     def _extract_experience(self, jd_text: str, title_text: str = "") -> Tuple[float, Optional[str], float, List[str]]:
         """
@@ -1070,11 +1192,17 @@ async def safe_get_attribute(loc: Any, attr: str, default: Optional[str] = None)
 
 
 async def safe_count(loc: Any) -> int:
+    """Safely retrieves locator count or 0."""
+    if loc is None:
+        return 0
     try:
         res = loc.count()
-        if inspect.isawaitable(res):
-            return await res
-        return int(res)
+        val = await res if inspect.isawaitable(res) else res
+        if isinstance(val, (int, float)) and not isinstance(val, bool):
+            return int(val)
+        if isinstance(val, str) and val.strip().isdigit():
+            return int(val.strip())
+        return 0
     except Exception:
         return 0
 
@@ -1120,6 +1248,15 @@ class LinkedInJobCardParser:
         "h1.jobs-search-no-results__title",
         "h1.artdeco-empty-state__headline",
         "div.artdeco-empty-state",
+    ]
+
+    RIGHT_PANE_JD_SELECTORS: List[str] = [
+        "div#job-details",
+        "div.jobs-description__content",
+        "article.jobs-description__container",
+        "div.jobs-box__html-content",
+        "div.jobs-description",
+        "div.jobs-search__job-details",
     ]
 
     async def parse_job_cards(
@@ -1259,6 +1396,28 @@ class LinkedInJobCardParser:
         except Exception as e:
             logger.debug("Error parsing single card: %s", e)
             return None
+
+    async def extract_full_job_description(self, page: Any) -> str:
+        """
+        Extracts full job description text from right pane or standalone job view page.
+        Traverses prioritized selectors to eliminate the 55% snippet ceiling.
+        """
+        if not page or not hasattr(page, "locator"):
+            return ""
+
+        for sel in self.RIGHT_PANE_JD_SELECTORS:
+            try:
+                loc = page.locator(sel)
+                if await safe_count(loc) > 0:
+                    first_loc = loc.first if hasattr(loc, "first") else loc
+                    if await safe_is_visible(first_loc):
+                        text = await safe_inner_text(first_loc)
+                        if text and len(text.strip()) > 50:
+                            return text.strip()
+            except Exception as e:
+                logger.debug("Error extracting JD with selector %s: %s", sel, e)
+                continue
+        return ""
 
     async def extract_job_id(self, card: Any, page: Optional[Any] = None) -> Optional[str]:
         """Extracts and normalizes numeric job ID following 5-tier priority hierarchy."""
@@ -1465,6 +1624,7 @@ class LinkedInSearchEngine:
         location: str = "Bengaluru",
         freshness_sec: int = 86400,
         easy_apply_only: bool = True,
+        experience_levels: Optional[str] = "2,3,4",
         **kwargs
     ) -> str:
         """
@@ -1475,8 +1635,38 @@ class LinkedInSearchEngine:
             location=location,
             freshness_sec=freshness_sec,
             easy_apply_only=easy_apply_only,
+            experience_levels=experience_levels,
             **kwargs
         )
+
+    async def extract_right_pane_jd(self, page: Any) -> str:
+        """Extracts right-pane or full page job description text."""
+        return await self.card_parser.extract_full_job_description(page)
+
+    def evaluate_stage2_jd(
+        self,
+        card: Dict[str, Any],
+        full_jd_text: str,
+        candidate_skills: Optional[List[str]] = None,
+        min_match_score: float = 70.0,
+    ) -> Tuple[bool, MatchScoreResult]:
+        """
+        Stage 2 full JD evaluation:
+        Scores candidate skills, Azure ecosystem, Databricks, PySpark, Python/SQL against
+        the complete right-pane job description.
+        """
+        title = card.get("title", "")
+        res = self.scorer.evaluate(
+            job_title=title,
+            job_description=full_jd_text,
+            candidate_skills=candidate_skills
+        )
+        card["full_description"] = full_jd_text
+        card["stage2_match_score"] = res.score
+        card["stage2_passed"] = (res.score >= min_match_score)
+        card["match_score"] = res.score
+        card["match_result"] = asdict(res)
+        return card["stage2_passed"], res
 
     def generate_search_matrix(
         self,
@@ -1552,106 +1742,140 @@ class LinkedInSearchEngine:
         min_match_score: float = 70.0,
         candidate_skills: Optional[List[str]] = None,
         policy: Optional[Any] = None,
+        experience_levels: Optional[str] = "2,3,4",
+        auto_fallback_freshness: bool = True,
+        stage1_title_threshold: float = 30.0,
     ) -> List[Dict[str, Any]]:
         """
         Orchestrates full search execution:
         1. Generates search URLs across requested pages.
         2. Navigates page and extracts job cards via progressive de-occlusion.
         3. Deduplicates against seen and applied IDs.
-        4. Evaluates match score and gates at >= min_match_score (default 70.0%).
+        4. Evaluates match score via Stage 1 title harvest filter (>= stage1_title_threshold).
         5. Intercepts match gate with LinUCB contextual bandit selection policy when available.
         6. Marks evaluated jobs in deduplication cache.
-        7. Returns list of qualified, unapplied jobs (re-ranked by policy score).
+        7. Widens search window to 7 days (r604800) if initial 24h search produces < 3 qualified jobs.
+        8. Returns list of qualified, unapplied jobs (re-ranked by policy score).
         """
         qualified_jobs: List[Dict[str, Any]] = []
         seen_batch_ids: Set[str] = set()
         active_policy = policy if policy is not None else self.policy
         policy_skipped_jobs: List[Dict[str, Any]] = []
 
-        for page_idx in range(1, max_pages + 1):
-            url = self.build_search_url(
-                keyword=keyword,
-                location=location,
-                freshness_sec=freshness_sec,
-                easy_apply_only=easy_apply_only,
-                page=page_idx,
-            )
-            logger.info("Navigating to LinkedIn search page %d: %s", page_idx, url)
-
-            if hasattr(page, "goto"):
-                try:
-                    res_goto = page.goto(url)
-                    if inspect.isawaitable(res_goto):
-                        await res_goto
-                except Exception as e:
-                    logger.warning("Error navigating to %s: %s", url, e)
-                    continue
-
-            cards = await self.parse_job_cards(page=page, scroll_to_load=True)
-            if not cards:
-                logger.info("No cards found on page %d for %s in %s.", page_idx, keyword, location)
-                break
-
-            # Filter against already applied jobs
-            unapplied = self.deduplicator.filter_unapplied_jobs(cards)
-
-            for card in unapplied:
-                jid = card.get("job_id")
-                if not jid or jid in seen_batch_ids:
-                    continue
-                seen_batch_ids.add(jid)
-
-                if card.get("is_already_applied"):
-                    self.deduplicator.mark_applied(jid, job_info=card)
-                    continue
-
-                if easy_apply_only and not card.get("is_easy_apply"):
-                    self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_NOT_EASY_APPLY")
-                    continue
-
-                title = card.get("title", "")
-                snippet = card.get("raw_snippet", "")
-                match_res = self.scorer.evaluate(
-                    job_title=title,
-                    job_description=snippet,
-                    candidate_skills=candidate_skills
+        freshness_stages = [freshness_sec]
+        for stage_idx, cur_freshness in enumerate(freshness_stages):
+            if stage_idx > 0:
+                logger.info(
+                    "Adaptive freshness triggered: found %d qualified jobs with freshness %s (< 3). Widening search to f_TPR=r604800 (past week)...",
+                    len(qualified_jobs),
+                    freshness_sec
                 )
 
-                card["match_score"] = match_res.score
-                card["match_result"] = asdict(match_res)
+            for page_idx in range(1, max_pages + 1):
+                url = self.build_search_url(
+                    keyword=keyword,
+                    location=location,
+                    freshness_sec=cur_freshness,
+                    easy_apply_only=easy_apply_only,
+                    experience_levels=experience_levels,
+                    page=page_idx,
+                )
+                logger.info("Navigating to LinkedIn search page %d: %s", page_idx, url)
 
-                if active_policy is not None:
-                    job_ctx = {
-                        "match_score": match_res.score,
-                        "required_yoe": 2.5,
-                        "posting_age_hours": 24.0,
-                        "company": card.get("company", ""),
-                        "platform": "LinkedIn Easy Apply",
-                        "salary_lpa": 20.0,
-                        "jd": f"{title} {snippet}",
-                    }
-                    action, ucb_score, diag = active_policy.select_action(job_ctx, explore=True, increment_decision=True)
-                    card["policy_version"] = getattr(active_policy, "policy_version", "v2.1-linucb")
-                    card["policy_action"] = action.name if hasattr(action, "name") else str(action)
-                    card["policy_score"] = ucb_score
-                    card["policy_propensity"] = diag.get("propensity", 1.0)
-                    card["policy_diagnostics"] = diag
+                if hasattr(page, "goto"):
+                    try:
+                        res_goto = page.goto(url)
+                        if inspect.isawaitable(res_goto):
+                            await res_goto
+                    except Exception as e:
+                        logger.warning("Error navigating to %s: %s", url, e)
+                        continue
 
-                    if match_res.score >= min_match_score:
-                        if card["policy_action"] == "SKIP":
-                            policy_skipped_jobs.append(card)
-                            self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_POLICY_BANDIT")
-                            continue
-                        self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
-                        qualified_jobs.append(card)
+                cards = await self.parse_job_cards(page=page, scroll_to_load=True)
+                if not cards:
+                    logger.info("No cards found on page %d for %s in %s.", page_idx, keyword, location)
+                    break
+
+                # Filter against already applied jobs
+                unapplied = self.deduplicator.filter_unapplied_jobs(cards)
+
+                for card in unapplied:
+                    jid = card.get("job_id")
+                    if not jid or jid in seen_batch_ids:
+                        continue
+                    seen_batch_ids.add(jid)
+
+                    if card.get("is_already_applied"):
+                        self.deduplicator.mark_applied(jid, job_info=card)
+                        continue
+
+                    if easy_apply_only and not card.get("is_easy_apply"):
+                        self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_NOT_EASY_APPLY")
+                        continue
+
+                    title = card.get("title", "")
+                    snippet = card.get("raw_snippet", "")
+
+                    # Stage 1: Card Title Alignment & Preliminary Snippet Scoring
+                    title_score, title_pen, disqualified_title, title_reasons = self.scorer._evaluate_title(title)
+                    title_match_pct = round((title_score / 35.0) * 100.0, 1) if not disqualified_title else 0.0
+                    card["title_match_score"] = title_match_pct
+
+                    match_res = self.scorer.evaluate(
+                        job_title=title,
+                        job_description=snippet,
+                        candidate_skills=candidate_skills
+                    )
+
+                    card["match_score"] = match_res.score
+                    card["match_result"] = asdict(match_res)
+                    card["stage1_passed"] = bool(not disqualified_title and title_match_pct >= stage1_title_threshold)
+
+                    # Stage 1 Qualification: pass if title match meets threshold or snippet meets min_score
+                    is_stage1_qualified = bool(not disqualified_title and (card["stage1_passed"] or match_res.score >= min_match_score))
+
+                    if active_policy is not None:
+                        job_ctx = {
+                            "match_score": max(match_res.score, title_match_pct) if card["stage1_passed"] else match_res.score,
+                            "required_yoe": 2.5,
+                            "posting_age_hours": 24.0,
+                            "company": card.get("company", ""),
+                            "platform": "LinkedIn Easy Apply",
+                            "salary_lpa": 20.0,
+                            "jd": f"{title} {snippet}",
+                        }
+                        action, ucb_score, diag = active_policy.select_action(job_ctx, explore=True, increment_decision=True)
+                        card["policy_version"] = getattr(active_policy, "policy_version", "v2.1-linucb")
+                        card["policy_action"] = action.name if hasattr(action, "name") else str(action)
+                        card["policy_score"] = ucb_score
+                        card["policy_propensity"] = diag.get("propensity", 1.0)
+                        card["policy_diagnostics"] = diag
+
+                        if is_stage1_qualified:
+                            if card["policy_action"] == "SKIP":
+                                policy_skipped_jobs.append(card)
+                                self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_POLICY_BANDIT")
+                                continue
+                            self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
+                            qualified_jobs.append(card)
+                        else:
+                            self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
                     else:
-                        self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
-                else:
-                    if match_res.score >= min_match_score:
-                        self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
-                        qualified_jobs.append(card)
-                    else:
-                        self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
+                        if is_stage1_qualified:
+                            self.deduplicator.mark_seen(jid, job_info=card, status="QUALIFIED")
+                            qualified_jobs.append(card)
+                        else:
+                            self.deduplicator.mark_seen(jid, job_info=card, status="SKIPPED_LOW_MATCH")
+
+            # Trigger adaptive freshness if initial 24h search yielded < 3 qualified jobs
+            if (
+                stage_idx == 0
+                and auto_fallback_freshness
+                and len(qualified_jobs) < 3
+                and LinkedInSearchUrlBuilder.format_freshness(cur_freshness) == "r86400"
+            ):
+                if 604800 not in freshness_stages:
+                    freshness_stages.append(604800)
 
         if active_policy is not None:
             # Volume floor enforcement: top up with highest match_score skipped jobs if below floor

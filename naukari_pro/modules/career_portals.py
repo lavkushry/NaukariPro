@@ -14,13 +14,18 @@ import os
 import sys
 import json
 import time
+import logging
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import openpyxl
 
 from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH, load_config
+from naukari_pro.modules.learning.screening_solver import FactMatrixScreeningSolver
+from naukari_pro.modules.learning.evidence import EvidenceVerifier
+
+logger = logging.getLogger("naukariPro.CareerPortals")
 
 # Candidate Ground Truth
 PROFILE_PATH = Path.home() / ".job-apply" / "profile.json"
@@ -269,9 +274,650 @@ def log_portal_application(
         return False
 
 
+def safe_count(locator: Any) -> int:
+    """Safely extracts integer count from Playwright locator, returning 0 on mock or failure."""
+    try:
+        if locator is None:
+            return 0
+        c = locator.count()
+        if hasattr(c, "__await__") or not isinstance(c, (int, float)):
+            return 0
+        return int(c)
+    except Exception:
+        return 0
+
+
+class BaseATSHandler:
+    """Base class for dedicated ATS platform form handlers."""
+
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None, ats_type: str = "Generic"):
+        self.profile = profile
+        self.solver = solver or FactMatrixScreeningSolver()
+        self.ats_type = ats_type
+
+    def detect_barriers(self, page: Any) -> Optional[str]:
+        """Detects barriers such as CAPTCHAs, MFA, or login walls."""
+        if not page:
+            return None
+        try:
+            captcha_selectors = [
+                "iframe[src*='recaptcha']",
+                "iframe[src*='hcaptcha']",
+                "iframe[src*='turnstile']",
+                "div.g-recaptcha",
+                "div.h-captcha",
+                "div.cf-turnstile",
+                "#cf-turnstile",
+                "[data-sitekey]"
+            ]
+            for sel in captcha_selectors:
+                try:
+                    loc = page.locator(sel)
+                    if safe_count(loc) > 0 and loc.first.is_visible():
+                        return f"CAPTCHA Challenge detected ({sel})"
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return None
+
+    def fill_form(self, page: Any) -> Dict[str, Any]:
+        """Fills standard form inputs and screening questions."""
+        raise NotImplementedError
+
+    def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
+        """Uploads resume to available file input."""
+        if not page or not resume_path or not os.path.exists(resume_path):
+            return False
+        try:
+            file_input = page.locator("input[type='file']").first
+            if safe_count(file_input) > 0:
+                file_input.set_input_files(resume_path)
+                return True
+        except Exception as e:
+            logger.debug("Resume upload notice in %s: %s", self.ats_type, e)
+        return False
+
+    def submit_form(self, page: Any) -> bool:
+        """Finds and clicks submit button. Returns True if clicked."""
+        raise NotImplementedError
+
+    def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
+        """Verifies if the page transitioned to a genuine confirmation page."""
+        raise NotImplementedError
+
+
+class GreenhouseHandler(BaseATSHandler):
+    """Dedicated handler for Greenhouse ATS (boards.greenhouse.io)."""
+
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
+        super().__init__(profile, solver, ats_type="Greenhouse")
+
+    def fill_form(self, page: Any) -> Dict[str, Any]:
+        filled = []
+        p = self.profile
+        if not page:
+            return {"filled": filled, "ats": "Greenhouse"}
+
+        field_map = [
+            ("#first_name, input[name*='first_name' i], input[autocomplete='given-name']", p.get("firstName", "Lavkush"), "First Name"),
+            ("#last_name, input[name*='last_name' i], input[autocomplete='family-name']", p.get("lastName", "Kumar"), "Last Name"),
+            ("#email, input[type='email'], input[name*='email' i]", p.get("email", "lavkushry@gmail.com"), "Email"),
+            ("#phone, input[type='tel'], input[name*='phone' i]", p.get("phone", "+91-9122036484"), "Phone"),
+            ("#job_application_location, input[name*='location' i]", p.get("city", "Hyderabad"), "Location"),
+            ("input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkushry"), "LinkedIn"),
+            ("input[name*='website' i], input[name*='portfolio' i], input[name*='github' i]", p.get("portfolioUrl", "https://github.com/lavkushry"), "Website"),
+        ]
+        for selector, val, label in field_map:
+            try:
+                loc = page.locator(selector).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    loc.fill(str(val))
+                    filled.append(label)
+            except Exception:
+                pass
+
+        # Custom screening questions using FactMatrixScreeningSolver
+        try:
+            custom_fields = page.locator("div.field, div.custom-question, .form-group")
+            field_cnt = safe_count(custom_fields)
+            for i in range(min(field_cnt, 20)):
+                field_elem = custom_fields.nth(i)
+                label_elem = field_elem.locator("label").first
+                if safe_count(label_elem) > 0:
+                    q_text = label_elem.inner_text().strip()
+                    if q_text:
+                        opts = []
+                        opt_elems = field_elem.locator("option")
+                        if safe_count(opt_elems) > 0:
+                            opts = [opt.inner_text().strip() for opt in opt_elems.all() if opt.inner_text().strip()]
+                        decision = self.solver.evaluate_question(q_text, context={"options": opts})
+                        if decision.answer and not decision.is_ambiguous and decision.confidence >= 0.7:
+                            select_elem = field_elem.locator("select").first
+                            if safe_count(select_elem) > 0:
+                                try:
+                                    select_elem.select_option(label=decision.answer)
+                                    filled.append(f"Screening: {q_text[:20]}")
+                                    continue
+                                except Exception:
+                                    pass
+                            radios = field_elem.locator("input[type='radio']")
+                            if safe_count(radios) > 0:
+                                r_labels = field_elem.locator("label")
+                                for r_idx in range(safe_count(r_labels)):
+                                    r_lbl = r_labels.nth(r_idx)
+                                    if decision.answer.lower() in r_lbl.inner_text().lower():
+                                        try:
+                                            r_lbl.click()
+                                            filled.append(f"Screening: {q_text[:20]}")
+                                            break
+                                        except Exception:
+                                            pass
+                                continue
+                            text_in = field_elem.locator("input[type='text'], textarea").first
+                            if safe_count(text_in) > 0:
+                                try:
+                                    text_in.fill(str(decision.answer))
+                                    filled.append(f"Screening: {q_text[:20]}")
+                                except Exception:
+                                    pass
+        except Exception as e_custom:
+            logger.debug("Greenhouse custom screening notice: %s", e_custom)
+
+        return {"filled": filled, "ats": "Greenhouse"}
+
+    def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
+        if not page or not resume_path or not os.path.exists(resume_path):
+            return False
+        try:
+            file_input = page.locator("#resume, input[type='file'][id*='resume' i], input[type='file']").first
+            if safe_count(file_input) > 0:
+                file_input.set_input_files(resume_path)
+                return True
+        except Exception as e:
+            logger.debug("Greenhouse resume upload notice: %s", e)
+        return False
+
+    def submit_form(self, page: Any) -> bool:
+        if not page:
+            return False
+        submit_selectors = [
+            "input#submit_app",
+            "button#submit_app",
+            "input[type='submit'][value*='Submit' i]",
+            "button[type='submit']:has-text('Submit Application')",
+            "button:has-text('Submit Application')",
+            "button[type='submit']"
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    btn.click(timeout=5000)
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
+        if not page:
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                url = (getattr(page, "url", "") or "").lower()
+                if "/confirmation" in url or "application_confirmation" in url:
+                    return True
+                conf_selectors = [
+                    "#application_confirmation",
+                    "div[data-qa='confirmation-page']",
+                    "h1:has-text('Thank you')",
+                    "h2:has-text('Thank you')",
+                    "h1:has-text('Application Submitted')",
+                    "h2:has-text('Application Submitted')",
+                    "div:has-text('Thank you for applying')",
+                    "div:has-text('Your application was submitted')"
+                ]
+                for sel in conf_selectors:
+                    try:
+                        loc = page.locator(sel)
+                        if safe_count(loc) > 0 and loc.first.is_visible():
+                            errs = page.locator(".field-error, li.error, .error-message, div.error")
+                            if safe_count(errs) == 0 or not errs.first.is_visible():
+                                return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(1)
+        return False
+
+
+class LeverHandler(BaseATSHandler):
+    """Dedicated handler for Lever ATS (jobs.lever.co)."""
+
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
+        super().__init__(profile, solver, ats_type="Lever")
+
+    def fill_form(self, page: Any) -> Dict[str, Any]:
+        filled = []
+        p = self.profile
+        if not page:
+            return {"filled": filled, "ats": "Lever"}
+
+        field_map = [
+            ("input[name='name']", p.get("fullName", "Lavkush Kumar"), "Full Name"),
+            ("input[name='email']", p.get("email", "lavkushry@gmail.com"), "Email"),
+            ("input[name='phone']", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[name='org']", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Current Company"),
+            ("input[name='urls[LinkedIn]']", p.get("linkedInUrl", "https://linkedin.com/in/lavkushry"), "LinkedIn"),
+            ("input[name='urls[GitHub]']", p.get("githubUrl", "https://github.com/lavkushry"), "GitHub"),
+            ("input[name='urls[Portfolio]'], input[name='urls[Other]']", p.get("portfolioUrl", "https://github.com/lavkushry"), "Portfolio"),
+        ]
+        for selector, val, label in field_map:
+            try:
+                loc = page.locator(selector).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    loc.fill(str(val))
+                    filled.append(label)
+            except Exception:
+                pass
+
+        try:
+            questions = page.locator(".application-question, .custom-question")
+            q_cnt = safe_count(questions)
+            for i in range(min(q_cnt, 15)):
+                q_box = questions.nth(i)
+                lbl = q_box.locator(".text, label").first
+                if safe_count(lbl) > 0:
+                    q_text = lbl.inner_text().strip()
+                    opt_elems = q_box.locator("option, label")
+                    opts = [o.inner_text().strip() for o in opt_elems.all() if o.inner_text().strip()] if safe_count(opt_elems) > 0 else []
+                    decision = self.solver.evaluate_question(q_text, context={"options": opts})
+                    if decision.answer and not decision.is_ambiguous:
+                        radios = q_box.locator("label")
+                        clicked_radio = False
+                        for r_idx in range(safe_count(radios)):
+                            r_lbl = radios.nth(r_idx)
+                            if decision.answer.lower() in r_lbl.inner_text().lower():
+                                try:
+                                    r_lbl.click()
+                                    filled.append(f"Screening: {q_text[:20]}")
+                                    clicked_radio = True
+                                    break
+                                except Exception:
+                                    pass
+                        if not clicked_radio:
+                            inp = q_box.locator("input[type='text'], textarea").first
+                            if safe_count(inp) > 0:
+                                try:
+                                    inp.fill(str(decision.answer))
+                                    filled.append(f"Screening: {q_text[:20]}")
+                                except Exception:
+                                    pass
+        except Exception as e_lever:
+            logger.debug("Lever screening notice: %s", e_lever)
+
+        return {"filled": filled, "ats": "Lever"}
+
+    def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
+        if not page or not resume_path or not os.path.exists(resume_path):
+            return False
+        try:
+            file_input = page.locator("#resume-upload-input, input[name='resume'], input[type='file']").first
+            if safe_count(file_input) > 0:
+                file_input.set_input_files(resume_path)
+                return True
+        except Exception as e:
+            logger.debug("Lever resume upload notice: %s", e)
+        return False
+
+    def submit_form(self, page: Any) -> bool:
+        if not page:
+            return False
+        submit_selectors = [
+            "button#btn-submit",
+            "button[type='submit']",
+            "button:has-text('Submit application')",
+            "button:has-text('Apply')",
+            ".postings-btn"
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    btn.click(timeout=5000)
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
+        if not page:
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                url = (getattr(page, "url", "") or "").lower()
+                if "/thanks" in url or "/confirmation" in url:
+                    return True
+                conf_selectors = [
+                    ".application-confirmation",
+                    "h2:has-text('Thank you')",
+                    "h3:has-text('Thank you')",
+                    "h2:has-text('Application Submitted')",
+                    "div:has-text('Thank you for applying')",
+                    "div:has-text('Your application has been received')"
+                ]
+                for sel in conf_selectors:
+                    try:
+                        loc = page.locator(sel)
+                        if safe_count(loc) > 0 and loc.first.is_visible():
+                            errs = page.locator(".error-message, .error-label")
+                            if safe_count(errs) == 0 or not errs.first.is_visible():
+                                return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(1)
+        return False
+
+
+class AshbyHandler(BaseATSHandler):
+    """Dedicated handler for Ashby ATS (jobs.ashbyhq.com)."""
+
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
+        super().__init__(profile, solver, ats_type="Ashby")
+
+    def fill_form(self, page: Any) -> Dict[str, Any]:
+        filled = []
+        p = self.profile
+        if not page:
+            return {"filled": filled, "ats": "Ashby"}
+
+        field_map = [
+            ("input[name='name'], input[id*='name' i]", p.get("fullName", "Lavkush Kumar"), "Full Name"),
+            ("input[name='email'], input[id*='email' i]", p.get("email", "lavkushry@gmail.com"), "Email"),
+            ("input[name='phoneNumber'], input[type='tel']", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkushry"), "LinkedIn"),
+            ("input[name*='github' i], input[id*='github' i]", p.get("githubUrl", "https://github.com/lavkushry"), "GitHub"),
+        ]
+        for selector, val, label in field_map:
+            try:
+                loc = page.locator(selector).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    loc.fill(str(val))
+                    filled.append(label)
+            except Exception:
+                pass
+        return {"filled": filled, "ats": "Ashby"}
+
+    def submit_form(self, page: Any) -> bool:
+        if not page:
+            return False
+        submit_selectors = [
+            "button[type='submit']",
+            "button:has-text('Submit Application')",
+            "button:has-text('Apply')"
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    btn.click(timeout=5000)
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
+        if not page:
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                url = (getattr(page, "url", "") or "").lower()
+                if "/confirmation" in url or "/submitted" in url:
+                    return True
+                conf_selectors = [
+                    "h1:has-text('Application Submitted')",
+                    "h2:has-text('Application Submitted')",
+                    "h1:has-text('Thank you')",
+                    "h2:has-text('Thank you')",
+                    "div:has-text('Your application has been submitted')"
+                ]
+                for sel in conf_selectors:
+                    try:
+                        loc = page.locator(sel)
+                        if safe_count(loc) > 0 and loc.first.is_visible():
+                            return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(1)
+        return False
+
+
+class WorkdayHandler(BaseATSHandler):
+    """Dedicated handler for Workday ATS (*.myworkdayjobs.com)."""
+
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
+        super().__init__(profile, solver, ats_type="Workday")
+
+    def detect_barriers(self, page: Any) -> Optional[str]:
+        parent_barrier = super().detect_barriers(page)
+        if parent_barrier:
+            return parent_barrier
+        if not page:
+            return None
+        try:
+            account_selectors = [
+                "[data-automation-id='signInLink']",
+                "input[data-automation-id='email']",
+                "input[data-automation-id='password']",
+                "button[data-automation-id='signInSubmitButton']",
+                "h2:has-text('Sign In')",
+                "h3:has-text('Create Account')"
+            ]
+            for sel in account_selectors:
+                try:
+                    loc = page.locator(sel)
+                    if safe_count(loc) > 0 and loc.first.is_visible():
+                        return f"Workday Account / Sign-In Barrier detected ({sel})"
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return None
+
+    def fill_form(self, page: Any) -> Dict[str, Any]:
+        filled = []
+        p = self.profile
+        if not page:
+            return {"filled": filled, "ats": "Workday"}
+
+        try:
+            start_btn = page.locator("button[data-automation-id='startApplication'], button[data-automation-id='applyButton']").first
+            if safe_count(start_btn) > 0 and start_btn.is_visible():
+                start_btn.click()
+                time.sleep(2)
+        except Exception:
+            pass
+
+        field_map = [
+            ("input[data-automation-id='legalNameSection_firstName']", p.get("firstName", "Lavkush"), "First Name"),
+            ("input[data-automation-id='legalNameSection_lastName']", p.get("lastName", "Kumar"), "Last Name"),
+            ("input[data-automation-id='email'], input[data-automation-id='contactInfoEmail']", p.get("email", "lavkushry@gmail.com"), "Email"),
+            ("input[data-automation-id='phone-number'], input[data-automation-id='phoneNumber']", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[data-automation-id='addressSection_city']", p.get("city", "Hyderabad"), "City"),
+        ]
+        for selector, val, label in field_map:
+            try:
+                loc = page.locator(selector).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    loc.fill(str(val))
+                    filled.append(label)
+            except Exception:
+                pass
+
+        try:
+            next_btn = page.locator("button[data-automation-id='bottom-navigation-next-button'], button[data-automation-id='saveAndContinue']").first
+            if safe_count(next_btn) > 0 and next_btn.is_visible():
+                next_btn.click()
+                time.sleep(2)
+        except Exception:
+            pass
+
+        return {"filled": filled, "ats": "Workday"}
+
+    def submit_form(self, page: Any) -> bool:
+        if not page:
+            return False
+        submit_selectors = [
+            "button[data-automation-id='submitButton']",
+            "button[data-automation-id='bottom-navigation-submit-button']",
+            "button:has-text('Submit')"
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    btn.click(timeout=5000)
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
+        if not page:
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                conf_selectors = [
+                    "div[data-automation-id='applicationSubmitted']",
+                    "div[data-automation-id='thankYouMessage']",
+                    "[data-automation-id='pageHeader']:has-text('Application Submitted')",
+                    "h2:has-text('Application Submitted')"
+                ]
+                for sel in conf_selectors:
+                    try:
+                        loc = page.locator(sel)
+                        if safe_count(loc) > 0 and loc.first.is_visible():
+                            return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(1)
+        return False
+
+
+class GenericPortalHandler(BaseATSHandler):
+    """Fallback handler for generic company portals and ATS platforms."""
+
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None, ats_type: str = "Generic Portal"):
+        super().__init__(profile, solver, ats_type=ats_type)
+
+    def fill_form(self, page: Any) -> Dict[str, Any]:
+        filled = []
+        p = self.profile
+        if not page:
+            return {"filled": filled, "ats": self.ats_type}
+
+        field_map = [
+            ("#first_name, input[name*='first_name' i], input[name*='firstName' i]", p.get("firstName", "Lavkush"), "First Name"),
+            ("#last_name, input[name*='last_name' i], input[name*='lastName' i]", p.get("lastName", "Kumar"), "Last Name"),
+            ("#email, input[type='email'], input[name*='email' i]", p.get("email", "lavkushry@gmail.com"), "Email"),
+            ("#phone, input[type='tel'], input[name*='phone' i], input[name*='mobile' i]", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[name*='company' i], input[name*='org' i]", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Company"),
+            ("input[name*='title' i], input[name*='designation' i]", p.get("currentTitle", "DevOps Engineer / Azure Data Engineer"), "Title"),
+            ("input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkushry"), "LinkedIn"),
+            ("input[name*='github' i], input[id*='github' i]", p.get("githubUrl", "https://github.com/lavkushry"), "GitHub"),
+        ]
+        for selector, val, label in field_map:
+            try:
+                loc = page.locator(selector).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    loc.fill(str(val))
+                    filled.append(label)
+            except Exception:
+                pass
+        return {"filled": filled, "ats": self.ats_type}
+
+    def submit_form(self, page: Any) -> bool:
+        if not page:
+            return False
+        submit_selectors = [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Submit Application')",
+            "button:has-text('Submit')",
+            "button:has-text('Apply')"
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    btn.click(timeout=5000)
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
+        if not page:
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                url = (getattr(page, "url", "") or "").lower()
+                for term in ["/confirm", "/thank", "/submitted", "/success", "/applied"]:
+                    if term in url:
+                        return True
+                conf_selectors = [
+                    "h1:has-text('Application Submitted')",
+                    "h2:has-text('Application Submitted')",
+                    "h1:has-text('Thank You')",
+                    "h2:has-text('Thank You')",
+                    "h1:has-text('Application Received')",
+                    "h2:has-text('Application Received')"
+                ]
+                for sel in conf_selectors:
+                    try:
+                        loc = page.locator(sel)
+                        if safe_count(loc) > 0 and loc.first.is_visible():
+                            errs = page.locator(".error, .has-error, [aria-invalid='true']")
+                            if safe_count(errs) == 0 or not errs.first.is_visible():
+                                return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(1)
+        return False
+
+
 class CareerPortalFiller:
     def __init__(self):
         self.profile = load_applicant_profile()
+        self.solver = FactMatrixScreeningSolver()
+
+    def get_handler(self, ats_type: str) -> BaseATSHandler:
+        """Returns dedicated platform handler for the detected ATS type."""
+        t = (ats_type or "").lower()
+        if "greenhouse" in t:
+            return GreenhouseHandler(self.profile, solver=self.solver)
+        elif "lever" in t:
+            return LeverHandler(self.profile, solver=self.solver)
+        elif "ashby" in t:
+            return AshbyHandler(self.profile, solver=self.solver)
+        elif "workday" in t:
+            return WorkdayHandler(self.profile, solver=self.solver)
+        else:
+            return GenericPortalHandler(self.profile, solver=self.solver, ats_type=ats_type)
 
     def detect_ats(self, url: Optional[str] = None) -> str:
         if not url or not isinstance(url, str):
@@ -429,6 +1075,7 @@ class CareerPortalFiller:
     def fill_in_chrome(self, portal_url: str, company: str = "Company", role: str = "Azure Data Engineer"):
         """
         Fills the career portal inside Google Chrome via AppleScript without submitting.
+        On non-macOS systems (e.g. Linux VM), routes via headless Playwright.
         Leaves the application on the review page for human verification.
         """
         if not portal_url or not isinstance(portal_url, str):
@@ -436,6 +1083,22 @@ class CareerPortalFiller:
             return False, []
 
         ats_type = self.detect_ats(portal_url)
+
+        if sys.platform != "darwin":
+            print("    [!] Notice: AppleScript Chrome automation is macOS-only. Routing via headless Playwright...")
+            try:
+                from playwright.sync_api import sync_playwright
+                from naukari_pro.session import get_stealth_context
+                with sync_playwright() as p:
+                    context = get_stealth_context(p, headless=True)
+                    page = context.pages[0] if context.pages else context.new_page()
+                    success, filled = self.fill_in_playwright(page, portal_url, company=company, role=role)
+                    context.close()
+                    return success, filled
+            except Exception as e_pw:
+                print(f"    Playwright fallback notice: {e_pw}")
+                return False, []
+
         print(f"\n[*] Opening {ats_type} Career Portal in Chrome...")
         print(f"    URL: {portal_url}")
 
@@ -846,53 +1509,62 @@ class CareerPortalFiller:
                         target_portal_url = page.url
 
                     ats_type = self.detect_ats(target_portal_url)
+                    handler = self.get_handler(ats_type)
                     print(f"    ATS Platform Detected: {ats_type} ({target_portal_url[:80]}...)")
 
-                    # Run auto-filler script
-                    js_code = self.generate_fill_script(ats_type)
-                    res_str = active_page.evaluate(js_code)
-                    res_data = json.loads(res_str) if isinstance(res_str, str) else res_str
-                    filled_fields = res_data.get("filled", [])
-                    print(f"    [✓] Auto-Filled Fields: {', '.join(filled_fields) if filled_fields else 'Basic Fields'}")
-
-                    # Attach resume PDF if file input exists
-                    file_input = active_page.locator("input[type='file']").first
-                    resume_path = self.profile.get("resumePath")
-                    if file_input.count() > 0 and resume_path and os.path.exists(resume_path):
-                        try:
-                            file_input.set_input_files(resume_path)
-                            print(f"    📎 Resume Uploaded: {os.path.basename(resume_path)}")
-                        except Exception as e_file:
-                            print(f"    Notice on resume attachment: {e_file}")
-
-                    time.sleep(2)
-
-                    # Submit application if requested with 3-point evidence state machine
-                    from naukari_pro.modules.learning.evidence import EvidenceVerifier
-                    ev = EvidenceVerifier()
+                    # Check for barriers (CAPTCHAs, Workday sign-in, MFA)
+                    barrier = handler.detect_barriers(active_page)
                     evidence_file = None
                     sub_status = "Form Auto-Filled (Ready for Review)"
+                    ev = EvidenceVerifier()
 
-                    if auto_submit:
-                        submit_btn = active_page.locator("button[type='submit'], input[type='submit'], button:has-text('Submit Application'), button:has-text('Submit'), button:has-text('Apply')").first
-                        if submit_btn.count() > 0 and submit_btn.is_visible():
-                            try:
-                                submit_btn.click(timeout=5000)
-                                time.sleep(3)
-                                sc_path = ev.capture_screenshot_sync(active_page, company, title)
-                                if sc_path and ev.verify_screenshot_file(sc_path):
-                                    sub_status = "Submitted (Confirmed)"
-                                    evidence_file = sc_path
-                                    print(f"    🚀 Form Submitted on {ats_type} Portal with verified evidence: {sc_path}")
+                    if barrier:
+                        print(f"    ⚠️ Barrier encountered on {ats_type} portal: {barrier}. Halting auto-submit; maintaining status as Ready for Review.")
+                        try:
+                            handler.fill_form(active_page)
+                            js_code = self.generate_fill_script(ats_type)
+                            active_page.evaluate(js_code)
+                            handler.upload_resume(active_page, self.profile.get("resumePath"))
+                        except Exception:
+                            pass
+                    else:
+                        # Dedicated ATS form filling + JS script execution
+                        handler_res = handler.fill_form(active_page)
+                        js_code = self.generate_fill_script(ats_type)
+                        try:
+                            res_str = active_page.evaluate(js_code)
+                            res_data = json.loads(res_str) if isinstance(res_str, str) else res_str
+                            filled_fields = list(set((handler_res.get("filled", []) + res_data.get("filled", []))))
+                        except Exception:
+                            filled_fields = handler_res.get("filled", [])
+                        print(f"    [✓] Auto-Filled Fields: {', '.join(filled_fields) if filled_fields else 'Basic Fields'}")
+
+                        # Attach resume PDF if file input exists
+                        resume_path = self.profile.get("resumePath")
+                        uploaded = handler.upload_resume(active_page, resume_path)
+                        if uploaded:
+                            print(f"    📎 Resume Uploaded: {os.path.basename(resume_path)}")
+
+                        time.sleep(2)
+
+                        # Submit application if requested with strict confirmation detection
+                        if auto_submit:
+                            submit_clicked = handler.submit_form(active_page)
+                            if submit_clicked:
+                                is_confirmed = handler.verify_confirmation(active_page, timeout=12.0)
+                                if is_confirmed:
+                                    sc_path = ev.capture_screenshot_sync(active_page, company, title)
+                                    sub_status, evidence_file = ev.evaluate_submission_state(is_confirmed, sc_path)
+                                    if sub_status == "Submitted (Confirmed)":
+                                        print(f"    🚀 Form Submitted on {ats_type} Portal with verified evidence: {evidence_file}")
+                                    else:
+                                        print(f"    ⚠️ Form submitted but screenshot header validation failed; status maintained as Ready for Review.")
                                 else:
+                                    print(f"    ⚠️ Submit clicked but confirmation not detected; status strictly maintained as Ready for Review.")
                                     sub_status = "Form Auto-Filled (Ready for Review)"
-                                    print(f"    ⚠️ Submitted but unconfirmed; status strictly maintained as Ready for Review.")
-                            except Exception as e_sub:
-                                print(f"    Submit click notice: {e_sub}")
+                            else:
+                                print(f"    ℹ️ Final submit button requires manual review; form 100% pre-filled.")
                                 sub_status = "Form Auto-Filled (Ready for Review)"
-                        else:
-                            print(f"    ℹ️ Final submit button requires manual review; form 100% pre-filled.")
-                            sub_status = "Form Auto-Filled (Ready for Review)"
 
                     # Update Excel tracker row
                     ws.cell(row=row_idx, column=9, value=sub_status)

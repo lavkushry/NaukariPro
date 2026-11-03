@@ -946,9 +946,9 @@ def test_url_builder_freshness_filters():
 
 
 def test_url_builder_experience_level_filter():
-    """Validates f_E=2,3 experience filter for Entry-level and Associate (2.5 YOE)."""
+    """Validates f_E=2,3,4 experience filter for Entry-level, Associate, and Mid-Senior (2.5 YOE)."""
     url_default = LinkedInSearchUrlBuilder.build("Delta Lake")
-    assert "f_E=2,3" in url_default
+    assert "f_E=2,3,4" in url_default
 
     url_custom = LinkedInSearchUrlBuilder.build("Delta Lake", experience_levels="2")
     assert "f_E=2" in url_custom
@@ -1054,7 +1054,7 @@ def test_url_builder_parse_roundtrip():
     assert parsed["geoId"] == TECH_HUBS["Pune"]
     assert parsed["f_AL"] == "true"
     assert parsed["f_TPR"] == "r86400"
-    assert parsed["f_E"] == "2,3"
+    assert parsed["f_E"] == "2,3,4"
     assert parsed["sortBy"] == "DD"
     assert parsed["start"] == "25"
 
@@ -1606,7 +1606,7 @@ def test_tier4_multihub_search_matrix_and_deduplication():
     urls = [item["url"] for item in matrix]
     assert all("https://www.linkedin.com/jobs/search/?" in u for u in urls)
     assert all("f_AL=true" in u for u in urls)
-    assert all("f_E=2,3" in u for u in urls)
+    assert all("f_E=2,3,4" in u for u in urls)
 
 
 # ==============================================================================
