@@ -80,14 +80,14 @@ fi
 # ==============================================================================
 AGY_PROMPT='You are the autonomous AI career agent running for Lavkush Kumar (Azure Data Engineer, 2.5 YOE, ₹20 LPA target CTC, 15 days or less notice).
 Execute the complete scheduled career cycle in this workspace:
-1. Run `./naukariPro pro --headless --limit 15 --force` to:
+1. Run `./naukariPro pro --headless --limit 35 --force` to:
    - Bump and refresh the live Naukri profile to maintain "Active Today" Resdex visibility across all 3 daily runs (morning, afternoon, evening).
    - Scan recommended and search vacancies for Azure Data Engineer roles across 7 Tier-1 tech hubs (Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai) and Remote.
    - Submit applications to high-match roles (1-click and chatbot screening).
    - Ingest off-market and startup roles across LinkedIn and Hacker News "Who'\''s Hiring".
    - Check and fill external ATS portals (Greenhouse, Lever, Ashby, Workday).
    - Log all submissions to `Naukri_Live_Application_Tracker.xlsx`.
-2. Run `./naukariPro linkedin-apply --headless --limit 25` to:
+2. Run `./naukariPro linkedin-apply --headless --limit 35` to:
    - Execute autonomous LinkedIn Easy Apply applications for qualified Azure Data Engineer vacancies (score >= 70.0%).
    - Auto-answer screening questions (experience, notice period, CTC, work authorization).
    - Attach ATS resume and uncheck "Follow company".
@@ -113,14 +113,14 @@ if [ -n "$AGY_BIN" ]; then
         echo "[✓] agy CLI autonomous cycle completed successfully." | tee -a "$RUN_LOG" "$HISTORY_LOG"
     else
         echo "[!] agy CLI exited with status $AGY_STATUS. Triggering autonomous fallback..." | tee -a "$RUN_LOG" "$HISTORY_LOG"
-        ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG" || true
-        ./naukariPro linkedin-apply --headless --limit 25 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
+        ./naukariPro pro --headless --limit 35 --force 2>&1 | tee -a "$RUN_LOG" || true
+        ./naukariPro linkedin-apply --headless --limit 35 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
         echo "[✓] Fallback pipeline completed." | tee -a "$RUN_LOG" "$HISTORY_LOG"
     fi
 else
     echo "[!] agy CLI not found in PATH or ~/.local/bin/agy. Running direct Pro pipeline..." | tee -a "$RUN_LOG" "$HISTORY_LOG"
-    ./naukariPro pro --headless --limit 15 --force 2>&1 | tee -a "$RUN_LOG" || true
-    ./naukariPro linkedin-apply --headless --limit 25 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
+    ./naukariPro pro --headless --limit 35 --force 2>&1 | tee -a "$RUN_LOG" || true
+    ./naukariPro linkedin-apply --headless --limit 35 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn apply cycle notice: non-critical or throttled." | tee -a "$RUN_LOG"
 fi
 
 ./naukariPro portal-apply --batch --limit 10 --headless 2>&1 | tee -a "$RUN_LOG" || true
