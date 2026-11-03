@@ -1784,7 +1784,10 @@ class LinkedInSearchEngine:
 
                 if hasattr(page, "goto"):
                     try:
-                        res_goto = page.goto(url)
+                        try:
+                            res_goto = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                        except TypeError:
+                            res_goto = page.goto(url)
                         if inspect.isawaitable(res_goto):
                             await res_goto
                     except Exception as e:
