@@ -1,11 +1,11 @@
 #!/bin/bash
 # ==============================================================================
 # naukariPro Linux Remote Execution Wrapper
-# Executes naukariPro & agy scheduler on the remote Ubuntu instance (141.148.195.233)
+# Executes naukariPro & agy scheduler on the remote Ubuntu instance (130.210.19.226)
 # ==============================================================================
 
 SSH_KEY="$HOME/.ssh/ssh-key-2026-08-30.key"
-REMOTE_HOST="ubuntu@141.148.195.233"
+REMOTE_HOST="ubuntu@130.210.19.226"
 REMOTE_DIR="/home/ubuntu/Resume"
 
 if [ $# -eq 0 ]; then
