@@ -347,7 +347,16 @@ def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.
 
     # 7. Bind session lock lifecycle to Playwright context
     context._session_lock = session_lock
-    context.on("close", lambda _: session_lock.release())
+    context.on("close", lambda *args, **kwargs: session_lock.release())
+    orig_close = context.close
+
+    def safe_close(*args, **kwargs):
+        try:
+            return orig_close(*args, **kwargs)
+        finally:
+            session_lock.release()
+
+    context.close = safe_close
 
     context.add_init_script(STEALTH_JS)
 

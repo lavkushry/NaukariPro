@@ -100,19 +100,29 @@ class ProAutoPilotEngine:
                 print("  [*] Performing autonomous profile synchronization & recency bump...")
                 with sync_playwright() as p:
                     ctx = get_stealth_context(p, headless=self.headless)
-                    page = ctx.pages[0] if ctx.pages else ctx.new_page()
-                    if ensure_authenticated(page, headless=self.headless):
-                        sync_full_naukri_profile(page, force=self.force)
-                        if self.force:
-                            self.profile_engine.bump_profile(page, force=True)
+                    try:
+                        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                        if ensure_authenticated(page, headless=self.headless):
+                            sync_full_naukri_profile(page, force=self.force)
+                            if self.force:
+                                self.profile_engine.bump_profile(page, force=True)
+                            try:
+                                self.perf_engine.display_report(page=page)
+                            except Exception as perf_err:
+                                print(f"  [!] Notice during live performance telemetry log: {perf_err}")
+                        else:
+                            print("  [!] Browser session unauthenticated; displaying cached telemetry...")
+                            self.perf_engine.display_report()
+                    finally:
                         try:
-                            self.perf_engine.display_report(page=page)
-                        except Exception as perf_err:
-                            print(f"  [!] Notice during live performance telemetry log: {perf_err}")
-                    else:
-                        print("  [!] Browser session unauthenticated; displaying cached telemetry...")
-                        self.perf_engine.display_report()
-                    ctx.close()
+                            ctx.close()
+                        except Exception:
+                            pass
+                        try:
+                            if hasattr(ctx, "_session_lock") and ctx._session_lock:
+                                ctx._session_lock.release()
+                        except Exception:
+                            pass
             except Exception as e:
                 print(f"  [!] Notice during automated profile sync: {e}")
                 self.perf_engine.display_report()

@@ -536,6 +536,15 @@ def sync_resume_headline(page, target_headline=None, mutator=None):
                         return True
                 else:
                     logger.info("Resume Headline already matches target headline on live profile.")
+                    try:
+                        cancel_btn = page.locator('.resumeHeadline button:has-text("Cancel"), .resumeHeadline a:has-text("Cancel"), .crossIcon').first
+                        if cancel_btn.count() > 0 and cancel_btn.is_visible():
+                            cancel_btn.click()
+                        else:
+                            page.keyboard.press("Escape")
+                        time.sleep(1)
+                    except Exception:
+                        pass
                     return True
             else:
                 logger.warning("Headline textarea not visible.")
@@ -880,6 +889,21 @@ def sync_it_skills(page, it_skills=None):
 
     return True
 
+def dismiss_open_modals(page):
+    """Safely dismisses any open modal dialogs, drawers, or backdrop overlays."""
+    try:
+        page.keyboard.press("Escape")
+        time.sleep(0.5)
+        for sel in [".crossIcon", ".close", "[aria-label='Close']", "button:has-text('Cancel')", "a:has-text('Cancel')"]:
+            btns = page.locator(sel)
+            if btns.count() > 0 and btns.first.is_visible():
+                btns.first.click()
+                time.sleep(0.5)
+                break
+    except Exception:
+        pass
+
+
 def sync_full_naukri_profile(page, config=None, force=False):
     """
     Executes complete end-to-end live profile synchronization and bumping.
@@ -914,43 +938,94 @@ def sync_full_naukri_profile(page, config=None, force=False):
         BlacklistValidator.enforce(summary, field_name="profile_summary")
 
     # 1. Regenerate 1-page ATS Resume PDF
-    logger.info("Compiling canonical 1-page ATS Resume PDF from unified facts...")
-    maker = AIResumeMaker()
-    pdf_path = maker.build_ats_resume_pdf(config=cfg)
+    pdf_path = RESUME_PDF_PATH
+    try:
+        logger.info("Compiling canonical 1-page ATS Resume PDF from unified facts...")
+        maker = AIResumeMaker()
+        pdf_path = maker.build_ats_resume_pdf(config=cfg)
+    except Exception as e_pdf:
+        logger.warning("Resume PDF generation notice: %s", e_pdf)
 
     # 2. Update Resume Headline (247-char saturated)
-    sync_resume_headline(page, target_headline=headline)
+    try:
+        dismiss_open_modals(page)
+        sync_resume_headline(page, target_headline=headline)
+    except Exception as e_hl:
+        logger.warning("Resume Headline sync notice: %s", e_hl)
 
     # 3. Update Designation
-    sync_employment_designation(page, target_title=target_desig)
+    try:
+        dismiss_open_modals(page)
+        sync_employment_designation(page, target_title=target_desig)
+    except Exception as e_desig:
+        logger.warning("Designation sync notice: %s", e_desig)
 
     # 4. Update Notice Period (15 Days or less)
-    sync_notice_period(page, target_notice=target_notice)
+    try:
+        dismiss_open_modals(page)
+        sync_notice_period(page, target_notice=target_notice)
+    except Exception as e_np:
+        logger.warning("Notice period sync notice: %s", e_np)
 
     # 5. Update Profile Summary
-    sync_profile_summary(page, summary)
+    try:
+        dismiss_open_modals(page)
+        sync_profile_summary(page, summary)
+    except Exception as e_sum:
+        logger.warning("Profile summary sync notice: %s", e_sum)
 
     # 6. Update Key Skills Tag Cloud (top 25 keywords)
-    sync_key_skills(page, keywords=key_skills)
+    try:
+        dismiss_open_modals(page)
+        sync_key_skills(page, keywords=key_skills)
+    except Exception as e_ks:
+        logger.warning("Key skills sync notice: %s", e_ks)
 
     # 7. Update Employment Descriptions
-    sync_employment_descriptions(page, experience)
+    try:
+        dismiss_open_modals(page)
+        sync_employment_descriptions(page, experience)
+    except Exception as e_emp:
+        logger.warning("Employment descriptions sync notice: %s", e_emp)
 
     # 8. Update Projects
-    sync_projects(page, projects)
+    try:
+        dismiss_open_modals(page)
+        sync_projects(page, projects)
+    except Exception as e_proj:
+        logger.warning("Projects sync notice: %s", e_proj)
 
     # 9. Update Detailed IT Skills (13 skills)
-    sync_it_skills(page, it_skills=DEFAULT_IT_SKILLS)
+    try:
+        dismiss_open_modals(page)
+        sync_it_skills(page, it_skills=DEFAULT_IT_SKILLS)
+    except Exception as e_it:
+        logger.warning("IT skills sync notice: %s", e_it)
 
     # 10. Update Preferred Locations (7 Tier-1 tech hubs)
-    sync_preferred_locations(page, locations=preferred_locs)
+    try:
+        dismiss_open_modals(page)
+        sync_preferred_locations(page, locations=preferred_locs)
+    except Exception as e_loc:
+        logger.warning("Preferred locations sync notice: %s", e_loc)
 
     # 11. Upload ATS Resume PDF
-    enhancer = ProfileEnhancerEngine()
-    enhancer.upload_resume_pdf(page, pdf_path=pdf_path)
+    try:
+        dismiss_open_modals(page)
+        enhancer = ProfileEnhancerEngine()
+        enhancer.upload_resume_pdf(page, pdf_path=pdf_path)
+    except Exception as e_up:
+        logger.warning("Resume upload notice: %s", e_up)
 
     # 12. Micro-bump profile timestamp
-    enhancer.bump_profile(page, force=True)
+    try:
+        dismiss_open_modals(page)
+        enhancer = ProfileEnhancerEngine()
+        enhancer.bump_profile(page, force=True)
+    except Exception as e_bump:
+        logger.warning("Profile bump notice: %s", e_bump)
+
+    dismiss_open_modals(page)
 
     # Record sync state
     now_iso = datetime.now().isoformat()
