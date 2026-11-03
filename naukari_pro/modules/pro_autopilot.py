@@ -233,7 +233,8 @@ class ProAutoPilotEngine:
                 limit=10,
                 headless=self.headless,
                 dry_run=self.dry_run,
-                auto_submit=True
+                auto_submit=True,
+                universal_apply=self.universal_apply
             )
             if red_res.get("submitted", 0) > 0:
                 print(f"  [✓] Processed {red_res.get('submitted')} pending external portal redirects.")

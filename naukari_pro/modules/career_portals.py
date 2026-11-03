@@ -1300,18 +1300,21 @@ class CareerPortalFiller:
         dry_run: bool = False,
         min_score: float = 70.0,
         max_exp: float = 4.0,
-        auto_submit: bool = True
+        auto_submit: bool = True,
+        universal_apply: Optional[bool] = None
     ) -> Dict[str, Any]:
         """
         Processes pending external career portal redirects from Naukri_Live_Application_Tracker.xlsx.
         Scans for rows with Status == 'External Redirect' (or 'Not Available'),
-        filters by experience (<= 4 YOE) and score (>= 70%),
+        filters by experience and score unless universal_apply is enabled,
         and automates form-filling, resume attachment, and submission.
         Updates tracker Excel and applied_jobs.db.
         """
         import openpyxl
         from naukari_pro.modules.auto_apply import is_experience_eligible
         from naukari_pro.modules.db import is_job_already_applied, record_applied_job
+
+        is_universal = universal_apply if universal_apply is not None else (min_score <= 0.0)
 
         if not os.path.exists(TRACKER_PATH):
             print(f"  [!] Tracker file not found: {TRACKER_PATH}")
@@ -1341,20 +1344,21 @@ class CareerPortalFiller:
                 if not title or not company or not url or url == "N/A":
                     continue
 
-                # Pre-filtering: Experience Gate
-                is_exp_ok, exp_reason, _, _ = is_experience_eligible(
-                    exp_text=exp,
-                    title=title,
-                    url=url,
-                    candidate_exp=float(self.profile.get("experienceYears", 2.5)),
-                    max_allowed=max_exp
-                )
-                if not is_exp_ok:
-                    continue
+                if not is_universal:
+                    # Pre-filtering: Experience Gate
+                    is_exp_ok, exp_reason, _, _ = is_experience_eligible(
+                        exp_text=exp,
+                        title=title,
+                        url=url,
+                        candidate_exp=float(self.profile.get("experienceYears", 2.5)),
+                        max_allowed=max_exp
+                    )
+                    if not is_exp_ok:
+                        continue
 
-                # Pre-filtering: Match Score Gate
-                if score < min_score:
-                    continue
+                    # Pre-filtering: Match Score Gate
+                    if score < min_score:
+                        continue
 
                 candidates_to_process.append({
                     "row_idx": row_idx,
@@ -1376,7 +1380,7 @@ class CareerPortalFiller:
             except Exception:
                 active_policy = None
 
-        if active_policy is not None and candidates_to_process:
+        if not is_universal and active_policy is not None and candidates_to_process:
             try:
                 from naukari_pro.modules.learning.volume_guard import VolumeGuard
                 from naukari_pro.modules.db import get_daily_application_count, record_policy_event
@@ -1427,7 +1431,10 @@ class CareerPortalFiller:
 
         print("\n" + "=" * 65)
         print("  🌐 AUTOMATED EXTERNAL CAREER PORTAL RUNNER")
-        print(f"  Total Eligible Pending Redirects: {len(candidates_to_process)} (Score >= {min_score}%, YOE <= {max_exp})")
+        if is_universal:
+            print(f"  Total Eligible Pending Redirects: {len(candidates_to_process)} (Universal Apply Mode — No Filtering)")
+        else:
+            print(f"  Total Eligible Pending Redirects: {len(candidates_to_process)} (Score >= {min_score}%, YOE <= {max_exp})")
         print(f"  Batch Limit: {limit} | Mode: {'DRY-RUN (Simulated)' if dry_run else 'LIVE SUBMISSION'}")
         print("=" * 65)
 
