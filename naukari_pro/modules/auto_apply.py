@@ -973,9 +973,10 @@ def is_mac_chrome_available():
 # ENGINE 1: NATIVE CHROME RUNNER (macOS Authentic Session)
 # ─────────────────────────────────────────────────────────────────────────────
 class NativeChromeRunner:
-    def __init__(self, skip_list, dry_run=False):
+    def __init__(self, skip_list, dry_run=False, universal_apply=True):
         self.skip_list = skip_list
         self.dry_run = dry_run
+        self.universal_apply = universal_apply
 
     def exec_js_in_tab(self, tab_url, js_code, wait_sec=4):
         apple_script = f'''
@@ -1035,33 +1036,38 @@ class NativeChromeRunner:
         print("  ℹ️ Recommended feed batch already claimed or 0 unapplied jobs.")
         return 0
 
-    def apply_to_job(self, job_url, title, company, salary, raw_jd="", match_score=None):
+    def apply_to_job(self, job_url, title, company, salary, raw_jd="", match_score=None, universal_apply=None):
         """Applies to a single job in Chrome, handling 1-click and screening questionnaires."""
+        from naukari_pro.modules.scorecard import sync_dual_log
+        is_universal = self.universal_apply if universal_apply is None else universal_apply
+
         if match_score is None:
             match_score = calculate_match_score(f"{title} {company} {raw_jd}".strip())
 
-        if match_score < MATCH_SCORE_THRESHOLD:
-            return False, f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold"
+        if not is_universal:
+            if match_score < MATCH_SCORE_THRESHOLD:
+                return False, f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold"
 
-        # Upfront Experience Verification Gate (Enforces <= 4 YOE max and candidate compatibility)
-        is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
-            exp_text="",
-            jd_text=raw_jd,
-            title=title,
-            url=job_url,
-            candidate_exp=CANDIDATE_EXPERIENCE,
-            max_allowed=MAX_EXPERIENCE_THRESHOLD
-        )
-        if not is_exp_ok:
-            print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
-            return False, exp_reason
+            # Upfront Experience Verification Gate (Enforces <= 4 YOE max and candidate compatibility)
+            is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                exp_text="",
+                jd_text=raw_jd,
+                title=title,
+                url=job_url,
+                candidate_exp=CANDIDATE_EXPERIENCE,
+                max_allowed=MAX_EXPERIENCE_THRESHOLD
+            )
+            if not is_exp_ok:
+                print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
+                return False, exp_reason
 
-        # Persistent Deduplication Check via applied_jobs.db (live mode only)
-        if not self.dry_run:
-            from naukari_pro.modules.db import is_job_already_applied
-            if is_job_already_applied(title=title, company=company, job_url=job_url):
-                print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
-                return False, "Already applied in persistent DB"
+        # ── 3 HARD STOPS ──
+        # Hard Stop 1: Persistent Deduplication Check via applied_jobs.db
+        from naukari_pro.modules.db import is_job_already_applied
+        if is_job_already_applied(title=title, company=company, job_url=job_url):
+            print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
+            sync_dual_log(title=title, company=company, platform="naukri", status="SKIPPED_ALREADY_APPLIED", job_url=job_url, match_score=match_score)
+            return False, "Already applied in persistent DB"
 
         if self.dry_run:
             print(f"  [DRY-RUN] Would open job URL: {job_url}")
@@ -1073,6 +1079,7 @@ class NativeChromeRunner:
             print(f"    • Relocation / Immediate: Yes / Comfortable")
             score_display = f"{match_score}%"
             print(f"  [DRY-RUN] Would log to Excel: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {company}, {title}, '{score_display}', 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_ELIGIBLE', {job_url}]")
+            sync_dual_log(title=title, company=company, platform="naukri", status="SUBMITTED_DRY_RUN", job_url=job_url, match_score=match_score)
             return True, "Dry Run Simulation (No Live Application Sent)"
 
         apply_script = f'''
@@ -1311,15 +1318,25 @@ class NativeChromeRunner:
             try:
                 data = json.loads(out)
                 if data.get("action") == "company_site":
-                    return False, "Redirected to External Career Portal (Not 1-Click Apply)"
+                    from naukari_pro.modules.career_portals import CareerPortalManager
+                    cpm = CareerPortalManager()
+                    success, filled = cpm.fill(portal_url=job_url, company=company, role=title, raw_jd=raw_jd, salary=salary)
+                    status_str = "Submitted (Confirmed)" if success else "Form Auto-Filled (Ready for Review)"
+                    sync_dual_log(title=title, company=company, platform="career_portal", status=status_str, job_url=job_url, match_score=match_score)
+                    return success, f"External Portal: {status_str}"
                 if data.get("action") == "already_applied":
+                    sync_dual_log(title=title, company=company, platform="naukri", status="SKIPPED_ALREADY_APPLIED", job_url=job_url, match_score=match_score)
                     return False, "Already applied previously"
                 if data.get("isApplied"):
+                    sync_dual_log(title=title, company=company, platform="naukri", status="Submitted (Confirmed)", job_url=job_url, match_score=match_score)
                     return True, "Applied via Native Chrome"
                 else:
+                    sync_dual_log(title=title, company=company, platform="naukri", status="Form Auto-Filled", job_url=job_url, match_score=match_score)
                     return False, data.get("reason", "No apply confirmation observed")
-            except Exception:
-                pass
+            except Exception as e_json:
+                sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_FORM_ERROR", job_url=job_url, match_score=match_score, error_reason=str(e_json))
+        else:
+            sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_FORM_ERROR", job_url=job_url, match_score=match_score, error_reason="AppleScript error")
         return False, "Failed to confirm application"
 
     def run(self, limit=20):
@@ -1445,10 +1462,11 @@ class NativeChromeRunner:
 # ENGINE 2: PLAYWRIGHT STEALTH RUNNER (Linux Cloud Server / Headless Fallback)
 # ─────────────────────────────────────────────────────────────────────────────
 class PlaywrightRunner:
-    def __init__(self, skip_list, dry_run=False, proxy=None):
+    def __init__(self, skip_list, dry_run=False, proxy=None, universal_apply=True):
         self.skip_list = skip_list
         self.dry_run = dry_run
         self.proxy = proxy
+        self.universal_apply = universal_apply
 
     async def handle_chatbot(self, page):
         """
@@ -1565,42 +1583,46 @@ class PlaywrightRunner:
         }""")
         return final_check
 
-    async def apply_to_job_async(self, context, job_url, title, company, salary, raw_jd="", match_score=None, proxy=None):
+    async def apply_to_job_async(self, context, job_url, title, company, salary, raw_jd="", match_score=None, proxy=None, universal_apply=None):
         """Applies to a single job in Playwright context, handling 1-click and screening questionnaires."""
         from naukari_pro.session import parse_proxy_settings
+        from naukari_pro.modules.scorecard import sync_dual_log
+        is_universal = getattr(self, "universal_apply", True) if universal_apply is None else universal_apply
         proxy_settings = parse_proxy_settings(proxy or self.proxy or os.getenv("NAUKRI_PROXY"))
         if match_score is None:
             full_text = f"{title} {company} {raw_jd}".strip()
             match_score = calculate_match_score(full_text)
 
-        if match_score < MATCH_SCORE_THRESHOLD:
-            return False, f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold"
+        if not is_universal:
+            if match_score < MATCH_SCORE_THRESHOLD:
+                return False, f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold"
 
-        # Upfront Experience Verification Gate (Enforces <= 4 YOE max and candidate compatibility)
-        is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
-            exp_text="",
-            jd_text=raw_jd,
-            title=title,
-            url=job_url,
-            candidate_exp=CANDIDATE_EXPERIENCE,
-            max_allowed=MAX_EXPERIENCE_THRESHOLD
-        )
-        if not is_exp_ok:
-            print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
-            return False, exp_reason
+            # Upfront Experience Verification Gate (Enforces <= 4 YOE max and candidate compatibility)
+            is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                exp_text="",
+                jd_text=raw_jd,
+                title=title,
+                url=job_url,
+                candidate_exp=CANDIDATE_EXPERIENCE,
+                max_allowed=MAX_EXPERIENCE_THRESHOLD
+            )
+            if not is_exp_ok:
+                print(f"    ⛔ Application Rejected Upfront: {title} @ {company} ({exp_reason})")
+                return False, exp_reason
 
-        # Persistent Deduplication Check via applied_jobs.db (live mode only)
-        if not self.dry_run:
-            from naukari_pro.modules.db import is_job_already_applied
-            if is_job_already_applied(title=title, company=company, job_url=job_url):
-                print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
-                return False, "Already applied in persistent DB"
+        # ── 3 HARD STOPS ──
+        # Hard Stop 1: Persistent Deduplication Check via applied_jobs.db
+        from naukari_pro.modules.db import is_job_already_applied
+        if is_job_already_applied(title=title, company=company, job_url=job_url):
+            print(f"    ℹ️ Already recorded in applied_jobs.db: {title} @ {company}. Skipping.")
+            return False, "Already applied in persistent DB"
 
         if self.dry_run:
             print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {company} ({salary}) [Score: {match_score}%]")
             print(f"    • URL: {job_url}")
             print(f"    • Simulated Screening Answers: exp={EXPERIENCE_YEARS}y, notice={NOTICE_PERIOD}d, current_ctc={CURRENT_CTC}L, expected_ctc={EXPECTED_CTC}L")
             print(f"    • Simulated Excel Row: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {company}, {title}, '{match_score}%', 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_MATCH', {job_url}]")
+            sync_dual_log(title=title, company=company, platform="naukri", status="SUBMITTED_DRY_RUN", job_url=job_url, match_score=match_score)
             return True, "Dry Run Simulation (No Live Application Sent)"
 
         if not context:
@@ -1608,8 +1630,27 @@ class PlaywrightRunner:
 
         job_tab = await context.new_page()
         try:
-            await job_tab.goto(job_url, wait_until="domcontentloaded", timeout=30000)
-            await job_tab.wait_for_timeout(3000)
+            response = await job_tab.goto(job_url, wait_until="domcontentloaded", timeout=30000)
+            await job_tab.wait_for_timeout(2500)
+
+            # Hard Stop 2: Dead Link / Closed / Expired
+            is_closed = False
+            if response and response.status in (404, 410):
+                is_closed = True
+            else:
+                page_text = (await job_tab.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''"))
+                if any(phrase in page_text for phrase in ("no longer accepting applications", "job expired", "job is no longer available", "position has been closed", "expired job", "this vacancy is closed")):
+                    is_closed = True
+            if is_closed:
+                print(f"    ⛔ Job closed or expired: {title} @ {company}")
+                sync_dual_log(title=title, company=company, platform="naukri", status="SKIPPED_CLOSED_OR_EXPIRED", job_url=job_url, match_score=match_score, error_reason="Job posting closed or expired")
+                return False, "Job is closed or expired"
+
+            # Hard Stop 3 (Session check): Login page encountered
+            if "login" in job_tab.url.lower():
+                print(f"    ⚠️ Login/session invalid for {job_url}")
+                sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_INVALID_SESSION", job_url=job_url, match_score=match_score, error_reason="Login/session is invalid")
+                return False, "Login/session is invalid"
 
             # Check button status first before clicking
             btn_info = await job_tab.evaluate("""() => {
@@ -1623,10 +1664,14 @@ class PlaywrightRunner:
             }""")
 
             if btn_info.get("type") == "company_site":
-                print(f"    ℹ️ Company portal apply detected. Logging external redirect (not submitted via 1-click)...")
-                log_to_excel(title, company, "External Redirect", match_score=match_score, app_type="External Employer Portal", salary=salary, url=job_url)
+                print(f"    ℹ️ Company portal apply detected. Routing to External Career Portal Manager...")
+                from naukari_pro.modules.career_portals import CareerPortalManager
+                cpm = CareerPortalManager()
+                success, filled = cpm.fill(portal_url=job_url, company=company, role=title, headless=True, raw_jd=raw_jd, salary=salary)
+                status_str = "Submitted (Confirmed)" if success else "Form Auto-Filled (Ready for Review)"
+                sync_dual_log(title=title, company=company, platform="career_portal", status=status_str, job_url=job_url, match_score=match_score)
                 self.skip_list = add_to_skip(self.skip_list, title, company, "external-redirect")
-                return False, "Redirected to External Career Portal (Not 1-Click Apply)"
+                return success, f"External Portal: {status_str}"
 
             if btn_info.get("type") == "already_applied":
                 print(f"    ℹ️ Already applied previously. Skipping...")
@@ -1635,6 +1680,7 @@ class PlaywrightRunner:
 
             if btn_info.get("type") == "no_button":
                 print(f"    ⚠️ Apply button not found.")
+                sync_dual_log(title=title, company=company, platform="naukri", status="SKIPPED_CLOSED_OR_EXPIRED", job_url=job_url, match_score=match_score, error_reason="Apply button not found")
                 self.skip_list = add_to_skip(self.skip_list, title, company, "no-apply-button")
                 return False, "Apply button not found"
 
@@ -1649,15 +1695,29 @@ class PlaywrightRunner:
             confirmed = await self.handle_chatbot(job_tab)
             if confirmed:
                 print(f"    ✓ Successfully applied to {title} @ {company}!")
-                log_to_excel(title, company, "Submitted (Pending)", match_score=match_score, app_type="1-Click Direct", salary=salary, url=job_url)
+                # Capture confirmation screenshot
+                evidence_path = None
+                try:
+                    import re
+                    clean_id = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
+                    evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_naukri_{clean_id}.png")
+                    os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
+                    await job_tab.screenshot(path=evidence_path)
+                except Exception:
+                    evidence_path = None
+
+                status_val = "Submitted (Confirmed)" if evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024 else "Form Auto-Filled"
+                sync_dual_log(title=title, company=company, platform="naukri", status=status_val, match_score=match_score, job_url=job_url, evidence_path=evidence_path)
                 self.skip_list = add_to_skip(self.skip_list, title, company, "already-applied")
                 return True, "Applied via Playwright"
             else:
                 print(f"    ⚠️ Could not confirm application submission.")
+                sync_dual_log(title=title, company=company, platform="naukri", status="Form Auto-Filled", match_score=match_score, job_url=job_url)
                 self.skip_list = add_to_skip(self.skip_list, title, company, "unconfirmed")
-                return False, "Could not confirm application submission"
+                return False, "Form Auto-Filled"
         except Exception as e:
             print(f"    ❌ Error: {e}")
+            sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_FORM_ERROR", match_score=match_score, job_url=job_url, error_reason=str(e))
             return False, str(e)
         finally:
             await job_tab.close()
@@ -1728,24 +1788,28 @@ class PlaywrightRunner:
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
                     continue
 
-                # Upfront Experience Verification Gate
-                is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
-                    exp_text=job.get("exp", ""),
-                    jd_text=raw_jd,
-                    title=title,
-                    url=job_url,
-                    candidate_exp=CANDIDATE_EXPERIENCE,
-                    max_allowed=MAX_EXPERIENCE_THRESHOLD
-                )
-                if not is_exp_ok:
-                    print(f"  ⛔ Skipped Recommended Experience: {title} @ {comp} ({exp_reason})")
-                    self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
-                    continue
+                is_universal = getattr(self, "universal_apply", True)
 
-                acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
-                if not acceptable:
-                    self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
-                    continue
+                # Pre-filtering gates (enforced in legacy mode only)
+                if not is_universal:
+                    # Upfront Experience Verification Gate
+                    is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                        exp_text=job.get("exp", ""),
+                        jd_text=raw_jd,
+                        title=title,
+                        url=job_url,
+                        candidate_exp=CANDIDATE_EXPERIENCE,
+                        max_allowed=MAX_EXPERIENCE_THRESHOLD
+                    )
+                    if not is_exp_ok:
+                        print(f"  ⛔ Skipped Recommended Experience: {title} @ {comp} ({exp_reason})")
+                        self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
+                        continue
+
+                    acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                    if not acceptable:
+                        self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                        continue
 
                 is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
                 card_lower = f"{title} {raw_jd}".lower()
@@ -1753,7 +1817,7 @@ class PlaywrightRunner:
                     term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake")
                 )
 
-                if not is_match and is_candidate_role and not self.dry_run:
+                if not is_universal and not is_match and is_candidate_role and not self.dry_run:
                     detail_tab = await context.new_page()
                     try:
                         await detail_tab.goto(job_url, wait_until="domcontentloaded", timeout=25000)
@@ -1770,7 +1834,7 @@ class PlaywrightRunner:
                         except Exception:
                             pass
 
-                if not is_match:
+                if not is_universal and not is_match:
                     print(f"  ⛔ Skipped Recommended: {title} @ {comp} ({match_reason})")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
                     continue
@@ -1861,8 +1925,9 @@ class PlaywrightRunner:
                     continue
                 seen_urls.add(job_url)
 
+                is_universal = getattr(self, "universal_apply", True)
                 is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
-                if not is_match and not self.dry_run:
+                if not is_universal and not is_match and not self.dry_run:
                     detail_tab = await context.new_page()
                     try:
                         await detail_tab.goto(job_url, wait_until="domcontentloaded", timeout=25000)
@@ -1879,7 +1944,7 @@ class PlaywrightRunner:
                         except Exception:
                             pass
 
-                if not is_match:
+                if not is_universal and not is_match:
                     print(f"  ⛔ Skipped NVite: {title} @ {comp} ({match_reason})")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
                     continue
@@ -2055,33 +2120,35 @@ class PlaywrightRunner:
                                         self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
                                         continue
 
-                                    # Upfront Experience Verification Gate
-                                    is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
-                                        exp_text=job.get("exp", ""),
-                                        jd_text=raw_jd,
-                                        title=title,
-                                        url=job_url,
-                                        candidate_exp=CANDIDATE_EXPERIENCE,
-                                        max_allowed=MAX_EXPERIENCE_THRESHOLD
-                                    )
-                                    if not is_exp_ok:
-                                        print(f"  ⛔ Skipped Search Experience: {title} @ {comp} ({exp_reason})")
-                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
-                                        continue
+                                    is_universal = getattr(self, "universal_apply", True)
 
-                                    acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
-                                    if not acceptable:
-                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
-                                        continue
+                                    if not is_universal:
+                                        # Upfront Experience Verification Gate
+                                        is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                                            exp_text=job.get("exp", ""),
+                                            jd_text=raw_jd,
+                                            title=title,
+                                            url=job_url,
+                                            candidate_exp=CANDIDATE_EXPERIENCE,
+                                            max_allowed=MAX_EXPERIENCE_THRESHOLD
+                                        )
+                                        if not is_exp_ok:
+                                            print(f"  ⛔ Skipped Search Experience: {title} @ {comp} ({exp_reason})")
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
+                                            continue
 
-                                    # If SRP snippet is truncated (< 70%) but card is a candidate Data/Cloud/Spark role,
-                                    # enrich raw_jd with full job page text before applying the strict >= 70% gate.
+                                        acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                                        if not acceptable:
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                                            continue
+
+                                    # Compute match score for telemetry
                                     is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
                                     card_lower = f"{title} {raw_jd}".lower()
                                     is_candidate_role = score >= 25 or any(
                                         term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake")
                                     )
-                                    if not is_match and is_candidate_role and not self.dry_run:
+                                    if not is_universal and not is_match and is_candidate_role and not self.dry_run:
                                         detail_tab = await context.new_page()
                                         try:
                                             await detail_tab.goto(job_url, wait_until="domcontentloaded", timeout=25000)
@@ -2104,8 +2171,8 @@ class PlaywrightRunner:
                                             except Exception:
                                                 pass
 
-                                    # Match Scoring Gate (>= 70%) (Feature 10)
-                                    if not is_match:
+                                    # Match Scoring Gate (>= 70%) (Feature 10 - legacy mode only)
+                                    if not is_universal and not is_match:
                                         print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
                                         self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
                                         continue
@@ -2138,10 +2205,11 @@ class PlaywrightRunner:
 # MAIN AUTO APPLY ENGINE ENTRYPOINT
 # ─────────────────────────────────────────────────────────────────────────────
 class AutoApplyEngine:
-    def __init__(self, dry_run=False, policy=None):
+    def __init__(self, dry_run=False, policy=None, universal_apply=True):
         self.skip_list = load_skip_list()
         self.dry_run = dry_run
         self.policy = policy
+        self.universal_apply = universal_apply
         self.payloads: List[ApplicationPayload] = []
 
     def run_offline_dry_run(
@@ -2294,8 +2362,9 @@ class AutoApplyEngine:
 
         return self.payloads
 
-    def run(self, page=None, headless=False, limit=20, dry_run=None, job_feed=None, proxy=None):
+    def run(self, page=None, headless=False, limit=20, dry_run=None, job_feed=None, proxy=None, universal_apply=None):
         active_dry_run = self.dry_run if dry_run is None else dry_run
+        is_universal = self.universal_apply if universal_apply is None else universal_apply
 
         if active_dry_run:
             payloads = self.run_offline_dry_run(job_feed=job_feed, limit=limit)
@@ -2306,9 +2375,9 @@ class AutoApplyEngine:
             return len(valid_payloads)
 
         if not headless and is_mac_chrome_available():
-            engine = NativeChromeRunner(self.skip_list, dry_run=False)
+            engine = NativeChromeRunner(self.skip_list, dry_run=False, universal_apply=is_universal)
             return engine.run(limit=limit)
         else:
             import asyncio
-            engine = PlaywrightRunner(self.skip_list, dry_run=False, proxy=proxy)
+            engine = PlaywrightRunner(self.skip_list, dry_run=False, proxy=proxy, universal_apply=is_universal)
             return asyncio.run(engine.run_async(headless=headless, limit=limit, proxy=proxy))

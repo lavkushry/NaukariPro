@@ -166,7 +166,8 @@ SHIFT_REGEX = re.compile(
 )
 
 WORK_MODE_REGEX = re.compile(
-    r"\b(work\s+from\s+office|wfo|hybrid\s*model|in-office|on-site|onsite|flexible\s+work)\b",
+    r"\b(work\s+from\s+office|wfo|hybrid\s*model|in-office|on-site|onsite|flexible\s+work|"
+    r"comfortable\s+working\s+(out\s+of|in|from)|working\s+out\s+of\s+.*office)\b",
     re.IGNORECASE
 )
 

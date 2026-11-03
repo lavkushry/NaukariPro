@@ -15,6 +15,7 @@ import json
 import sqlite3
 import tempfile
 import warnings
+from datetime import datetime, timedelta
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -312,8 +313,9 @@ class TestVolumeGuardAndCircuitBreaker:
         vg.drop_threshold_pct = 50.0
 
         conn = get_db_connection(temp_db)
-        now = "2026-10-30 12:00:00"
-        prior_week = "2026-10-20 12:00:00"
+        dt_now = datetime.now()
+        now = (dt_now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+        prior_week = (dt_now - timedelta(days=9)).strftime("%Y-%m-%d %H:%M:%S")
         with conn:
             # Prior 7d: 20 applications with verified evidence
             for i in range(20):

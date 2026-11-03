@@ -1607,3 +1607,441 @@ class CareerPortalFiller:
         print("=" * 65)
         return {"processed": processed, "submitted": submitted, "skipped": skipped, "items": results}
 
+
+# ==============================================================================
+# EXTERNAL ATS PORTAL MANAGER & BATCH RUNNER
+# ==============================================================================
+
+CURATED_ATS_VACANCIES: List[Dict[str, Any]] = [
+    {
+        "company": "Microsoft GCC",
+        "title": "Lead Azure Data Engineer",
+        "salary": "25 - 32 Lacs PA",
+        "url": "https://boards.greenhouse.io/microsoftgcc/jobs/401",
+        "jd": "Azure Databricks PySpark Delta Lake Medallion Architecture Kafka ADF SQL Terraform",
+        "exp": "2-5 Yrs",
+        "location": "Bengaluru / Hyderabad",
+        "ats": "Greenhouse"
+    },
+    {
+        "company": "Walmart Global Tech",
+        "title": "Azure Data Platform Engineer",
+        "salary": "22 - 28 Lacs PA",
+        "url": "https://walmart.wd5.myworkdayjobs.com/en-US/jobs/job/Azure-Data-Engineer_R-9901",
+        "jd": "Azure Databricks PySpark Delta Lake SQL Terraform ADLS Gen2 DataOps",
+        "exp": "2-5 Yrs",
+        "location": "Bengaluru",
+        "ats": "Workday"
+    },
+    {
+        "company": "Uber Technologies",
+        "title": "Data Engineer II - Real-Time Streaming",
+        "salary": "24 - 35 Lacs PA",
+        "url": "https://jobs.lever.co/uber/803",
+        "jd": "Apache Kafka PySpark Delta Lake Medallion Architecture Azure Databricks SQL",
+        "exp": "2-4 Yrs",
+        "location": "Hyderabad",
+        "ats": "Lever"
+    },
+    {
+        "company": "Atlassian",
+        "title": "Data Platform Engineer",
+        "salary": "24 - 30 Lacs PA",
+        "url": "https://boards.greenhouse.io/atlassian/jobs/502",
+        "jd": "Azure Data Factory Databricks PySpark Delta Lake Terraform Medallion Lakehouse",
+        "exp": "2-5 Yrs",
+        "location": "Bengaluru / Remote",
+        "ats": "Greenhouse"
+    },
+    {
+        "company": "Databricks Partner GCC",
+        "title": "Senior Azure Databricks Specialist",
+        "salary": "25 - 34 Lacs PA",
+        "url": "https://jobs.ashbyhq.com/databricks-partner/904",
+        "jd": "Azure Databricks PySpark Delta Lake Unity Catalog Medallion Architecture SQL",
+        "exp": "2-5 Yrs",
+        "location": "Bengaluru / Pune",
+        "ats": "Ashby"
+    },
+    {
+        "company": "Swiggy Engineering",
+        "title": "Frontend React Engineer",
+        "salary": "18 - 22 Lacs PA",
+        "url": "https://boards.greenhouse.io/swiggy/jobs/701",
+        "jd": "React Redux TypeScript Next.js Tailwind CSS HTML",
+        "exp": "2-4 Yrs",
+        "location": "Bengaluru",
+        "ats": "Greenhouse"
+    }
+]
+
+
+class CareerPortalManager:
+    """
+    Unified Manager for External ATS Career Portals (Greenhouse, Lever, Ashby, Workday, etc.).
+    Coordinates detection, ATS-specific form handlers, screening question resolution, and submission.
+    """
+    def __init__(self, profile: Optional[Dict[str, Any]] = None, solver: Optional[FactMatrixScreeningSolver] = None):
+        self.filler = CareerPortalFiller()
+        self.profile = profile or self.filler.profile
+        self.solver = solver or self.filler.solver
+
+    def detect_ats(self, url: Optional[str]) -> str:
+        return self.filler.detect_ats(url)
+
+    def get_handler(self, ats_type: str) -> BaseATSHandler:
+        return self.filler.get_handler(ats_type)
+
+    def fill_dry_run(
+        self,
+        portal_url: str,
+        company: str = "Company",
+        role: str = "Azure Data Engineer",
+        raw_jd: str = "",
+        salary: str = "25 LPA",
+        match_score: Optional[int] = None
+    ) -> Any:
+        return self.filler.fill_dry_run(
+            portal_url=portal_url,
+            company=company,
+            role=role,
+            raw_jd=raw_jd,
+            salary=salary,
+            match_score=match_score
+        )
+
+    def fill(
+        self,
+        portal_url: str,
+        company: str = "Company",
+        role: str = "Azure Data Engineer",
+        headless: bool = False,
+        dry_run: bool = False,
+        raw_jd: str = "",
+        salary: str = "25 LPA",
+        page=None,
+        match_score: Optional[int] = None
+    ):
+        return self.filler.fill(
+            portal_url=portal_url,
+            company=company,
+            role=role,
+            headless=headless,
+            dry_run=dry_run,
+            raw_jd=raw_jd,
+            salary=salary,
+            page=page,
+            match_score=match_score
+        )
+
+
+class ExternalPortalBatchRunner:
+    """
+    Autonomous Batch Execution Engine for External ATS Portals.
+    In Universal Apply Mode (default):
+    - NO FILTERING: Applies to every discovered job regardless of title, company, domain, salary, or score.
+    - 3 HARD STOPS ONLY: (1) already applied, (2) closed/expired, (3) form error/auth barrier after 2 retries.
+    - 100% Dual Logging: Synchronous SQLite DB + Excel Tracker persistence.
+    """
+    def __init__(
+        self,
+        manager: Optional[CareerPortalManager] = None,
+        dry_run: bool = False,
+        headless: bool = True,
+        min_score: float = 0.0,
+        limit: int = 25,
+        min_salary: float = 0.0,
+        db_path: Optional[str] = None,
+        universal_apply: Optional[bool] = None
+    ):
+        self.manager = manager or CareerPortalManager()
+        self.dry_run = dry_run
+        self.headless = headless
+        self.min_score = min_score
+        self.limit = limit
+        self.min_salary = min_salary
+        self.db_path = db_path
+        if universal_apply is not None:
+            self.universal_apply = universal_apply
+        else:
+            self.universal_apply = (min_score <= 0.0 and min_salary <= 0.0)
+        self.curated_vacancies = list(CURATED_ATS_VACANCIES)
+
+    def run_batch(
+        self,
+        vacancies: Optional[List[Dict[str, Any]]] = None,
+        roles: Optional[List[str]] = None,
+        locations: Optional[List[str]] = None,
+        ats_types: Optional[List[str]] = None,
+        dry_run: Optional[bool] = None,
+        limit: Optional[int] = None,
+        min_score: Optional[float] = None,
+        min_salary: Optional[float] = None,
+        universal_apply: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        active_dry_run = self.dry_run if dry_run is None else dry_run
+        active_limit = self.limit if limit is None else limit
+        active_min_score = self.min_score if min_score is None else min_score
+        active_min_salary = self.min_salary if min_salary is None else min_salary
+        if universal_apply is not None:
+            is_universal = universal_apply
+        elif (min_score is not None and min_score > 0.0) or (min_salary is not None and min_salary > 0.0):
+            is_universal = False
+        else:
+            is_universal = self.universal_apply
+
+        feed = list(vacancies) if vacancies is not None else list(self.curated_vacancies)
+
+        # Filter by ats_types if explicitly specified
+        if ats_types:
+            ats_lower = [a.lower().strip() for a in ats_types]
+            filtered_feed = []
+            for v in feed:
+                v_ats = self.manager.detect_ats(v.get("url", "")).lower()
+                tag_ats = v.get("ats", "").lower()
+                if any(target in v_ats or target in tag_ats for target in ats_lower):
+                    filtered_feed.append(v)
+            feed = filtered_feed
+
+        # In legacy mode only: filter by roles if specified
+        if not is_universal and roles:
+            roles_lower = [r.lower().strip() for r in roles]
+            feed = [
+                v for v in feed
+                if any(r in v.get("title", "").lower() or r in v.get("jd", "").lower() for r in roles_lower)
+            ]
+
+        # In legacy mode only: filter by locations if specified
+        if not is_universal and locations:
+            locs_lower = [l.lower().strip() for l in locations]
+            feed = [
+                v for v in feed
+                if any(l in v.get("location", "").lower() or "remote" in v.get("location", "").lower() for l in locs_lower)
+            ]
+
+        stats = {
+            "total_evaluated": 0,
+            "submitted": 0,
+            "skipped": 0,
+            "dry_run": active_dry_run,
+            "jobs": []
+        }
+
+        from naukari_pro.modules.auto_apply import is_salary_acceptable, is_experience_eligible
+        from naukari_pro.modules.job_alerts import calculate_match_score
+        from naukari_pro.modules.db import is_job_already_applied, generate_job_id
+        from naukari_pro.modules.scorecard import sync_dual_log
+
+        for job in feed:
+            if stats["submitted"] >= active_limit:
+                break
+
+            stats["total_evaluated"] += 1
+            company = job.get("company", "Company")
+            title = job.get("title", "Role")
+            url = job.get("url", "N/A")
+            jd = job.get("jd", "")
+            salary = job.get("salary", "22 - 28 Lacs PA")
+            exp = job.get("exp", "2-5 Yrs")
+            ats_type = self.manager.detect_ats(url)
+            score = float(calculate_match_score(f"{title} {company} {jd}"))
+
+            if not is_universal:
+                # ── Legacy Mode Filtering ──
+                sal_ok, _ = is_salary_acceptable(salary, active_min_salary)
+                if not sal_ok:
+                    stats["skipped"] += 1
+                    stats["jobs"].append({
+                        "company": company,
+                        "title": title,
+                        "url": url,
+                        "ats": ats_type,
+                        "status": "REJECTED_LOW_SALARY",
+                        "score": 0.0
+                    })
+                    continue
+
+                is_exp_ok, _, _, _ = is_experience_eligible(
+                    exp_text=exp,
+                    title=title,
+                    url=url,
+                    candidate_exp=float(self.manager.profile.get("experienceYears", 2.5)),
+                    max_allowed=4.5
+                )
+                if not is_exp_ok:
+                    stats["skipped"] += 1
+                    stats["jobs"].append({
+                        "company": company,
+                        "title": title,
+                        "url": url,
+                        "ats": ats_type,
+                        "status": "REJECTED_EXPERIENCE",
+                        "score": 0.0
+                    })
+                    continue
+
+                if score < active_min_score:
+                    stats["skipped"] += 1
+                    stats["jobs"].append({
+                        "company": company,
+                        "title": title,
+                        "url": url,
+                        "ats": ats_type,
+                        "status": "REJECTED_BELOW_THRESHOLD",
+                        "score": score
+                    })
+                    continue
+
+            # ── 3 HARD STOPS (Universal Mode) ──
+
+            # Hard Stop 1: Deduplication (Job ID / URL / Title + Company)
+            cand_job_id = job.get("job_id") or generate_job_id(title, company, url)
+            if is_job_already_applied(title=title, company=company, job_url=url, job_id=cand_job_id, db_path=self.db_path):
+                stats["skipped"] += 1
+                stats["jobs"].append({
+                    "job_id": cand_job_id,
+                    "company": company,
+                    "title": title,
+                    "url": url,
+                    "ats": ats_type,
+                    "status": "SKIPPED_ALREADY_APPLIED",
+                    "score": score
+                })
+                if not active_dry_run:
+                    sync_dual_log(
+                        title=title,
+                        company=company,
+                        platform=f"career_portal ({ats_type})",
+                        status="SKIPPED_ALREADY_APPLIED",
+                        job_url=url,
+                        match_score=score,
+                        experience_req=exp,
+                        db_path=self.db_path
+                    )
+                continue
+
+            # Hard Stop 2: Dead / Closed / Expired Link Check
+            if not url or url == "N/A" or "example.com" in url or "invalid" in url:
+                stats["skipped"] += 1
+                stats["jobs"].append({
+                    "company": company,
+                    "title": title,
+                    "url": url,
+                    "ats": ats_type,
+                    "status": "SKIPPED_CLOSED_OR_EXPIRED",
+                    "score": score
+                })
+                if not active_dry_run:
+                    sync_dual_log(
+                        title=title,
+                        company=company,
+                        platform=f"career_portal ({ats_type})",
+                        status="SKIPPED_CLOSED_OR_EXPIRED",
+                        job_url=url,
+                        match_score=score,
+                        experience_req=exp,
+                        error_reason="Dead link / expired URL",
+                        db_path=self.db_path
+                    )
+                continue
+
+            # Process Application
+            if active_dry_run:
+                payload = self.manager.fill_dry_run(
+                    portal_url=url,
+                    company=company,
+                    role=title,
+                    raw_jd=jd,
+                    salary=salary,
+                    match_score=int(score)
+                )
+                stats["submitted"] += 1
+                stats["jobs"].append({
+                    "company": company,
+                    "title": title,
+                    "url": url,
+                    "ats": ats_type,
+                    "status": "SUBMITTED_DRY_RUN",
+                    "score": score,
+                    "payload": payload
+                })
+            else:
+                # Live Execution with 2 Retries (Hard Stop 3 Enforcement)
+                submission_success = False
+                filled_fields = []
+                evidence_file = None
+                last_error = ""
+
+                for attempt in range(1, 3):
+                    try:
+                        success, fields = self.manager.fill(
+                            portal_url=url,
+                            company=company,
+                            role=title,
+                            headless=self.headless,
+                            dry_run=False,
+                            raw_jd=jd,
+                            salary=salary,
+                            match_score=int(score)
+                        )
+                        submission_success = success
+                        filled_fields = fields
+                        break
+                    except Exception as e_fill:
+                        last_error = str(e_fill)
+                        if attempt < 2:
+                            time.sleep(2)
+
+                if not submission_success and not filled_fields and last_error:
+                    # Hard Stop 3: Failed after 2 retries
+                    stats["skipped"] += 1
+                    stats["jobs"].append({
+                        "company": company,
+                        "title": title,
+                        "url": url,
+                        "ats": ats_type,
+                        "status": "FAILED_FORM_ERROR",
+                        "score": score,
+                        "error": last_error
+                    })
+                    sync_dual_log(
+                        title=title,
+                        company=company,
+                        platform=f"career_portal ({ats_type})",
+                        status="FAILED_FORM_ERROR",
+                        job_url=url,
+                        match_score=score,
+                        experience_req=exp,
+                        error_reason=f"Failed after 2 retries: {last_error}",
+                        db_path=self.db_path
+                    )
+                    continue
+
+                status_str = "Submitted (Confirmed)" if submission_success else "Form Auto-Filled (Ready for Review)"
+                sync_dual_log(
+                    title=title,
+                    company=company,
+                    platform=f"career_portal ({ats_type})",
+                    status=status_str,
+                    job_url=url,
+                    match_score=score,
+                    experience_req=exp,
+                    location=job.get("location", "Hyderabad / Remote"),
+                    application_type=f"Career Portal ({ats_type})",
+                    evidence_path=evidence_file,
+                    db_path=self.db_path,
+                )
+                stats["submitted"] += 1
+                stats["jobs"].append({
+                    "company": company,
+                    "title": title,
+                    "url": url,
+                    "ats": ats_type,
+                    "status": status_str,
+                    "score": score,
+                    "filled": filled_fields
+                })
+
+        return stats
+
+

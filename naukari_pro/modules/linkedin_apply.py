@@ -527,7 +527,8 @@ class LinkedInApplyEngine:
         navigator: Optional[LinkedInEasyApplyNavigator] = None,
         tracker: Optional[LinkedInApplicationTracker] = None,
         circuit_breaker: Optional[LinkedInCircuitBreaker] = None,
-        min_score: float = 70.0
+        min_score: float = 70.0,
+        universal_apply: Optional[bool] = None
     ):
         self.session_manager = session_manager or LinkedInSessionManager()
         self.search_engine = search_engine or LinkedInSearchEngine()
@@ -535,6 +536,10 @@ class LinkedInApplyEngine:
         self.navigator = navigator or LinkedInEasyApplyNavigator(circuit_breaker=self.circuit_breaker)
         self.tracker = tracker or LinkedInApplicationTracker()
         self.min_score = min_score
+        if universal_apply is not None:
+            self.universal_apply = universal_apply
+        else:
+            self.universal_apply = (min_score <= 0.0)
         self.scorer = JobMatchScorer()
 
     async def run_apply_cycle(
@@ -543,13 +548,23 @@ class LinkedInApplyEngine:
         locations: Optional[List[str]] = None,
         limit: int = 25,
         dry_run: bool = False,
-        headless: bool = True
+        headless: bool = True,
+        universal_apply: Optional[bool] = None
     ) -> Dict[str, Any]:
         """
         Executes a single autonomous apply cycle across target locations and keywords.
-        Strictly enforces 25-30 applications limit, match score >= 70.0%, and process lock.
+        In universal mode: applies to all discovered Easy Apply jobs without score or title filters.
+        Enforces 3 Hard Stops (already applied, closed/expired, form error after retries).
         """
         from playwright.async_api import async_playwright
+        from naukari_pro.modules.db import is_job_already_applied
+        from naukari_pro.modules.scorecard import sync_dual_log
+
+        if universal_apply is not None:
+            is_universal = universal_apply
+        else:
+            is_universal = self.universal_apply
+        active_min_score = 0.0 if is_universal else self.min_score
 
         lock = self.session_manager.get_lock()
         if not lock.acquire(blocking=True):
@@ -606,7 +621,7 @@ class LinkedInApplyEngine:
                                 location=loc,
                                 max_pages=1,
                                 easy_apply_only=True,
-                                min_match_score=self.min_score
+                                min_match_score=active_min_score
                             )
 
                             vacancies = search_res if isinstance(search_res, list) else search_res.get("jobs", [])
@@ -620,15 +635,27 @@ class LinkedInApplyEngine:
                                     break
 
                                 job_id = str(job.get("job_id", ""))
-                                if not job_id or self.tracker.is_applied(job_id):
+                                job_url = job.get("url", f"https://www.linkedin.com/jobs/view/{job_id}/")
+
+                                # Hard Stop 1: Deduplication Check
+                                db_file = getattr(self, "db_path", None)
+                                is_dup_in_db = (not dry_run) and is_job_already_applied(title=job.get("title"), company=job.get("company"), job_url=job_url, db_path=db_file)
+                                if not job_id or self.tracker.is_applied(job_id) or is_dup_in_db:
                                     stats["skipped"] += 1
+                                    sync_dual_log(
+                                        title=job.get("title"),
+                                        company=job.get("company"),
+                                        platform="linkedin",
+                                        status="SKIPPED_ALREADY_APPLIED",
+                                        job_url=job_url,
+                                        db_path=db_file
+                                    )
                                     continue
 
-                                # 3. Match Scoring Gate (Stage 1 / Preliminary Evaluation)
-                                # Check if vacancy qualified Stage 1 during search or requested two-stage scoring
+                                # 3. Match Scoring (telemetry & legacy gating)
                                 is_two_stage = bool(job.get("stage1_passed") or job.get("two_stage_scoring"))
 
-                                if job.get("stage1_passed") is False and not job.get("two_stage_scoring"):
+                                if not is_universal and job.get("stage1_passed") is False and not job.get("two_stage_scoring"):
                                     logger.info(
                                         "Job %s ('%s') gated out: Stage 1 title alignment failed",
                                         job_id, job.get("title")
@@ -643,7 +670,7 @@ class LinkedInApplyEngine:
                                         job_title=job.get("title", ""),
                                         job_description=job.get("raw_snippet", "")
                                     )
-                                    if score_res.passed and score_res.score >= self.min_score:
+                                    if score_res.passed and score_res.score >= active_min_score:
                                         # Directly qualified by rich snippet
                                         stats["scored_above_threshold"] += 1
                                         logger.info(
@@ -654,11 +681,11 @@ class LinkedInApplyEngine:
                                         # Snippet lacks details; verify if title qualifies for Stage 2 right-pane JD evaluation
                                         title_score, _, disq_title, _ = self.scorer.evaluate_title(job.get("title", ""))
                                         title_pct = (title_score / 35.0) * 100.0 if not disq_title else 0.0
-                                        if not disq_title and title_pct >= 30.0:
+                                        if is_universal or (not disq_title and title_pct >= 30.0):
                                             is_two_stage = True
                                             logger.info(
-                                                "Job %s ('%s') snippet score %.1f%% < %.1f%%, but title alignment %.1f%% >= 30%%. Deferring to Stage 2 full JD evaluation.",
-                                                job_id, job.get("title"), score_res.score, self.min_score, title_pct
+                                                "Job %s ('%s') snippet score %.1f%%, deferring to Stage 2 full JD evaluation.",
+                                                job_id, job.get("title"), score_res.score
                                             )
                                         else:
                                             logger.info(
@@ -735,7 +762,7 @@ class LinkedInApplyEngine:
                                         job["stage2_passed"] = stage2_passed
                                         job["match_score"] = score_res.score
 
-                                    if not stage2_passed:
+                                    if not is_universal and not stage2_passed:
                                         logger.info(
                                             "Job %s ('%s') gated out at Stage 2: full JD score %.1f%% < %.1f%%",
                                             job_id, job.get("title"), getattr(score_res, "score", 0.0), self.min_score
@@ -746,7 +773,7 @@ class LinkedInApplyEngine:
                                     stats["scored_above_threshold"] += 1
                                     logger.info(
                                         "Target Vacancy Stage 2 Qualified: '%s' at '%s' (Score: %.1f%%). Proceeding to Easy Apply...",
-                                        job.get("title"), job.get("company"), score_res.score
+                                        job.get("title"), job.get("company"), getattr(score_res, "score", 0.0)
                                     )
 
                                 # 5. Execute Easy Apply Workflow
@@ -773,20 +800,51 @@ class LinkedInApplyEngine:
                                     and self.navigator.circuit_breaker is self.circuit_breaker
                                 )
 
+                                evidence_path = app_res.get("evidence_path")
+                                score_val = score_res.score if score_res and hasattr(score_res, "score") else job.get("match_score", 85.0)
+
                                 if app_res.get("status") == "DRY_RUN_VERIFIED":
                                     stats["dry_run_verified"] += 1
                                     if not navigator_manages_cb:
                                         self.circuit_breaker.record_success()
-                                    self.tracker.log_application(job, "DRY_RUN_VERIFIED", match_score=score_res.score, steps=app_res.get("steps", 1), dry_run=dry_run)
+                                    self.tracker.log_application(job, "DRY_RUN_VERIFIED", match_score=score_val, steps=app_res.get("steps", 1), dry_run=dry_run)
+                                    sync_dual_log(
+                                        title=job.get("title"),
+                                        company=job.get("company"),
+                                        platform="linkedin",
+                                        status="SUBMITTED_DRY_RUN",
+                                        job_url=job.get("url", f"https://www.linkedin.com/jobs/view/{job_id}/"),
+                                        match_score=score_val
+                                    )
                                 elif app_res.get("status") == "APPLIED":
                                     stats["applied"] += 1
                                     if not navigator_manages_cb:
                                         self.circuit_breaker.record_success()
-                                    self.tracker.log_application(job, "APPLIED", match_score=score_res.score, steps=app_res.get("steps", 1), dry_run=dry_run)
+                                    self.tracker.log_application(job, "APPLIED", match_score=score_val, steps=app_res.get("steps", 1), dry_run=dry_run)
+                                    final_status_val = "Submitted (Confirmed)" if evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024 else "Form Auto-Filled"
+                                    sync_dual_log(
+                                        title=job.get("title"),
+                                        company=job.get("company"),
+                                        platform="linkedin",
+                                        status=final_status_val,
+                                        job_url=job.get("url", f"https://www.linkedin.com/jobs/view/{job_id}/"),
+                                        match_score=score_val,
+                                        evidence_path=evidence_path
+                                    )
                                 else:
                                     stats["failed"] += 1
                                     if not navigator_manages_cb:
                                         self.circuit_breaker.record_failure(app_res.get("status", "FAILED"))
+                                    fail_status = "FAILED_INVALID_SESSION" if "RATE" in str(app_res.get("status")) or "CHECKPOINT" in str(app_res.get("status")) else "FAILED_FORM_ERROR"
+                                    sync_dual_log(
+                                        title=job.get("title"),
+                                        company=job.get("company"),
+                                        platform="linkedin",
+                                        status=fail_status,
+                                        job_url=job.get("url", f"https://www.linkedin.com/jobs/view/{job_id}/"),
+                                        match_score=score_val,
+                                        error_reason=app_res.get("detail", str(app_res.get("status")))
+                                    )
 
                                 if self.circuit_breaker.is_tripped:
                                     logger.critical("Circuit breaker tripped: %s. Aborting vacancy processing.", self.circuit_breaker.trip_reason)
@@ -968,12 +1026,13 @@ class LinkedInApplyRunner:
     Facade implementing PROJECT.md Interface Contract for LinkedInApplyRunner.
     Wraps LinkedInApplyEngine and provides direct logging helper.
     """
-    def __init__(self, headless: bool = True, dry_run: bool = False, limit: int = 15, min_score: float = 70.0):
+    def __init__(self, headless: bool = True, dry_run: bool = False, limit: int = 15, min_score: float = 0.0, universal_apply: bool = True):
         self.headless = headless
         self.dry_run = dry_run
         self.limit = limit
         self.min_score = min_score
-        self.engine = LinkedInApplyEngine(min_score=min_score)
+        self.universal_apply = universal_apply
+        self.engine = LinkedInApplyEngine(min_score=min_score, universal_apply=universal_apply)
 
     async def run(self, keywords: Optional[List[str]] = None, locations: Optional[List[str]] = None) -> Dict[str, Any]:
         """Main coordinator: initializes session, searches vacancies, evaluates score >=70%, applies, and logs to Excel tracker."""

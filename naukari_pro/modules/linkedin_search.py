@@ -1834,8 +1834,8 @@ class LinkedInSearchEngine:
                     card["match_result"] = asdict(match_res)
                     card["stage1_passed"] = bool(not disqualified_title and title_match_pct >= stage1_title_threshold)
 
-                    # Stage 1 Qualification: pass if title match meets threshold or snippet meets min_score
-                    is_stage1_qualified = bool(not disqualified_title and (card["stage1_passed"] or match_res.score >= min_match_score))
+                    # Stage 1 Qualification: pass all in universal mode (min_match_score <= 0), else gate by title & snippet score
+                    is_stage1_qualified = True if min_match_score <= 0.0 else bool(not disqualified_title and (card["stage1_passed"] or match_res.score >= min_match_score))
 
                     if active_policy is not None:
                         job_ctx = {

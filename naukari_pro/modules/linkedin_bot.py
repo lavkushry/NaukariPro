@@ -1683,6 +1683,18 @@ class LinkedInEasyApplyBot:
                             await res_sub
                         await humanized_delay(2000, 3500, page=target_page)
 
+                        # Capture live confirmation screenshot evidence before dismissing
+                        evidence_file = None
+                        try:
+                            clean_j = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
+                            evidence_file = os.path.join(WORKSPACE_DIR, "logs", f"evidence_linkedin_{clean_j}.png")
+                            os.makedirs(os.path.dirname(evidence_file), exist_ok=True)
+                            res_sc = target_page.screenshot(path=evidence_file)
+                            if inspect.isawaitable(res_sc):
+                                await res_sc
+                        except Exception:
+                            evidence_file = None
+
                         # Confirm submission on DOM and dismiss 'Done' modal
                         self.current_state = ModalState.VERIFYING_SUBMISSION
                         confirmed = await self.verify_and_dismiss_submission(target_page, modal)
@@ -1702,7 +1714,8 @@ class LinkedInEasyApplyBot:
                             "url": url,
                             "steps": step_count,
                             "answers_count": len(all_answers_audit),
-                            "answers": all_answers_audit
+                            "answers": all_answers_audit,
+                            "evidence_path": evidence_file
                         }
                     except Exception as e:
                         logger.error("Error clicking submit button: %s", e)

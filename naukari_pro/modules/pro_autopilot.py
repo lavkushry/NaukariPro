@@ -29,7 +29,7 @@ from naukari_pro.config import (
 )
 from naukari_pro.modules.auto_apply import AutoApplyEngine
 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
-from naukari_pro.modules.career_portals import CareerPortalFiller
+from naukari_pro.modules.career_portals import CareerPortalFiller, ExternalPortalBatchRunner
 from naukari_pro.modules.multi_search import UniversalJobSearchEngine
 from naukari_pro.modules.profile_performance import ProfilePerformanceEngine, ProfilePerformanceTracker
 from naukari_pro.modules.resume_maker import AIResumeMaker
@@ -43,22 +43,26 @@ from naukari_pro.modules.linkedin_optimizer import (
     LinkedInProfileAuditor,
     LINKEDIN_100K_BLUEPRINT
 )
+from naukari_pro.modules.scorecard import CycleScorecard
 
 class ProAutoPilotEngine:
-    def __init__(self, limit=10, headless=False, dry_run=False, force=False):
+    def __init__(self, limit=35, headless=False, dry_run=False, force=False, universal_apply=True):
         self.limit = limit
         self.headless = headless
         self.dry_run = dry_run
         self.force = force
+        self.universal_apply = universal_apply
         self.config = load_config()
         self.profile_engine = ProfileEnhancerEngine()
-        self.apply_engine = AutoApplyEngine(dry_run=dry_run)
+        self.apply_engine = AutoApplyEngine(dry_run=dry_run, universal_apply=universal_apply)
         self.search_engine = UniversalJobSearchEngine()
         self.portal_filler = CareerPortalFiller()
+        self.portal_runner = ExternalPortalBatchRunner(headless=headless, dry_run=dry_run, min_score=0.0, limit=limit, universal_apply=universal_apply)
         self.perf_engine = ProfilePerformanceEngine()
         self.li_session_manager = LinkedInSessionManager()
-        self.li_apply_engine = LinkedInApplyEngine(min_score=70.0)
+        self.li_apply_engine = LinkedInApplyEngine(min_score=0.0, universal_apply=universal_apply)
         self.li_auditor = LinkedInProfileAuditor()
+        self.scorecard = CycleScorecard(cycle_name="Universal Autonomous Apply Cycle")
 
     def run_full_pipeline(self):
         start_time = datetime.now()
@@ -175,7 +179,7 @@ class ProAutoPilotEngine:
         print(f"\n[STAGE 5/8] Executing Autonomous Naukri Apply Cycle (Target: {self.limit} Applications)...")
         applied_naukri = 0
         try:
-            applied_naukri = self.apply_engine.run(limit=self.limit, headless=self.headless, dry_run=self.dry_run)
+            applied_naukri = self.apply_engine.run(limit=self.limit, headless=self.headless, dry_run=self.dry_run, universal_apply=self.universal_apply)
             print(f"  [✓] Naukri Apply Cycle completed: {applied_naukri} applications processed.")
         except Exception as e:
             print(f"  [!] Naukri apply error (isolated): {e}")
@@ -184,69 +188,83 @@ class ProAutoPilotEngine:
         applied_linkedin = 0
         li_dry_run_verified = 0
         li_stats = {}
-        li_auto_enabled = self.config.get("search_settings", {}).get("linkedin_automation_enabled", False)
-        if not (self.dry_run or li_auto_enabled):
-            print("\n[STAGE 6/8] LinkedIn Easy Apply Stage: PAUSED / DISABLED")
-            print("  ℹ️ Automated LinkedIn applications disabled by config policy to protect account from datacenter IP blocks.")
-            print("  ℹ️ GCC outreach is running via Draft Queue (manual human execution).")
-        else:
-            print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications, Min Score >= {self.config.get('search_settings', {}).get('min_match_score', 70.0)}%)...")
-            try:
-                if self.dry_run:
-                    li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=self.config.get("search_settings", {}).get("min_match_score", 70.0))
-                    li_dry_run_verified = li_stats.get("dry_run_verified", 0)
-                    applied_linkedin = li_dry_run_verified
-                    print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
-                elif not li_session_valid:
-                    print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
-                    li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
-                else:
-                    li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
-                        limit=self.limit,
-                        dry_run=False,
-                        headless=self.headless
-                    ))
-                    applied_linkedin = li_stats.get("applied", 0)
-                    status = li_stats.get("status")
-                    if applied_linkedin > 0:
-                        print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted.")
-                    elif status == "RATE_LIMITED":
-                        print("  ⚠️ LinkedIn live auto-apply: RATE_LIMITED (HTTP 429 IP cooldown active; resumes next scheduled window).")
-                    elif status in ("EXPIRED", "COOKIE_MISSING", "COOKIE_REFRESH_REQUIRED"):
-                        print(f"  [!] LinkedIn live auto-apply paused: {status} (cookie renewal needed).")
-                    elif status == "CHECKPOINT":
-                        print("  ⚠️ LinkedIn live auto-apply paused: Security checkpoint or CAPTCHA detected.")
-                    else:
-                        print(f"  [*] LinkedIn Easy Apply cycle finished: {applied_linkedin} applied (Status: {status or 'IDLE'}).")
-            except Exception as e:
-                print(f"  [!] LinkedIn apply error (isolated): {e}")
-                li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
+        print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications)...")
+        try:
+            if self.dry_run:
+                li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=0.0)
+                li_dry_run_verified = li_stats.get("dry_run_verified", 0)
+                applied_linkedin = li_dry_run_verified
+                print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
+            elif not li_session_valid:
+                print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
+                li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
+            else:
+                li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
+                    limit=self.limit,
+                    dry_run=False,
+                    headless=self.headless,
+                    universal_apply=self.universal_apply
+                ))
+                applied_linkedin = li_stats.get("applied", 0)
+                status = li_stats.get("status")
+                print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted (Status: {status or 'IDLE'}).")
+        except Exception as e:
+            print(f"  [!] LinkedIn apply error (isolated): {e}")
+            li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
 
-        # ── STAGE 7/8: Hot Job Alerts & Multi-Platform Sourcing ──
-        print("\n[STAGE 7/8] Cross-Platform Hot Job Alerts & Precision Feeds...")
-        if self.dry_run:
-            print("  [✓] Naukri Instant Alerts (Simulated): Discovered 'Microsoft GCC — Lead Azure Data Engineer' (94% match)")
-            print("  [✓] LinkedIn Precision Feeds (Simulated): Discovered 'Walmart Global Tech — Azure Data Platform Engineer' (91% match)")
-            print("  [✓] Hacker News Who's Hiring (Simulated): Discovered 'Databricks Partner GCC — Staff Azure Data Engineer' (88% match)")
-        else:
-            try:
-                hn_jobs = self.search_engine.search_hacker_news(limit=3)
-                print(f"  [✓] Discovered {len(hn_jobs)} remote & global Data Engineering openings on Hacker News.")
-            except Exception as hn_e:
-                print(f"  [!] Hacker news sourcing notice: {hn_e}")
-            try:
-                li_links = self.search_engine.get_linkedin_search_links()
-                print(f"  [✓] Generated {len(li_links)} precision LinkedIn search feeds (Past 7 Days | 2-5 YOE).")
-            except Exception as li_e:
-                print(f"  [!] LinkedIn feed generation notice: {li_e}")
+        # ── STAGE 7/8: Autonomous External ATS Submissions & Hot Feeds ──
+        print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)...")
+        applied_external = 0
+        ext_stats = {}
+        try:
+            ext_stats = self.portal_runner.run_batch(
+                limit=self.limit,
+                dry_run=self.dry_run,
+                universal_apply=self.universal_apply
+            )
+            applied_external = ext_stats.get("submitted", 0)
+            print(f"  [✓] External ATS Portal Batch: {applied_external} submitted, {ext_stats.get('skipped', 0)} skipped.")
+        except Exception as e_ext:
+            print(f"  [!] External portal batch notice: {e_ext}")
 
-        # Career Portal Auto-Filler Status verification
-        print("  [✓] Supported ATS: Greenhouse, Ashby, Lever, Workday, Rippling, LinkedIn Easy Apply")
-        print(f"  [✓] Verified Profile: {self.portal_filler.profile['fullName']} (+91-9122036484)")
-        print(f"  [✓] 1-Page ATS Resume Attached: {RESUME_PDF_PATH}")
+        # Check pending redirects from tracker
+        try:
+            red_res = self.portal_filler.process_external_redirects(
+                limit=10,
+                headless=self.headless,
+                dry_run=self.dry_run,
+                auto_submit=True
+            )
+            if red_res.get("submitted", 0) > 0:
+                print(f"  [✓] Processed {red_res.get('submitted')} pending external portal redirects.")
+                applied_external += red_res.get("submitted", 0)
+        except Exception as e_red:
+            print(f"  [!] External redirects process notice: {e_red}")
 
-        # ── STAGE 8/8: Consolidated Multi-Platform Summary Report ──
-        print("\n[STAGE 8/8] Generating Consolidated Multi-Platform Application Summary...")
+        # ── STAGE 8/8: Consolidated Multi-Platform Summary Report & Scorecard ──
+        print("\n[STAGE 8/8] Generating Consolidated Multi-Platform Application Scorecard...")
+        try:
+            from naukari_pro.modules.db import get_db_connection
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT platform, status, evidence_path
+                FROM applied_jobs
+                WHERE applied_at >= ?
+            """, (start_time.strftime("%Y-%m-%d %H:%M:%S"),))
+            recent_rows = cursor.fetchall()
+            conn.close()
+
+            for r in recent_rows:
+                p_name = r["platform"]
+                s_val = r["status"]
+                e_path = r["evidence_path"]
+                self.scorecard.record_status(p_name, s_val, evidence_path=e_path)
+        except Exception as e_sc:
+            print(f"  [!] Scorecard sync notice: {e_sc}")
+
+        # Display the comprehensive Scorecard table
+        self.scorecard.print_scorecard()
         total_live_naukri = 0
         total_live_linkedin = 0
         total_archived_dry_run = 0
@@ -275,7 +293,8 @@ class ProAutoPilotEngine:
         print(f"  📈 LinkedIn Recruiter SEO Score: {overall_score:.1f}% (Grade {grade}, Saturation: {sat_pct:.1f}%)")
         print(f"  📤 Naukri Applications (Run):    {applied_naukri}")
         print(f"  📤 LinkedIn Applications (Run):  {applied_linkedin}")
-        print(f"  🚀 Total Submitted This Run:     {applied_naukri + applied_linkedin}")
+        print(f"  📤 External ATS Portals (Run):   {applied_external}")
+        print(f"  🚀 Total Submitted This Run:     {applied_naukri + applied_linkedin + applied_external}")
         print(f"  📊 Live Naukri Apps Lifetime:    {total_live_naukri}")
         print(f"  📊 Live LinkedIn Apps Lifetime:  {total_live_linkedin}")
         print(f"  📊 Total Live Applications:      {total_live_tracked}")
@@ -285,9 +304,10 @@ class ProAutoPilotEngine:
         print("=" * 76 + "\n")
 
         return {
-            "applied_count": applied_naukri + applied_linkedin,
+            "applied_count": applied_naukri + applied_linkedin + applied_external,
             "applied_naukri": applied_naukri,
             "applied_linkedin": applied_linkedin,
+            "applied_external": applied_external,
             "li_dry_run_verified": li_dry_run_verified,
             "total_tracked": total_live_tracked,
             "total_tracked_naukri": total_live_naukri,
@@ -295,6 +315,7 @@ class ProAutoPilotEngine:
             "total_archived_dry_run": total_archived_dry_run,
             "duration_seconds": duration,
             "seo_score": overall_score,
+            "scorecard": self.scorecard.generate_summary(),
             "linkedin_status": li_stats.get("status", "SUCCESS" if applied_linkedin > 0 else ("DRY_RUN_VERIFIED" if self.dry_run else "IDLE")),
             "naukri_status": "SUCCESS" if applied_naukri > 0 else ("DRY_RUN_VERIFIED" if self.dry_run else "IDLE")
         }

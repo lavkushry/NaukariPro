@@ -91,7 +91,7 @@ def print_menu():
     print("  [0] Exit")
     print("========================================================================")
 
-def handle_pro(limit=20, headless=False, dry_run=False, force=False):
+def handle_pro(limit=35, headless=False, dry_run=False, force=False):
     engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run, force=force)
     return engine.run_full_pipeline()
 
@@ -1188,6 +1188,111 @@ def handle_monday_digest(output: Optional[str] = None, db_path: Optional[str] = 
     return digest
 
 
+def handle_intent_apply(
+    intent: str = "",
+    roles: Optional[List[str]] = None,
+    locations: Optional[List[str]] = None,
+    platforms: Optional[List[str]] = None,
+    min_score: Optional[float] = None,
+    min_salary: Optional[float] = None,
+    limit: Optional[int] = None,
+    dry_run: bool = False,
+    headless: bool = True
+):
+    """Executes intent-based multi-platform application workflow."""
+    from naukari_pro.modules.intent_agent import IntentJobApplyAgent, IntentParser
+    agent = IntentJobApplyAgent(dry_run=dry_run, headless=headless, min_score=min_score or 70.0)
+    overrides: Dict[str, Any] = {}
+    if roles:
+        overrides["roles"] = roles
+    if locations:
+        overrides["locations"] = locations
+    if platforms:
+        overrides["platforms"] = platforms
+    if min_score is not None:
+        overrides["min_match_score"] = float(min_score)
+    if min_salary is not None:
+        overrides["min_salary_lpa"] = float(min_salary)
+    if limit is not None:
+        overrides["limit"] = int(limit)
+    if dry_run is not None:
+        overrides["dry_run"] = bool(dry_run)
+    if headless is not None:
+        overrides["headless"] = bool(headless)
+
+    parsed_intent = IntentParser.parse(intent, **overrides)
+    return agent.execute_intent(parsed_intent)
+
+
+def handle_apply_intent(args: argparse.Namespace) -> int:
+    """
+    Controller executing intent-based autonomous application engine (Milestone 1).
+    Parses CLI flags or intent configuration and delegates to AutonomousJobApplyAgent.
+    """
+    from naukari_pro.agent.parser import IntentParser
+    from naukari_pro.agent.intent import CandidateIntent
+    from naukari_pro.agent.orchestrator import AutonomousJobApplyAgent
+
+    try:
+        intent = IntentParser.from_args(args)
+    except Exception as e:
+        print(f"\n[!] Error parsing candidate intent: {e}")
+        return 1
+
+    print("\n" + "=" * 74)
+    print("  🤖 NAUKARIPRO: AUTONOMOUS INTENT APPLICATION ENGINE (MILESTONE 1)")
+    print(f"  Target Roles:      {', '.join(intent.target_roles)}")
+    print(f"  Target Hubs:       {', '.join(intent.target_locations)}")
+    print(f"  Target Platforms:  {', '.join(intent.platforms)}")
+    print(f"  Salary Floor:      ₹{intent.min_salary_lpa} LPA (Max: {f'₹{intent.max_salary_lpa} LPA' if intent.max_salary_lpa else 'Uncapped'})")
+    print(f"  Score Threshold:   >= {intent.strict_match_threshold}%")
+    print(f"  Max Applications:  {intent.max_applications}")
+    print(f"  Work Auth:         {intent.work_authorization} (Sponsorship: {'Required' if intent.requires_sponsorship else 'Not Required'})")
+    print(f"  Execution Mode:    {'DRY-RUN (Simulated)' if intent.dry_run else 'LIVE SUBMISSION'}")
+    print("=" * 74)
+
+    try:
+        agent = AutonomousJobApplyAgent(dry_run=intent.dry_run, headless=intent.headless)
+        summary = agent.execute_intent(intent)
+        print(summary.format_summary_report())
+        print(f"\n[+] Execution complete. Dispatched: {summary.total_submitted} | Skipped: {summary.total_skipped}")
+        return 0 if summary.status != "FAILED" else 1
+    except Exception as err:
+        print(f"\n[!] Intent execution failed: {err}")
+        return 1
+
+
+def handle_boost_visibility(
+    day: int = 1,
+    platform: str = "all",
+    rotate_headline: bool = False,
+    rotate_skills: bool = False,
+    audit: bool = False,
+    dry_run: bool = False,
+    headless: bool = True
+):
+    """Executes 30-day algorithmic visibility growth engine step."""
+    from naukari_pro.modules.visibility_growth import VisibilityGrowthEngine
+    engine = VisibilityGrowthEngine(dry_run=dry_run, headless=headless)
+    if audit:
+        print("\n[*] Running 30-Day Recruiter SEO Keyword & Pacing Audit...")
+        audit_res = engine.audit_profile_variations()
+        for vname, vdata in audit_res.items():
+            print(f"  • {vdata['name']}: Saturation Score: {vdata['saturation_score']}% | Tier 1: {vdata['tier1_coverage_pct']}%")
+        telemetry = engine.get_telemetry_status()
+        print(f"\n[*] Live Pacing Status: {telemetry['status']} | Daily Pace: {telemetry['daily_pace']:.1f} / {telemetry['daily_target']:.1f}")
+        return audit_res
+
+    return engine.execute_daily_visibility_boost(
+        day=day,
+        platform=platform,
+        rotate_headline=rotate_headline,
+        rotate_skills=rotate_skills,
+        dry_run=dry_run,
+        headless=headless
+    )
+
+
 def interactive_loop():
     while True:
         print_menu()
@@ -1350,9 +1455,66 @@ def main():
     digest_parser.add_argument("--output", "-o", type=str, default=None, help="Output markdown path")
     digest_parser.add_argument("--send-email", action="store_true", default=False, help="Send digest email via Gmail SMTP")
 
+    intent_parser = subparsers.add_parser("intent-apply", help="Autonomous Intent-Based Job Apply Agent (Naukri, LinkedIn, Greenhouse, Lever, Ashby, Workday)", parents=[common_parser])
+    intent_parser.add_argument("--intent", "-i", type=str, default="", help="Natural-language application intent description")
+    intent_parser.add_argument("--roles", nargs="+", default=None, help="Target roles (e.g. 'Azure Data Engineer' 'Databricks Engineer')")
+    intent_parser.add_argument("--locations", nargs="+", default=None, help="Target locations (e.g. Bengaluru Hyderabad Remote)")
+    intent_parser.add_argument("--platforms", nargs="+", default=None, help="Target platforms (e.g. linkedin naukri greenhouse lever workday)")
+    intent_parser.add_argument("--min-score", type=float, default=None, help="Minimum match score threshold (default: 70.0)")
+    intent_parser.add_argument("--min-salary", type=float, default=20.0, help="Minimum salary in LPA (default: 20.0)")
+
+    apply_intent_parser = subparsers.add_parser(
+        "apply-intent",
+        help="Autonomous Intent-Based Application Orchestration Engine (Milestone 1)",
+        parents=[common_parser]
+    )
+    apply_intent_parser.add_argument("--intent", "-i", type=str, default="", help="Natural-language application intent description")
+    apply_intent_parser.add_argument("--roles", nargs="+", default=None, help="Target roles (e.g. 'MLOps Engineer' 'ML Platform Engineer')")
+    apply_intent_parser.add_argument("--locations", nargs="+", default=None, help="Target locations (e.g. Bengaluru Pune Hyderabad Remote)")
+    apply_intent_parser.add_argument("--platforms", nargs="+", default=None, help="Target platforms (e.g. naukri linkedin workday greenhouse lever)")
+    apply_intent_parser.add_argument("--min-salary", "--min-salary-lpa", type=float, default=20.0, dest="min_salary_lpa", help="Minimum expected CTC in LPA (default: 20.0)")
+    apply_intent_parser.add_argument("--max-salary", "--max-salary-lpa", type=float, default=None, dest="max_salary_lpa", help="Maximum salary bound in LPA")
+    apply_intent_parser.add_argument("--threshold", "--min-score", type=float, default=70.0, dest="strict_match_threshold", help="Strict match score threshold cutoff (default: 70.0)")
+    apply_intent_parser.add_argument("--config", "--intent-file", type=str, default=None, dest="config_path", help="Path to JSON file containing CandidateIntent definition")
+    apply_intent_parser.add_argument("--work-auth", type=str, default="India", dest="work_authorization", help="Work authorization status (default: India)")
+    apply_intent_parser.add_argument("--requires-sponsorship", action="store_true", default=False, help="Flag if visa sponsorship is required")
+    apply_intent_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible mode (default: headless)")
+
+    boost_parser = subparsers.add_parser("boost-visibility", help="30-day algorithmic growth engine scaling profile impressions to 100K+ across Naukri and LinkedIn", parents=[common_parser])
+    boost_parser.add_argument("--day", "-d", type=int, default=1, help="Day number in 30-day roadmap (1-30, default: 1)")
+    boost_parser.add_argument("--platform", "-p", type=str, default="all", choices=["all", "naukri", "linkedin"], help="Target platform (all, naukri, linkedin)")
+    boost_parser.add_argument("--rotate-headline", action="store_true", help="Trigger algorithmic headline variation rotation")
+    boost_parser.add_argument("--rotate-skills", action="store_true", help="Trigger secondary skill rotation")
+    boost_parser.add_argument("--audit", action="store_true", help="Audit variations and show 100K pacing scorecard")
+
     args = parser.parse_args()
 
-    if args.command == "mutate":
+    if args.command == "intent-apply":
+        handle_intent_apply(
+            intent=getattr(args, "intent", ""),
+            roles=getattr(args, "roles", None),
+            locations=getattr(args, "locations", None),
+            platforms=getattr(args, "platforms", None),
+            min_score=getattr(args, "min_score", None),
+            min_salary=getattr(args, "min_salary", None),
+            limit=getattr(args, "limit", None),
+            dry_run=args.dry_run,
+            headless=args.headless
+        )
+    elif args.command == "apply-intent":
+        exit_code = handle_apply_intent(args)
+        sys.exit(exit_code or 0)
+    elif args.command == "boost-visibility":
+        handle_boost_visibility(
+            day=getattr(args, "day", 1),
+            platform=getattr(args, "platform", "all"),
+            rotate_headline=getattr(args, "rotate_headline", False),
+            rotate_skills=getattr(args, "rotate_skills", False),
+            audit=getattr(args, "audit", False),
+            dry_run=args.dry_run,
+            headless=args.headless
+        )
+    elif args.command == "mutate":
         handle_mutate(
             platform=getattr(args, "platform", "naukri"),
             field=getattr(args, "field", "headline"),

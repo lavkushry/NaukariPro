@@ -248,7 +248,8 @@ class TestLinUCBBanditPolicy:
         }]
 
         with patch("naukari_pro.modules.db.get_daily_application_count", return_value=50):
-            engine = AutoApplyEngine(dry_run=True, policy=policy)
-            payloads = engine.run_offline_dry_run(job_feed=feed, limit=1)
+            with patch.object(policy, "get_effective_epsilon", return_value=0.0):
+                engine = AutoApplyEngine(dry_run=True, policy=policy)
+                payloads = engine.run_offline_dry_run(job_feed=feed, limit=1)
         assert len(payloads) == 1
         assert payloads[0].status == "REJECTED_POLICY_BANDIT"
