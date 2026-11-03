@@ -617,9 +617,10 @@ def test_jsessionid_loader_from_cookie_json_file(tmp_path, monkeypatch):
         {"name": "JSESSIONID", "value": "ajax:55667788"}
     ]))
 
-    manager = LinkedInSessionManager(cookie_path=str(cookie_file))
-    token = manager.get_jsessionid_cookie()
-    assert token == '"ajax:55667788"'
+    with patch("naukari_pro.modules.linkedin_session.WORKSPACE_DIR", str(tmp_path)):
+        manager = LinkedInSessionManager(cookie_path=str(cookie_file))
+        token = manager.get_jsessionid_cookie()
+        assert token == '"ajax:55667788"'
 
 
 def test_get_formatted_cookies_synchronizes_both_li_at_and_jsessionid(tmp_path, monkeypatch):

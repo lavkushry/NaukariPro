@@ -333,14 +333,8 @@ class LinkedInSessionManager:
                 if token:
                     return token
 
-        # Tier 2: Check explicit cookie_path if provided
+        # Tier 2: Check .env directly in workspace root
         target_ws = os.getenv("WORKSPACE_DIR") or WORKSPACE_DIR
-        if self.cookie_path and os.path.exists(self.cookie_path):
-            token = self._extract_jsessionid_from_file(self.cookie_path)
-            if token:
-                return token
-
-        # Tier 3: Check .env directly in workspace root
         env_file = os.path.join(target_ws, ".env")
         if os.path.exists(env_file):
             try:
@@ -361,8 +355,9 @@ class LinkedInSessionManager:
             except Exception as e:
                 logger.debug("Notice reading workspace .env for JSESSIONID: %s", e)
 
-        # Tier 4: Fallback cookie files
+        # Tier 3: Dedicated cookie files and fallbacks
         candidate_files = [
+            self.cookie_path,
             os.path.join(target_ws, "linkedin_system", "cookies_seed.json"),
             os.path.join(target_ws, "linkedin_system", "session_cookies.json"),
         ]
