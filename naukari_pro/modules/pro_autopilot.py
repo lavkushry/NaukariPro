@@ -17,6 +17,7 @@ import sys
 import time
 import asyncio
 from datetime import datetime
+from typing import Any, Dict, Optional
 import openpyxl
 
 from naukari_pro.config import (
@@ -45,13 +46,39 @@ from naukari_pro.modules.linkedin_optimizer import (
 )
 from naukari_pro.modules.scorecard import CycleScorecard
 
+def resolve_beast_block(block: Optional[int] = None) -> int:
+    """Map clock (IST-ish local) to Beast Block 1/2/3 when block not passed."""
+    if block in (1, 2, 3):
+        return int(block)
+    hour = datetime.now().hour
+    if hour < 12:
+        return 1
+    if hour < 17:
+        return 2
+    return 3
+
+
 class ProAutoPilotEngine:
-    def __init__(self, limit=35, headless=False, dry_run=False, force=False, universal_apply=True):
+    def __init__(
+        self,
+        limit=35,
+        headless=False,
+        dry_run=False,
+        force=False,
+        universal_apply=True,
+        block: Optional[int] = None,
+        execute_outreach_live: bool = False,
+    ):
         self.limit = limit
         self.headless = headless
         self.dry_run = dry_run
         self.force = force
         self.universal_apply = universal_apply
+        self.block = resolve_beast_block(block)
+        # Live LinkedIn outreach only on Mac/residential — never force from datacenter by default
+        self.execute_outreach_live = execute_outreach_live or (
+            sys.platform == "darwin" and not dry_run
+        )
         self.config = load_config()
         self.profile_engine = ProfileEnhancerEngine()
         self.apply_engine = AutoApplyEngine(dry_run=dry_run, universal_apply=universal_apply)
@@ -62,19 +89,39 @@ class ProAutoPilotEngine:
         self.li_session_manager = LinkedInSessionManager()
         self.li_apply_engine = LinkedInApplyEngine(min_score=0.0, universal_apply=universal_apply)
         self.li_auditor = LinkedInProfileAuditor()
-        self.scorecard = CycleScorecard(cycle_name="Universal Autonomous Apply Cycle")
+        self.scorecard = CycleScorecard(cycle_name="ONE BEAST Autonomous Cycle")
+        self.hunt_stats: Dict[str, Any] = {}
 
     def run_full_pipeline(self):
         start_time = datetime.now()
         mode_str = " [DRY-RUN SIMULATION]" if self.dry_run else ""
         print("\n" + "=" * 76)
-        print(f"  🚀 NAUKARIPRO: UNIFIED MULTI-PLATFORM AUTONOMOUS CAREER AGENT{mode_str}")
-        print("  Goal: Top 1% ₹25 LPA Azure Data Engineer Opportunities")
+        print(f"  ONE BEAST SYSTEM — Unified Career Agent{mode_str}")
+        print(f"  Block {self.block} | Goal: ₹20–25 LPA Azure Data Engineer")
         print(f"  Candidate: {self.portal_filler.profile['fullName']} ({self.portal_filler.profile['email']})")
-        print("  Platforms: Naukri (Resdex Priority) + LinkedIn (100k+ Recruiter Search)")
-        print("  Target Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai | Remote")
-        print("  Notice Period: 15 Days or less (Immediate joiner) | CTC Target: ₹20–25 LPA")
+        print("  Official title: DevOps Engineer (FACT_MATRIX) | Market: Azure Data Engineer")
+        print("  Platforms: Naukri + LinkedIn(Mac) + Universal ATS | Notice: 15 days")
         print("=" * 76)
+
+        # ── HUNT: Multi-source discovery into apply queue ──
+        print("\n[HUNT] Multi-source job discovery (Naukri + LinkedIn links + HN + curated ATS)...")
+        try:
+            self.hunt_stats = {"status": "OK", "discovered": 0}
+            hunt_result = self.search_engine.run_multi_search(dry_run=self.dry_run)
+            if isinstance(hunt_result, list):
+                self.hunt_stats["discovered"] = len(hunt_result)
+            elif isinstance(hunt_result, dict):
+                self.hunt_stats.update(hunt_result)
+                self.hunt_stats["discovered"] = (
+                    hunt_result.get("discovered")
+                    or hunt_result.get("total")
+                    or len(hunt_result.get("jobs", []))
+                )
+            print(f"  [✓] Hunt discovered {self.hunt_stats.get('discovered', 0)} leads for this cycle.")
+            self.scorecard.record_discovered("naukri", int(self.hunt_stats.get("discovered", 0) or 0))
+        except Exception as e_hunt:
+            self.hunt_stats = {"status": "FAILED", "error": str(e_hunt), "discovered": 0}
+            print(f"  [!] Hunt notice (isolated): {e_hunt}")
 
         # ── STAGE 1/8: Naukri Server Entitlements, Profile Alignment & ATS Resume ──
         print("\n[STAGE 1/8] Inspecting Naukri Server Entitlements & Recruiter Alignment...")
@@ -205,6 +252,9 @@ class ProAutoPilotEngine:
                 li_dry_run_verified = li_stats.get("dry_run_verified", 0)
                 applied_linkedin = li_dry_run_verified
                 print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
+            elif sys.platform != "darwin" and not os.environ.get("RESIDENTIAL_PROXY") and not os.environ.get("ALL_PROXY") and not self.config.get("residential_proxy"):
+                print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (running on non-Mac host without residential proxy).")
+                li_stats = {"discovered": 0, "applied": 0, "status": "MAC_HOST_REQUIRED"}
             elif not li_session_valid:
                 print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
                 li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
@@ -222,7 +272,7 @@ class ProAutoPilotEngine:
             print(f"  [!] LinkedIn apply error (isolated): {e}")
             li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
 
-        # ── STAGE 7/8: Autonomous External ATS Submissions & Hot Feeds ──
+        # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects ──
         print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)...")
         applied_external = 0
         ext_stats = {}
@@ -252,25 +302,65 @@ class ProAutoPilotEngine:
         except Exception as e_red:
             print(f"  [!] External redirects process notice: {e_red}")
 
+        # ── TRACK 3: GET CALLS (Block-aware) ──
+        outreach_pitches = 0
+        followups_dispatched = 0
+        do_outreach = self.block == 2 or self.force
+        do_followups = self.block == 3 or self.force
+        if do_outreach or do_followups:
+            print(f"\n[TRACK 3] GET CALLS — Block {self.block} (outreach={do_outreach}, followups={do_followups})...")
+            try:
+                from naukari_pro.modules.goal_5calls import Goal5CallsEngine
+                goal_engine = Goal5CallsEngine()
+                live = bool(self.execute_outreach_live and not self.dry_run)
+
+                if do_outreach:
+                    block2_res = goal_engine.run_block(2, dry_run=self.dry_run, execute_live=live)
+                    for act in block2_res.get("actions_executed", []):
+                        outreach_pitches += int(act.get("count", 0) or 0)
+                    if live and sys.platform == "darwin":
+                        try:
+                            from naukari_pro.modules.linkedin_outreach import LinkedInOutreachSender
+                            sender = LinkedInOutreachSender()
+                            send_res = asyncio.run(sender.send_batch_outreach(limit=15, dry_run=False, headless=self.headless))
+                            sent = int(send_res.get("sent", send_res.get("count", 0)) or 0) if isinstance(send_res, dict) else 0
+                            outreach_pitches = max(outreach_pitches, sent)
+                            print(f"  [✓] Block 2 Live LinkedIn outreach: {sent} sends.")
+                        except Exception as e_send:
+                            print(f"  [!] Live outreach sender notice: {e_send}")
+                    print(f"  [✓] Block 2 Recruiter Outreach: {outreach_pitches} pitches (live={live}).")
+                    self.scorecard.record_outreach_sent(count=outreach_pitches)
+
+                if do_followups:
+                    followup_list = goal_engine.generate_followup_batch(count=8)
+                    followups_dispatched = len(followup_list)
+                    goal_engine.run_block(3, dry_run=self.dry_run, execute_live=live)
+                    print(f"  [✓] Block 3 48-Hour Follow-ups: {followups_dispatched}.")
+                    self.scorecard.record_followup_sent(count=followups_dispatched)
+            except Exception as e_outreach:
+                print(f"  [!] Recruiter outreach notice: {e_outreach}")
+        else:
+            print(f"\n[TRACK 3] GET CALLS skipped this cycle (Block {self.block}; use --force for all tracks).")
+
+        # ── TRACK 4: Daily Application Outcome Labeling & Telemetry ──
+        # Label every evening block, or when forced / full cycle
+        labeled_res = {}
+        if self.block == 3 or self.force:
+            print(f"\n[TRACK 4] Executing Daily Application Outcome Labeling...")
+            try:
+                from naukari_pro.modules.learning.outcome_labeler import OutcomeLabeler
+                labeler = OutcomeLabeler()
+                labeled_res = labeler.label_all_unlabeled(dry_run=self.dry_run)
+                print(f"  [✓] Outcome Labeling: {labeled_res.get('labeled_count', 0)} applications updated.")
+            except Exception as e_label:
+                print(f"  [!] Outcome labeling notice: {e_label}")
+        else:
+            print(f"\n[TRACK 4] Labeling deferred to Block 3 / 21:00 timer.")
+
         # ── STAGE 8/8: Consolidated Multi-Platform Summary Report & Scorecard ──
         print("\n[STAGE 8/8] Generating Consolidated Multi-Platform Application Scorecard...")
         try:
-            from naukari_pro.modules.db import get_db_connection
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT platform, status, evidence_path
-                FROM applied_jobs
-                WHERE applied_at >= ?
-            """, (start_time.strftime("%Y-%m-%d %H:%M:%S"),))
-            recent_rows = cursor.fetchall()
-            conn.close()
-
-            for r in recent_rows:
-                p_name = r["platform"]
-                s_val = r["status"]
-                e_path = r["evidence_path"]
-                self.scorecard.record_status(p_name, s_val, evidence_path=e_path)
+            self.scorecard.sync_from_db(since=start_time)
         except Exception as e_sc:
             print(f"  [!] Scorecard sync notice: {e_sc}")
 
@@ -328,5 +418,8 @@ class ProAutoPilotEngine:
             "seo_score": overall_score,
             "scorecard": self.scorecard.generate_summary(),
             "linkedin_status": li_stats.get("status", "SUCCESS" if applied_linkedin > 0 else ("DRY_RUN_VERIFIED" if self.dry_run else "IDLE")),
-            "naukri_status": "SUCCESS" if applied_naukri > 0 else ("DRY_RUN_VERIFIED" if self.dry_run else "IDLE")
+            "naukri_status": "SUCCESS" if applied_naukri > 0 else ("DRY_RUN_VERIFIED" if self.dry_run else "IDLE"),
+            "outreach_pitches": outreach_pitches,
+            "followups_dispatched": followups_dispatched,
+            "outcome_labeled": labeled_res.get("labeled_count", 0)
         }

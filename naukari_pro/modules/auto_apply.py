@@ -24,8 +24,21 @@ import openpyxl
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, Optional, List
 
-from naukari_pro.config import TRACKER_PATH, SESSION_DIR, COOKIES_SEED_PATH, load_config
-from naukari_pro.session import get_stealth_context
+from naukari_pro.config import (
+    TRACKER_PATH,
+    SESSION_DIR,
+    COOKIES_SEED_PATH,
+    WORKSPACE_DIR,
+    RESUME_PDF_PATH,
+    load_config
+)
+from naukari_pro.session import (
+    get_stealth_context,
+    SecurityChallengeError,
+    detect_challenge,
+    detect_challenge_async
+)
+
 from naukari_pro.modules.job_alerts import (
     calculate_match_score,
     MATCH_SCORE_THRESHOLD as DEFAULT_MATCH_SCORE_THRESHOLD,
@@ -1087,8 +1100,19 @@ class NativeChromeRunner:
             set myTab to make new tab at end of tabs of window 1 with properties {{URL:"{job_url}"}}
             delay 4
             
-            -- Step 1: Check button status
+            -- Step 1: Check security challenge and button status
             set step1 to execute myTab javascript "(() => {{
+                const bTxt = (document.body ? document.body.innerText : '').toLowerCase();
+                const challengeKws = ['verify you are human', 'security check', 'security verification', 'enter otp', 'one-time password', 'verification code', 'unusual traffic', 'bot detection'];
+                for (let kw of challengeKws) {{
+                    if (bTxt.includes(kw)) return JSON.stringify({{ action: 'challenge', detail: kw }});
+                }}
+                if (document.querySelector('iframe[src*=\"captcha\"], iframe[src*=\"recaptcha\"], iframe[src*=\"turnstile\"], iframe[src*=\"hcaptcha\"], #captcha, .g-recaptcha, .cf-turnstile')) {{
+                    return JSON.stringify({{ action: 'challenge', detail: 'Visual Captcha/Turnstile' }});
+                }}
+                if (document.querySelector('input[placeholder*=\"OTP\" i], #otp, input[name*=\"otp\" i]')) {{
+                    return JSON.stringify({{ action: 'challenge', detail: 'OTP Verification' }});
+                }}
                 const coBtn = document.querySelector('button#company-site-button, .styles_company-site-button__C_2YK');
                 if (coBtn) {{
                     return JSON.stringify({{ action: 'company_site' }});
@@ -1103,6 +1127,10 @@ class NativeChromeRunner:
             
             delay 3
             
+            if step1 contains "challenge" then
+                close myTab
+                return "{{'isApplied': false, 'action': 'challenge'}}"
+            end if
             if step1 contains "company_site" then
                 close myTab
                 return "{{'isApplied': false, 'action': 'company_site'}}"
@@ -1111,6 +1139,7 @@ class NativeChromeRunner:
                 close myTab
                 return "{{'isApplied': false, 'action': 'already_applied'}}"
             end if
+
             
             -- Step 2: Handle potential screening chatbot questions
             set step2 to execute myTab javascript "(() => {{
@@ -1317,6 +1346,18 @@ class NativeChromeRunner:
             out = p.stdout.strip()
             try:
                 data = json.loads(out)
+                if data.get("action") == "challenge":
+                    print(f"    🚨 SECURITY CHALLENGE DETECTED: {data.get('detail', 'Naukri Security Checkpoint')} on {job_url}")
+                    sync_dual_log(
+                        title=title,
+                        company=company,
+                        platform="naukri",
+                        status="FAILED_SECURITY_CHALLENGE",
+                        job_url=job_url,
+                        match_score=match_score,
+                        error_reason=f"Security challenge encountered: {data.get('detail', 'Checkpoint')}"
+                    )
+                    raise SecurityChallengeError(challenge_type="Naukri Security Checkpoint", details=f"URL: {job_url}")
                 if data.get("action") == "company_site":
                     from naukari_pro.modules.career_portals import CareerPortalManager
                     cpm = CareerPortalManager()
@@ -1333,6 +1374,8 @@ class NativeChromeRunner:
                 else:
                     sync_dual_log(title=title, company=company, platform="naukri", status="Form Auto-Filled", job_url=job_url, match_score=match_score)
                     return False, data.get("reason", "No apply confirmation observed")
+            except SecurityChallengeError:
+                raise
             except Exception as e_json:
                 sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_FORM_ERROR", job_url=job_url, match_score=match_score, error_reason=str(e_json))
         else:
@@ -1433,7 +1476,11 @@ class NativeChromeRunner:
                             continue
 
                         print(f"\n  → Applying to: {title} @ {comp} ({salary}) [Score: {score}%]")
-                        success, msg = self.apply_to_job(job_url, title, comp, salary, raw_jd=raw_jd, match_score=score)
+                        try:
+                            success, msg = self.apply_to_job(job_url, title, comp, salary, raw_jd=raw_jd, match_score=score)
+                        except SecurityChallengeError as sce:
+                            print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
+                            break
 
                         if success:
                             total_applied += 1
@@ -1633,6 +1680,21 @@ class PlaywrightRunner:
             response = await job_tab.goto(job_url, wait_until="domcontentloaded", timeout=30000)
             await job_tab.wait_for_timeout(2500)
 
+            # Security Challenge Check: Immediately halt channel on Captcha/OTP/Checkpoint
+            challenge = await detect_challenge_async(job_tab)
+            if challenge:
+                print(f"    🚨 SECURITY CHALLENGE DETECTED: {challenge} on {job_url}")
+                sync_dual_log(
+                    title=title,
+                    company=company,
+                    platform="naukri",
+                    status="FAILED_SECURITY_CHALLENGE",
+                    job_url=job_url,
+                    match_score=match_score,
+                    error_reason=f"Security challenge encountered: {challenge}"
+                )
+                raise SecurityChallengeError(challenge_type=challenge, details=f"URL: {job_url}")
+
             # Hard Stop 2: Dead Link / Closed / Expired
             is_closed = False
             if response and response.status in (404, 410):
@@ -1715,6 +1777,8 @@ class PlaywrightRunner:
                 sync_dual_log(title=title, company=company, platform="naukri", status="Form Auto-Filled", match_score=match_score, job_url=job_url)
                 self.skip_list = add_to_skip(self.skip_list, title, company, "unconfirmed")
                 return False, "Form Auto-Filled"
+        except SecurityChallengeError:
+            raise
         except Exception as e:
             print(f"    ❌ Error: {e}")
             sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_FORM_ERROR", match_score=match_score, job_url=job_url, error_reason=str(e))
@@ -1860,6 +1924,8 @@ class PlaywrightRunner:
                 )
                 if applied_ok:
                     total_applied += 1
+        except SecurityChallengeError:
+            raise
         except Exception as e:
             print(f"Recommended jobs harvest notice: {e}")
 
@@ -1968,6 +2034,8 @@ class PlaywrightRunner:
                 )
                 if applied_ok:
                     total_applied += 1
+        except SecurityChallengeError:
+            raise
         except Exception as e:
             print(f"Inbox NVites harvest notice: {e}")
 
@@ -2046,11 +2114,15 @@ class PlaywrightRunner:
 
                 total_applied = 0
 
-                # Phase 1: Harvesting Recommended Jobs
-                total_applied = await self.harvest_recommended_jobs_async(context, page, limit, total_applied, proxy=active_proxy)
+                try:
+                    # Phase 1: Harvesting Recommended Jobs
+                    total_applied = await self.harvest_recommended_jobs_async(context, page, limit, total_applied, proxy=active_proxy)
 
-                # Phase 2: Harvesting Recruiter NVites / Inbox
-                total_applied = await self.harvest_nvites_and_inbox_async(context, page, limit, total_applied, proxy=active_proxy)
+                    # Phase 2: Harvesting Recruiter NVites / Inbox
+                    total_applied = await self.harvest_nvites_and_inbox_async(context, page, limit, total_applied, proxy=active_proxy)
+                except SecurityChallengeError as sce:
+                    print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
+                    return total_applied
 
                 # Phase 3: Freshness-Sorted Multi-Page Search Scanning
                 print("\n" + "-" * 65)
@@ -2189,6 +2261,9 @@ class PlaywrightRunner:
                                     )
                                     if applied_ok:
                                         total_applied += 1
+                            except SecurityChallengeError as sce:
+                                print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
+                                return total_applied
                             except Exception as e:
                                 print(f"Search warning: {e}")
 

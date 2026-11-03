@@ -50,15 +50,20 @@ CANDIDATE_FACTS = {
     "linkedin": "linkedin.com/in/lavkushry",
     "github": "github.com/lavkushry",
     "experience_yoe": "2.5 YOE",
-    "current_role": "Azure Data Engineer / DevOps Engineer",
-    "current_company": "CGI India (PNC Bank GCC)",
+    "total_yoe": "2.5 YOE",
+    "current_role": "DevOps Engineer",
+    "current_company": "CGI India",
     "previous_company": "HFCL Limited",
     "target_role": "Azure Data Engineer",
     "target_ctc": "₹20–25 LPA",
-    "notice_period": "15 Days or less (Immediate Joiner)",
-    "location": "Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)",
+    "notice_period": "15 Days or less",
+    "location": "Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)",
     "core_stack": "Azure Databricks, PySpark, Delta Lake, ADF, Kafka, SQL, ADLS Gen2, Terraform",
-    "key_metrics": "2M+ events/day Medallion Lakehouses, 35% ETL runtime reduction, 99.95% platform uptime"
+    "key_metrics": (
+        "Project Medallion Lakehouse: 2M+ events/day, 35% ETL runtime cut; "
+        "Employment: 50-node K8s, RTO 8h→30min (FACT_MATRIX)"
+    ),
+    "project_proof": "Azure-Data-Engineering-Medallion-Lakehouse-Project",
 }
 
 TOP_GCC_TARGETS = [
@@ -71,8 +76,14 @@ TOP_GCC_TARGETS = [
     {"company": "HSBC Technology", "role": "Azure Data Engineer", "recruiter": "Sneha Kulkarni", "title": "Commercial & Data Tech Talent Sourcing"},
     {"company": "Lloyds Technology Centre", "role": "Cloud Data Engineer", "recruiter": "Arjun Nair", "title": "India Tech Hub Talent Partner"},
     {"company": "Salesforce", "role": "Data Engineer (Data Cloud)", "recruiter": "Neha Kapoor", "title": "Core Engineering Recruiting Lead"},
-    {"company": "Adobe", "role": "Big Data / Platform Engineer", "recruiter": "Siddharth Joshi", "title": "Search & Data Platform Tech Sourcing"}
+    {"company": "Adobe", "role": "Big Data / Platform Engineer", "recruiter": "Siddharth Joshi", "title": "Search & Data Platform Tech Sourcing"},
+    {"company": "Goldman Sachs", "role": "Data Engineer - Enterprise Platforms", "recruiter": "Meera Iyer", "title": "Technology Division Talent Acquisition"},
+    {"company": "Morgan Stanley", "role": "Cloud Data Platform Engineer", "recruiter": "Kunal Deshmukh", "title": "Core Tech & Data Recruiting"},
+    {"company": "Uber", "role": "Data Infrastructure Engineer", "recruiter": "Tanvi Agarwal", "title": "Platform Engineering Recruiter"},
+    {"company": "Atlassian", "role": "Data Systems Engineer", "recruiter": "Ritu Saxena", "title": "Data & Cloud Talent Partner"},
+    {"company": "Target Tech India", "role": "Data Engineer II", "recruiter": "Deepak Menon", "title": "Supply Chain & Data Tech Sourcing"}
 ]
+
 
 
 class RecruiterTemplateGenerator:
@@ -160,17 +171,84 @@ class RecruiterTemplateGenerator:
             return f"Hi {comp_clean} Recruiting Team,"
         return "Hi there,"
 
+    def generate_mlops_connection_note(
+        self,
+        recruiter_name: str,
+        company: str,
+        tech_stack: str = "Kubernetes, Docker & MLflow"
+    ) -> str:
+        """
+        Template 1-MLOps: LinkedIn Connection Request Note for MLOps & AI Infrastructure.
+        CRITICAL CONSTRAINT: Hard limit <= 300 characters strictly.
+        Guarantees sign-off '- Lavkush' is never sliced or truncated.
+        """
+        comp_clean = company.strip() if company else "your firm"
+        first = self._extract_first_name(recruiter_name)
+
+        if first:
+            salutation = f"Hi {first},"
+            lead_phrase = f"noticed you recruit for {comp_clean}'s AI/ML Platform team."
+        else:
+            if comp_clean and comp_clean != "your firm":
+                salutation = f"Hi {comp_clean} Recruiting Team,"
+                lead_phrase = "noticed your open MLOps and AI platform roles."
+            else:
+                salutation = "Hi there,"
+                lead_phrase = "noticed your open MLOps roles."
+
+        closing = f" - {self.first_name}"
+
+        note = (
+            f"{salutation} {lead_phrase} "
+            f"I'm an MLOps Engineer ({self.yoe}) specializing in {tech_stack} "
+            f"(50-node K8s & IaC). On a 15-day notice period. Would love to connect regarding open roles!{closing}"
+        )
+
+        if len(note) <= 300:
+            return note
+
+        note2 = (
+            f"{salutation} noticed you hire for {comp_clean}'s AI Platform team. "
+            f"I bring {self.yoe} in Kubernetes, Docker, Helm & MLflow (15-day notice). "
+            f"Would love to connect regarding open opportunities!{closing}"
+        )
+
+        if len(note2) <= 300:
+            return note2
+
+        prefix = f"{salutation} I'm an MLOps Engineer ({self.yoe}) in K8s & MLflow (15-day notice). Connecting for roles at "
+        suffix = f"!{closing}"
+        budget = 300 - len(prefix) - len(suffix)
+        if budget > 8:
+            short_comp = comp_clean[:budget - 3].rstrip() + "..."
+        elif budget > 0:
+            short_comp = comp_clean[:budget]
+        else:
+            short_comp = ""
+        safe_note = f"{prefix}{short_comp}{suffix}"
+        return safe_note[:300]
+
     def generate_connection_note(
         self,
         recruiter_name: str,
         company: str,
-        tech_stack: str = "Databricks, PySpark & Delta Lake"
+        tech_stack: Optional[str] = None,
+        role: Optional[str] = None,
+        persona: Optional[str] = None
     ) -> str:
         """
         Template 1: LinkedIn Connection Request Note.
         CRITICAL CONSTRAINT: Hard limit <= 300 characters strictly.
         Guarantees sign-off '- Lavkush' is never sliced or truncated.
         """
+        if (persona and persona.lower() in ("mlops", "ai", "platform")) or (role and any(k in role.lower() for k in ["mlops", "ai infra", "platform"])):
+            return self.generate_mlops_connection_note(
+                recruiter_name=recruiter_name,
+                company=company,
+                tech_stack=tech_stack or "Kubernetes, Docker & MLflow"
+            )
+
+        actual_stack = tech_stack or "Databricks, PySpark & Delta Lake"
         comp_clean = company.strip() if company else "your firm"
         first = self._extract_first_name(recruiter_name)
 
@@ -190,7 +268,7 @@ class RecruiterTemplateGenerator:
         # Tier 1: Base high-converting note
         note = (
             f"{salutation} {lead_phrase} "
-            f"I'm an Azure Data Engineer ({self.yoe}) specializing in {tech_stack} "
+            f"I'm an Azure Data Engineer ({self.yoe}) specializing in {actual_stack} "
             f"(2M+ events/day). On a 15-day notice period. Would love to connect regarding open roles!{closing}"
         )
 
@@ -221,6 +299,51 @@ class RecruiterTemplateGenerator:
         safe_note = f"{prefix}{short_comp}{suffix}"
         return safe_note[:300]
 
+    def generate_mlops_inmail(
+        self,
+        recruiter_name: str,
+        company: str,
+        role: str = "MLOps Engineer"
+    ) -> Dict[str, str]:
+        """
+        Direct InMail tailored for MLOps / AI Infrastructure Engineer positions.
+        Anchored in 01_FACT_MATRIX.md ground truth.
+        """
+        salutation = self._format_salutation(recruiter_name, company)
+        comp_clean = company.strip() if company else "your company"
+
+        subject = f"{role} ({self.yoe} | Kubernetes, Docker, MLflow, Terraform) — 15-Day Notice | {self.name}"
+
+        body = (
+            f"{salutation}\n\n"
+            f"Hope you're having a productive week.\n\n"
+            f"I am reaching out regarding {role} opportunities at {comp_clean}. I bring {self.yoe} "
+            f"specializing in Kubernetes orchestration, CI/CD automation, and ML infrastructure platforms "
+            f"across CGI India and HFCL Limited.\n\n"
+            f"Key Production Highlights (01_FACT_MATRIX.md Ground Truth):\n"
+            f"• Kubernetes Lifecycle Automation: Built 40+ Ansible roles with Jinja2 for K8s lifecycle "
+            f"(kubeadm, CNI, Harbor, Helm), cutting cluster bootstrap time from 2 days to 4 hours (83%).\n"
+            f"• 50-Node Production Operations: Operated a 50-node bare-metal K8s platform for 15+ distributed "
+            f"microservices with namespace isolation, RBAC, and HPA, sustaining 99.95% uptime.\n"
+            f"• Stateful Data Backbones: Managed Kafka, Redis, PostgreSQL/TimescaleDB, and MongoDB StatefulSets "
+            f"with Velero DR, cutting RTO from 8h to 30min (93%) and MTTR by 45%.\n"
+            f"• AI Gateway Projects: Authored AegisAgent (AI Security Gateway in Rust/Cedar/K8s) and Vulcan "
+            f"(Automation Platform with Redis & pgvector).\n\n"
+            f"Availability & Compensation:\n"
+            f"• Notice Period: 15 Days or less (Immediate joiner)\n"
+            f"• Target CTC: ₹20–25 LPA\n"
+            f"• Base Location: Bangalore, India (Open to Pune, Hyderabad, Remote)\n\n"
+            f"Direct Contact:\n"
+            f"• Phone: {self.phone}\n"
+            f"• Email: {self.email}\n"
+            f"• LinkedIn: {self.linkedin}\n\n"
+            f"Would you have 5 minutes for a brief introductory call this week?\n\n"
+            f"Best regards,\n"
+            f"{self.name}"
+        )
+
+        return {"subject": subject, "body": body}
+
     def generate_direct_inmail(
         self,
         recruiter_name: str,
@@ -240,19 +363,17 @@ class RecruiterTemplateGenerator:
             f"{salutation}\n\n"
             f"Hope you're having a productive week.\n\n"
             f"I am reaching out regarding {role} opportunities at {comp_clean}. I bring {self.yoe} "
-            f"specializing in Azure Databricks, PySpark, Delta Lake, and ADF across enterprise Medallion Lakehouses "
-            f"at CGI (PNC Bank GCC) and HFCL.\n\n"
-            f"Key Production Highlights:\n"
-            f"• Medallion Lakehouse: Engineered ADF & PySpark pipelines processing 2M+ events/day into Bronze, Silver, "
-            f"and Gold Delta tables with sub-second streaming ingestion.\n"
-            f"• Performance & Latency: Optimized distributed Spark SQL transformations, slashing batch ETL execution "
-            f"runtime by 35% while sustaining 99.95% platform availability.\n"
-            f"• Infrastructure & DataOps: Automated Lakehouse provisioning & CI/CD quality validation gates using "
-            f"Terraform, Docker, and Kubernetes.\n\n"
+            f"(DevOps Engineer at CGI / Platform Engineering at HFCL) targeting Azure Data Engineer roles, "
+            f"with project depth in Azure Databricks, PySpark, Delta Lake, and ADF.\n\n"
+            f"Key Proof Points:\n"
+            f"• Project Medallion Lakehouse: ADF & PySpark pipelines processing 2M+ events/day into Bronze/Silver/"
+            f"Gold Delta tables.\n"
+            f"• Project Performance: Spark SQL optimizations cutting batch ETL runtime by ~35%.\n"
+            f"• Employment DataOps: Terraform, Docker, Kubernetes (50-node), Jenkins/GitLab CI, ArgoCD/Helm.\n\n"
             f"Availability & Compensation:\n"
             f"• Notice Period: 15 Days or less (Immediate joiner)\n"
             f"• Target CTC: ₹20–25 LPA\n"
-            f"• Location: Hyderabad / Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\n"
+            f"• Location: Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)\n\n"
             f"Direct Contact:\n"
             f"• Phone: {self.phone}\n"
             f"• Email: {self.email}\n"
@@ -281,15 +402,13 @@ class RecruiterTemplateGenerator:
         body = (
             f"{salutation}\n\n"
             f"I have been following {comp_clean}'s engineering deliverables and wanted to reach out directly.\n\n"
-            f"I am an Azure Data Engineer ({self.yoe}) building high-throughput Lakehouse data backbones "
-            f"(Azure Databricks, PySpark, Delta Lake, ADF, Kafka) at CGI (PNC Bank GCC).\n\n"
+            f"I am targeting Azure Data Engineer roles ({self.yoe}). Day job: DevOps Engineer at CGI "
+            f"(PNC Bank GCC) on EKS/Terraform/GitOps; project proof: Medallion Lakehouse on Azure Databricks/"
+            f"PySpark/Delta (2M+ events/day, 35% ETL runtime cut).\n\n"
             f"What I can immediately deliver for your data platform:\n"
-            f"1. Lakehouse Scaling: Hands-on experience architecting Medallion Lakehouses processing 2M+ events/day "
-            f"with Delta Lake ACID transactions, CDC ingestion, and schema enforcement.\n"
-            f"2. Query & Pipeline Optimization: Deep PySpark & Spark SQL performance tuning (partition pruning, "
-            f"liquid clustering, broadcast joins), reducing ETL execution latencies by 35%.\n"
-            f"3. Reliable DataOps: Production Terraform IaC and automated validation gates (Great Expectations, CI/CD), "
-            f"ensuring zero schema drift and high platform availability.\n\n"
+            f"1. Lakehouse Scaling (project): Medallion pipelines with Delta Lake ACID, CDC, schema enforcement.\n"
+            f"2. Query & Pipeline Optimization (project): PySpark/Spark SQL tuning cutting ETL runtime ~35%.\n"
+            f"3. Reliable DataOps (employment): Terraform IaC, Ansible, Jenkins/GitLab CI, ArgoCD/Helm on K8s.\n\n"
             f"I am on a 15-day notice period and actively targeting ₹20–25 LPA Azure Data Engineering roles.\n\n"
             f"I would welcome a 10-minute technical chat to discuss your current data platform challenges and share "
             f"how my background aligns with {comp_clean}'s roadmap.\n\n"
@@ -413,12 +532,27 @@ class RecruiterOutreachCRM:
         "Notes"
     ]
 
-    def __init__(self, json_path: Optional[str] = None, excel_path: Optional[str] = None):
+    def __init__(self, json_path: Optional[str] = None, excel_path: Optional[str] = None, db_path: Optional[str] = None):
         self.json_path = json_path or DEFAULT_OUTREACH_JSON
         self.excel_path = excel_path or TRACKER_PATH
+        self.db_path = db_path
         self.generator = RecruiterTemplateGenerator()
         self.leads: List[Dict[str, Any]] = []
         self._load_json()
+
+    def get_daily_outreach_count(self, target_date: Optional[str] = None) -> int:
+        """Returns the number of outreach entries logged for today (or specified date YYYY-MM-DD)."""
+        today_prefix = target_date or datetime.now().strftime("%Y-%m-%d")
+        count = 0
+        for l in self.leads:
+            d = l.get("date") or l.get("created_at") or ""
+            if str(d).startswith(today_prefix):
+                count += 1
+        return count
+
+    def can_send_outreach(self, daily_limit: int = 8, target_date: Optional[str] = None) -> bool:
+        """Returns True if daily outreach count is strictly less than daily_limit."""
+        return self.get_daily_outreach_count(target_date=target_date) < daily_limit
 
     def _load_json(self) -> None:
         if os.path.exists(self.json_path):
@@ -503,6 +637,27 @@ class RecruiterOutreachCRM:
 
         self._save_json()
         self.sync_to_excel()
+
+        # Dual-log to SQLite applied_jobs.db
+        try:
+            from naukari_pro.modules.db import record_outreach
+            record_outreach(
+                recruiter_name=recruiter_name,
+                company=company,
+                target_role=target_role,
+                platform=platform,
+                message_type=message_type,
+                status=status_norm,
+                notes=notes,
+                message_content=message_content,
+                lead_id=lid,
+                created_at=now,
+                call_scheduled_at=entry.get("call_scheduled_at"),
+                db_path=self.db_path
+            )
+        except Exception as e_sql:
+            logger.debug("SQLite outreach dual-log notice: %s", e_sql)
+
         return entry
 
     def update_status(
@@ -541,7 +696,22 @@ class RecruiterOutreachCRM:
         if matched:
             self._save_json()
             self.sync_to_excel()
+
+            # Dual-log to SQLite applied_jobs.db
+            try:
+                from naukari_pro.modules.db import update_outreach_status
+                update_outreach_status(
+                    identifier=identifier,
+                    new_status=status_norm,
+                    notes=notes,
+                    call_scheduled_at=matched.get("call_scheduled_at"),
+                    db_path=self.db_path
+                )
+            except Exception as e_sql:
+                logger.debug("SQLite outreach status update notice: %s", e_sql)
+
         return matched
+
 
     def list_active_leads(self, filter_status: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -693,26 +863,37 @@ class RecruiterOutreachCRM:
             print(f"[!] Warning: Failed syncing Recruiter_Outreach_Log in Excel: {e}")
             return False
 
-    def batch_generate_gcc_outreach(self, target_list: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+    def batch_generate_gcc_outreach(
+        self,
+        target_list: Optional[List[Dict[str, str]]] = None,
+        persona: str = "de",
+        limit: int = 15
+    ) -> List[Dict[str, Any]]:
         """
-        Generates 10 recruiter pitches for top target GCC companies and logs them.
+        Generates recruiter pitches for top target GCC companies and logs them.
+        Supports both DE and MLOps personas, up to limit (default 15).
         """
-        targets = target_list or TOP_GCC_TARGETS
+        targets = (target_list or TOP_GCC_TARGETS)[:limit]
+
         generated = []
         for t in targets:
             comp = t.get("company", "Tech Company")
             rec = t.get("recruiter", "Recruiter")
-            role = t.get("role", "Azure Data Engineer")
+            role = t.get("role", "MLOps Engineer" if persona == "mlops" else "Azure Data Engineer")
 
-            # Alternating templates: direct inmail & tech lead pitch
-            if any(k in comp.lower() for k in ["walmart", "jpmorgan", "amazon"]):
+            # Alternating templates: direct inmail & tech lead pitch or MLOps inmail
+            if persona == "mlops":
+                pitch = self.generator.generate_mlops_inmail(rec, comp)
+                msg_type = "MLOps InMail"
+                conn_note = self.generator.generate_mlops_connection_note(rec, comp)
+            elif any(k in comp.lower() for k in ["walmart", "jpmorgan", "amazon"]):
                 pitch = self.generator.generate_tech_lead_pitch(rec, comp, role)
                 msg_type = "Tech Lead Outreach"
+                conn_note = self.generator.generate_connection_note(rec, comp)
             else:
                 pitch = self.generator.generate_direct_inmail(rec, comp, role)
                 msg_type = "Direct InMail"
-
-            conn_note = self.generator.generate_connection_note(rec, comp)
+                conn_note = self.generator.generate_connection_note(rec, comp)
 
             entry = self.log_outreach(
                 recruiter_name=rec,
@@ -721,7 +902,7 @@ class RecruiterOutreachCRM:
                 platform="LinkedIn",
                 message_type=msg_type,
                 status="CONTACTED",
-                notes="Generated via 5-Calls/Day Autonomous GCC batch",
+                notes=f"Generated via 5-Calls/Day Autonomous GCC batch ({persona})",
                 message_content=pitch["body"]
             )
             generated.append({
@@ -733,9 +914,40 @@ class RecruiterOutreachCRM:
         return generated
 
 
+# Module-level convenience functions
+_default_generator = RecruiterTemplateGenerator()
+
+
+def generate_mlops_connection_note(
+    recruiter_name: str,
+    company: str,
+    tech_stack: str = "Kubernetes, Docker & MLflow"
+) -> str:
+    """Module-level generator for MLOps connection notes."""
+    return _default_generator.generate_mlops_connection_note(
+        recruiter_name=recruiter_name,
+        company=company,
+        tech_stack=tech_stack
+    )
+
+
+def generate_mlops_inmail(
+    recruiter_name: str,
+    company: str,
+    role: str = "MLOps Engineer"
+) -> Dict[str, str]:
+    """Module-level generator for MLOps direct InMails."""
+    return _default_generator.generate_mlops_inmail(
+        recruiter_name=recruiter_name,
+        company=company,
+        role=role
+    )
+
+
 # Lazy export of LinkedInOutreachSender for unified module discovery
 try:
     from naukari_pro.modules.linkedin_outreach import LinkedInOutreachSender
 except ImportError:
     LinkedInOutreachSender = None
+
 

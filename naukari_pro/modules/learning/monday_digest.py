@@ -82,13 +82,25 @@ def send_monday_digest_email(
 def generate_monday_digest(
     db_path: Optional[str] = None,
     output_path: Optional[str] = None,
-    as_of_date: Optional[str] = None
+    as_of_date: Optional[str] = None,
+    refit_bandit: bool = True,
 ) -> str:
     """
     Compiles a comprehensive weekly Monday Digest markdown report from SQLite telemetry.
+    Closed-loop LEARN: optionally refits LinUCB before summarizing.
     """
     target_db = db_path or DB_PATH
     init_db(target_db)
+
+    bandit_refit_note = "skipped"
+    if refit_bandit:
+        try:
+            from naukari_pro.modules.learning.policy import LinUCBBanditPolicy
+            policy = LinUCBBanditPolicy()
+            did_refit = bool(policy.refit_if_due(db_path=target_db))
+            bandit_refit_note = "refit_applied" if did_refit else "no_refit_needed"
+        except Exception as e:
+            bandit_refit_note = f"refit_error: {e}"
 
     report_date = as_of_date or datetime.now().strftime("%Y-%m-%d")
     conn = get_db_connection(target_db)
@@ -267,6 +279,8 @@ def generate_monday_digest(
         f"  - `SKIP`: {decisions.get('SKIP', 0)}",
         f"  - `DEFER`: {decisions.get('DEFER', 0)}",
         f"  - `APPLY_FLOOR` (Overrides): {decisions.get('APPLY_FLOOR', 0)}",
+        "",
+        f"**LinUCB Monday learn:** `{bandit_refit_note}`",
         "",
         "---",
         "*Digest generated autonomously by naukariPro Closed-Loop Learning Engine (v2.1-linucb)*"

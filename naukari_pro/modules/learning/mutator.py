@@ -232,15 +232,26 @@ class BlacklistValidator:
         return len(violations) == 0, violations
 
     @classmethod
-    def enforce(cls, text: str, field_name: str = "general", check_field_immutability: bool = False) -> None:
+    def enforce(
+        cls,
+        text: Optional[str] = None,
+        field_name: str = "general",
+        check_field_immutability: bool = False,
+        val: Optional[str] = None,
+        field: Optional[str] = None,
+        **kwargs
+    ) -> None:
         """Enforces blacklist check, raising BlacklistViolationError if any rule triggers."""
-        if check_field_immutability:
-            cls.validate_field_name(field_name)
+        target_text = val if val is not None else (text or "")
+        target_field = field if field is not None else field_name
 
-        valid, violations = cls.validate_text(text, field_name)
+        if check_field_immutability:
+            cls.validate_field_name(target_field)
+
+        valid, violations = cls.validate_text(target_text, target_field)
         if not valid:
             raise BlacklistViolationError(
-                f"Candidate fact integrity violation in '{field_name}':\n" + "\n".join(f" - {v}" for v in violations)
+                f"Blacklisted claim: Candidate fact integrity violation in '{target_field}':\n" + "\n".join(f" - {v}" for v in violations)
             )
 
 

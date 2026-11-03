@@ -91,9 +91,10 @@ class Goal5CallsEngine:
     to reliably generate >= 5 recruiter calls per day.
     """
 
-    def __init__(self, excel_path: Optional[str] = None, json_path: Optional[str] = None):
+    def __init__(self, excel_path: Optional[str] = None, json_path: Optional[str] = None, persona: str = "de"):
         self.excel_path = excel_path or TRACKER_PATH
         self.json_path = json_path or DEFAULT_OUTREACH_JSON
+        self.persona = persona
         self.crm = RecruiterOutreachCRM(json_path=self.json_path, excel_path=self.excel_path)
         self.generator = RecruiterTemplateGenerator()
 
@@ -311,7 +312,7 @@ class Goal5CallsEngine:
 
         elif block_number == 2:
             # Block 2: Afternoon Direct Recruiter Outreach (GCC Focus)
-            pitches = self.crm.batch_generate_gcc_outreach()
+            pitches = self.crm.batch_generate_gcc_outreach(persona=self.persona)
             result["actions_executed"].append({
                 "action": "Top GCC Recruiter Outreach Generation",
                 "count": len(pitches),
@@ -327,7 +328,7 @@ class Goal5CallsEngine:
                 "details": "Profile refreshed for after-hours hiring manager & US shift recruiter searches."
             })
             # 2. 5 Follow-ups
-            followups = self.generate_followup_batch(count=5)
+            followups = self.generate_followup_batch(count=8)
             result["actions_executed"].append({
                 "action": "48-Hour Recruiter Follow-Up Batch",
                 "count": len(followups),
@@ -346,11 +347,16 @@ class Goal5CallsEngine:
 
         return result
 
+    def execute_block(self, block_number: int, dry_run: bool = False, execute_live: bool = False) -> Dict[str, Any]:
+        """Alias for run_block."""
+        return self.run_block(block_number=block_number, dry_run=dry_run, execute_live=execute_live)
+
     def generate_followup_batch(self, count: int = 5) -> List[Dict[str, Any]]:
         """
         Selects leads needing follow-up (status CONTACTED or CONNECTED) and logs 48-Hour follow-ups.
         Preserves original lead_id to maintain tracking continuity.
         """
+        target_role = "MLOps Engineer" if self.persona == "mlops" else "Azure Data Engineer"
         eligible = [
             l for l in self.crm.leads
             if l.get("status") in ["CONTACTED", "CONNECTED"]
@@ -364,7 +370,7 @@ class Goal5CallsEngine:
                 selected.append({
                     "recruiter_name": t.get("recruiter", "Recruiter"),
                     "company": t.get("company", "GCC"),
-                    "target_role": t.get("role", "Azure Data Engineer"),
+                    "target_role": t.get("role", target_role),
                     "platform": "LinkedIn"
                 })
 
@@ -376,7 +382,7 @@ class Goal5CallsEngine:
             entry = self.crm.log_outreach(
                 recruiter_name=rec,
                 company=comp,
-                target_role=lead.get("target_role", "Azure Data Engineer"),
+                target_role=lead.get("target_role", target_role),
                 platform=lead.get("platform", "LinkedIn"),
                 message_type="48-Hour Follow-Up",
                 status="PITCH_SENT",

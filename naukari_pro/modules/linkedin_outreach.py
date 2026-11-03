@@ -257,6 +257,10 @@ class LinkedInOutreachSender:
         )
         return max(crm_count, self.sent_today_count)
 
+    def _get_keystroke_delay(self) -> int:
+        """Returns human-like keystroke delay in ms (30-80ms per Milestone 2 spec)."""
+        return random.randint(30, 80)
+
     async def _check_page_health(self, page: Any, recruiter_name: str, company: str, dry_run: bool) -> Optional[Dict[str, Any]]:
         """
         Inspects page for HTTP 429 rate limits, checkpoints, or authwalls.
@@ -322,7 +326,9 @@ class LinkedInOutreachSender:
         profile_url: Optional[str] = None,
         note: Optional[str] = None,
         dry_run: bool = True,
-        max_daily_limit: Optional[int] = None
+        max_daily_limit: Optional[int] = None,
+        role: Optional[str] = None,
+        persona: Optional[str] = "mlops"
     ) -> Dict[str, Any]:
         """
         Internal executor for outreach actions on an active Playwright page.
@@ -587,11 +593,16 @@ class LinkedInOutreachSender:
                 break
 
         # 8. Note Composition & Strict Character Limit (<= 300)
-        personalized_note = note or self.generator.generate_connection_note(recruiter_name, company)
+        personalized_note = note or self.generator.generate_connection_note(
+            recruiter_name=recruiter_name,
+            company=company,
+            role=role,
+            persona=persona
+        )
         if len(personalized_note) > 300:
             personalized_note = personalized_note[:300]
 
-        # 9. Type Note with Humanized Keystrokes
+        # 9. Type Note with Humanized Keystrokes (30-80ms delay)
         typed = False
         for t_sel in TEXTAREA_SELECTORS:
             loc = page.locator(t_sel)
@@ -603,11 +614,12 @@ class LinkedInOutreachSender:
                 clr_res = ta.fill("")
                 if inspect.isawaitable(clr_res):
                     await clr_res
-                # Humanized typing delay per character
+                # Humanized typing delay per character (30-80ms per Milestone 2 spec)
+                delay_ms = self._get_keystroke_delay()
                 if hasattr(ta, "press_sequentially"):
-                    typ_res = ta.press_sequentially(personalized_note, delay=random.randint(25, 45))
+                    typ_res = ta.press_sequentially(personalized_note, delay=delay_ms)
                 elif hasattr(ta, "type"):
-                    typ_res = ta.type(personalized_note, delay=random.randint(25, 45))
+                    typ_res = ta.type(personalized_note, delay=delay_ms)
                 else:
                     typ_res = ta.fill(personalized_note)
                 if inspect.isawaitable(typ_res):
@@ -726,7 +738,9 @@ class LinkedInOutreachSender:
         note: Optional[str] = None,
         dry_run: bool = True,
         max_daily_limit: Optional[int] = None,
-        page: Optional[Any] = None
+        page: Optional[Any] = None,
+        role: Optional[str] = None,
+        persona: Optional[str] = "mlops"
     ) -> Dict[str, Any]:
         """
         Public outreach method. Uses provided page or initializes stealth Playwright context.
@@ -742,7 +756,9 @@ class LinkedInOutreachSender:
                 profile_url=profile_url,
                 note=note,
                 dry_run=dry_run,
-                max_daily_limit=effective_limit
+                max_daily_limit=effective_limit,
+                role=role,
+                persona=persona
             )
 
         if async_playwright is None:
@@ -781,7 +797,9 @@ class LinkedInOutreachSender:
                     profile_url=profile_url,
                     note=note,
                     dry_run=dry_run,
-                    max_daily_limit=effective_limit
+                    max_daily_limit=effective_limit,
+                    role=role,
+                    persona=persona
                 )
             finally:
                 if hasattr(context, "close"):

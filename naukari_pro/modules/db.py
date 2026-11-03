@@ -246,7 +246,31 @@ def init_db(db_path: Optional[str] = None):
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_events_type_time ON policy_events(event_type, created_at);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_policy_events_version ON policy_events(policy_version);")
+
+        # Recruiter outreach & follow-ups ledger table (Milestone 1 - Feature 3)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recruiter_outreach (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id TEXT UNIQUE,
+                recruiter_name TEXT NOT NULL,
+                company TEXT NOT NULL,
+                target_role TEXT DEFAULT 'Azure Data Engineer',
+                platform TEXT NOT NULL DEFAULT 'LinkedIn',
+                message_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'CONTACTED',
+                notes TEXT,
+                message_content TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                call_scheduled_at TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_status ON recruiter_outreach(status);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_created ON recruiter_outreach(created_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_company ON recruiter_outreach(company);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_lead_id ON recruiter_outreach(lead_id);")
     conn.close()
+
 
 
 def init_mutations_db(db_path: Optional[str] = None):
@@ -285,7 +309,7 @@ def generate_job_id(title: str, company: str, job_url: Optional[str] = None) -> 
 
 
 COMPANY_CLEANUP_REGEX = re.compile(
-    r"\b(inc|incorporated|llc|ltd|limited|pvt|private|corp|corporation|technologies|technology|tech|"
+    r"\b(co|company|inc|incorporated|llc|ltd|limited|pvt|private|corp|corporation|technologies|technology|tech|"
     r"solutions|services|systems|consulting|global|group|india|software)\b|[^\w\s]",
     re.IGNORECASE
 )
@@ -360,7 +384,7 @@ def record_applied_job(
                     is_dup = False
                 else:
                     is_dup = True
-            elif is_job_already_applied(title=title, company=company, db_path=db_path):
+            elif is_job_already_applied(job_id=final_id, job_url=job_url, title=title, company=company, db_path=db_path):
                 is_dup = True
         finally:
             conn.close()
@@ -551,7 +575,7 @@ def is_job_already_applied(
             if row:
                 return True
 
-        # Tier 3 & 4: Title + Company
+        # Tier 3: Title + Company
         if title and company:
             # Exact match check
             row = conn.execute("""
@@ -561,17 +585,40 @@ def is_job_already_applied(
             if row:
                 return True
 
-            # Fuzzy normalized match check
+            # Normalized company match with exact title match (prevents collapsing distinct role titles)
             norm_comp = normalize_company_name(company)
-            norm_role = normalize_role_title(title)
-            if norm_comp and norm_role:
+            clean_title = title.lower().strip()
+            if norm_comp:
                 for existing in conn.execute("SELECT title, company FROM applied_jobs"):
                     ex_c = normalize_company_name(existing[1])
-                    ex_r = normalize_role_title(existing[0])
-                    if ex_c and ex_r and ex_c == norm_comp and ex_r == norm_role:
+                    ex_t = str(existing[0] or "").lower().strip()
+                    if ex_c and ex_t and ex_c == norm_comp and ex_t == clean_title:
                         return True
 
         return False
+    finally:
+        conn.close()
+
+
+def get_external_redirects_oldest_first(
+    limit: int = 50,
+    db_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """DB-first External Redirect backlog, oldest applied_at first (Beast CONVERT)."""
+    init_db(db_path)
+    conn = get_db_connection(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT job_id, title, company, job_url, platform, status, applied_at, match_score
+            FROM applied_jobs
+            WHERE status IN ('External Redirect', 'Not Available', 'Targeted Vacancy')
+            ORDER BY COALESCE(applied_at, '9999-12-31') ASC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
@@ -717,7 +764,137 @@ def sync_from_excel_tracker(excel_path: Optional[str] = None, db_path: Optional[
     return synced_count
 
 
+def record_outreach(
+    recruiter_name: str,
+    company: str,
+    target_role: str = "Azure Data Engineer",
+    platform: str = "LinkedIn",
+    message_type: str = "Connection Request Note",
+    status: str = "CONTACTED",
+    notes: str = "",
+    message_content: str = "",
+    lead_id: Optional[str] = None,
+    created_at: Optional[str] = None,
+    call_scheduled_at: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Records or updates a recruiter outreach attempt in applied_jobs.db.
+    """
+    import uuid
+    init_db(db_path)
+    now = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lid = lead_id or f"LEAD-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute("""
+                INSERT INTO recruiter_outreach (
+                    lead_id, recruiter_name, company, target_role, platform,
+                    message_type, status, notes, message_content, created_at, updated_at, call_scheduled_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(lead_id) DO UPDATE SET
+                    status = excluded.status,
+                    notes = COALESCE(excluded.notes, recruiter_outreach.notes),
+                    message_content = COALESCE(excluded.message_content, recruiter_outreach.message_content),
+                    updated_at = CURRENT_TIMESTAMP,
+                    call_scheduled_at = COALESCE(excluded.call_scheduled_at, recruiter_outreach.call_scheduled_at);
+            """, (
+                lid, recruiter_name.strip(), company.strip(), target_role.strip(),
+                platform.strip(), message_type.strip(), status.upper().strip(),
+                notes.strip(), message_content.strip(), now, now, call_scheduled_at
+            ))
+        return True, lid
+    except Exception as e:
+        print(f"  [DB ERROR] Failed to record outreach: {e}")
+        return False, lid
+    finally:
+        conn.close()
+
+
+def update_outreach_status(
+    identifier: str,
+    new_status: str,
+    notes: Optional[str] = None,
+    call_scheduled_at: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> bool:
+    """
+    Updates status for an outreach record identified by lead_id, recruiter_name, or company.
+    """
+    init_db(db_path)
+    conn = get_db_connection(db_path)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    clean_id = identifier.strip()
+    status_clean = new_status.upper().strip()
+
+    try:
+        with conn:
+            cursor = conn.execute("""
+                UPDATE recruiter_outreach
+                SET status = ?,
+                    notes = COALESCE(?, notes),
+                    updated_at = ?,
+                    call_scheduled_at = COALESCE(?, call_scheduled_at)
+                WHERE lead_id = ? OR LOWER(recruiter_name) = LOWER(?) OR LOWER(company) = LOWER(?)
+            """, (status_clean, notes, now, call_scheduled_at, clean_id, clean_id, clean_id))
+            return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def sync_outreach_from_json(json_path: Optional[str] = None, db_path: Optional[str] = None) -> int:
+    """
+    Backfills leads from outreach_tracker.json into recruiter_outreach in applied_jobs.db.
+    Handles both JSON lists and dicts with 'leads' or 'outreach_history'.
+    """
+    from naukari_pro.modules.recruiter_outreach import DEFAULT_OUTREACH_JSON
+    target_json = json_path or DEFAULT_OUTREACH_JSON
+    if not os.path.exists(target_json):
+        return 0
+
+    init_db(db_path)
+    synced = 0
+    try:
+        with open(target_json, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                leads = data
+            elif isinstance(data, dict):
+                leads = data.get("leads") or data.get("outreach_history") or []
+            else:
+                leads = []
+
+        for l in leads:
+            rec = l.get("recruiter_name") or l.get("recruiter")
+            comp = l.get("company") or l.get("target_company")
+            if not rec or not comp:
+                continue
+            ok, _ = record_outreach(
+                recruiter_name=rec,
+                company=comp,
+                target_role=l.get("target_role", "Azure Data Engineer"),
+                platform=l.get("platform", "LinkedIn"),
+                message_type=l.get("message_type", "Connection Request Note"),
+                status=l.get("status", "CONTACTED"),
+                notes=l.get("notes", ""),
+                message_content=l.get("message_content", ""),
+                lead_id=l.get("lead_id"),
+                created_at=l.get("date"),
+                call_scheduled_at=l.get("call_scheduled_at"),
+                db_path=db_path
+            )
+            if ok:
+                synced += 1
+    except Exception as e:
+        print(f"  [DB SYNC] Warning syncing outreach from json: {e}")
+
+    return synced
+
+
 class MutationRecordResult(int):
+
     """
     Dual-compatible result object representing a profile mutation record ID.
     Can be used directly as an int (row_id > 0) or unpacked as a tuple (success, id, message).

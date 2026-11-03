@@ -42,34 +42,277 @@ class BenchmarkPacing:
     projected_monthly: int = 0
     percent_attainment: float = 0.0
     status: str = "DEFICIT"  # "ON_TRACK", "AHEAD", "DEFICIT"
+    deficit: int = 0
+    daily_shortfall: float = 0.0
+    naukri_searches: int = 0
+    linkedin_searches: int = 0
+    linkedin_impressions: int = 0
+    total_impressions: int = 0
+    platform_breakdown: Dict[str, int] = field(default_factory=dict)
 
-def compute_benchmark_pacing(appearances: int, days: int = 7, target_monthly: int = 100000) -> BenchmarkPacing:
-    """Computes daily pace, 30-day projected velocity, and target attainment against 100k monthly benchmark."""
+    @property
+    def target_total(self) -> int:
+        return self.target_monthly
+
+    @property
+    def actual_daily_pace(self) -> float:
+        return self.current_daily_pace
+
+    @property
+    def projected_30d_volume(self) -> int:
+        return self.projected_monthly
+
+    @property
+    def attainment_pct(self) -> float:
+        return round((self.total_impressions or self.total_searches_30d) / self.target_monthly * 100, 2) if self.target_monthly > 0 else 0.0
+
+
+def compute_benchmark_pacing(
+    appearances: int = 0,
+    days: int = 7,
+    target_monthly: int = 100000,
+    *,
+    current_appearances: Optional[int] = None,
+    elapsed_days: Optional[int] = None,
+    target_appearances: Optional[int] = None,
+    target_days: int = 30,
+    naukri_searches: Optional[int] = None,
+    linkedin_searches: Optional[int] = None,
+    linkedin_impressions: Optional[int] = None,
+    total_impressions: Optional[int] = None
+) -> BenchmarkPacing:
+    """Computes daily pace, 30-day projected velocity, and target attainment against 100k monthly benchmark.
+    Supports unified cross-platform aggregation (Naukri searches + LinkedIn searches + LinkedIn impressions).
+    """
+    if current_appearances is not None:
+        appearances = current_appearances
+    if elapsed_days is not None:
+        days = elapsed_days
+    if target_appearances is not None:
+        target_monthly = target_appearances
+
     safe_days = max(days, 1)
-    safe_apps = max(appearances, 0)
-    daily_pace = round(safe_apps / safe_days, 2)
-    daily_target = round(target_monthly / 30.0, 2)
-    projected_monthly = int(round(daily_pace * 30))
+    safe_target_days = max(target_days, 1)
+
+    n_search = max(naukri_searches, 0) if naukri_searches is not None else None
+    l_search = max(linkedin_searches, 0) if linkedin_searches is not None else None
+    l_impr = max(linkedin_impressions, 0) if linkedin_impressions is not None else None
+
+    if total_impressions is not None:
+        total_val = max(total_impressions, 0)
+    elif n_search is not None or l_search is not None or l_impr is not None:
+        total_val = (n_search or 0) + (l_search or 0) + (l_impr or 0)
+    else:
+        total_val = max(appearances, 0)
+
+    daily_pace = round(total_val / safe_days, 2)
+    daily_target = round(target_monthly / float(safe_target_days), 2)
+    projected_monthly = int(round(daily_pace * safe_target_days))
     percent_attainment = round((projected_monthly / target_monthly) * 100, 2) if target_monthly > 0 else 0.0
 
-    if projected_monthly > target_monthly:
+    ratio = daily_pace / daily_target if daily_target > 0 else 1.0
+    if ratio > 1.05:
         status = "AHEAD"
-    elif projected_monthly == target_monthly:
-        status = "ON_TRACK"
-    else:
+    elif ratio < 0.95:
         status = "DEFICIT"
+    else:
+        status = "ON_TRACK"
+
+    deficit = max(0, target_monthly - projected_monthly)
+    daily_shortfall = max(0.0, round(daily_target - daily_pace, 2))
+
+    breakdown = {
+        "naukri_searches": n_search if n_search is not None else total_val,
+        "linkedin_searches": l_search if l_search is not None else 0,
+        "linkedin_impressions": l_impr if l_impr is not None else 0,
+        "total_unified_impressions": total_val
+    }
 
     return BenchmarkPacing(
-        total_searches_30d=safe_apps,
+        total_searches_30d=total_val,
         target_monthly=target_monthly,
         daily_target=daily_target,
         current_daily_pace=daily_pace,
         projected_monthly=projected_monthly,
         percent_attainment=percent_attainment,
-        status=status
+        status=status,
+        deficit=deficit,
+        daily_shortfall=daily_shortfall,
+        naukri_searches=n_search if n_search is not None else total_val,
+        linkedin_searches=l_search or 0,
+        linkedin_impressions=l_impr or 0,
+        total_impressions=total_val,
+        platform_breakdown=breakdown
     )
 
-# Verified Azure Data Engineer target keywords and spelling standards
+
+def compute_unified_pacing(
+    naukri_appearances: int = 0,
+    linkedin_appearances: int = 0,
+    linkedin_impressions: int = 0,
+    days: int = 7,
+    target_monthly: int = 100000
+) -> BenchmarkPacing:
+    """Convenience helper computing unified 100K pacing across Naukri and LinkedIn."""
+    return compute_benchmark_pacing(
+        days=days,
+        target_monthly=target_monthly,
+        naukri_searches=naukri_appearances,
+        linkedin_searches=linkedin_appearances,
+        linkedin_impressions=linkedin_impressions
+    )
+
+class Unified100KSpeedometer:
+    """
+    Unified 100K Monthly Impression Pacing Speedometer.
+    Aggregates recruiter search appearances and profile impressions across
+    Naukri and LinkedIn into a single velocity benchmark ($3,333.33/day).
+    """
+
+    def __init__(
+        self,
+        target_monthly: int = MONTHLY_SEARCH_BENCHMARK,
+        target_total: Optional[int] = None,
+        target_days: int = 30
+    ):
+        self.target_total = target_total or target_monthly
+        self.target_monthly = self.target_total
+        self.target_days = target_days
+        self.daily_target = self.target_total / float(self.target_days) if self.target_days > 0 else DAILY_SEARCH_BENCHMARK
+
+        self.naukri_searches = 0
+        self.naukri_views = 0
+        self.linkedin_searches = 0
+        self.linkedin_impressions = 0
+
+    def add_naukri_metrics(self, search_appearances: int = 0, profile_views: int = 0) -> None:
+        """Adds or updates Naukri search appearances and profile views."""
+        self.naukri_searches += search_appearances
+        self.naukri_views += profile_views
+
+    def add_linkedin_metrics(self, search_appearances: int = 0, impressions: int = 0) -> None:
+        """Adds or updates LinkedIn search appearances and impressions."""
+        self.linkedin_searches += search_appearances
+        self.linkedin_impressions += impressions
+
+    def compute_current_pacing(self, elapsed_days: int = 7) -> BenchmarkPacing:
+        """Computes current pacing using accumulated platform metrics."""
+        return compute_benchmark_pacing(
+            current_appearances=self.naukri_searches + self.linkedin_searches + self.linkedin_impressions,
+            naukri_searches=self.naukri_searches,
+            linkedin_searches=self.linkedin_searches,
+            linkedin_impressions=self.linkedin_impressions,
+            elapsed_days=elapsed_days,
+            target_appearances=self.target_total,
+            target_days=self.target_days
+        )
+
+    def generate_speedometer_report(self, elapsed_days: int = 7) -> str:
+        """Generates a detailed ASCII dashboard report of the unified speedometer."""
+        pacing = self.compute_current_pacing(elapsed_days=elapsed_days)
+        lines = [
+            "================================================================================",
+            "   🚀 UNIFIED 100K IMPRESSION PACING SPEEDOMETER",
+            f"   Status: {pacing.status} | Attainment: {pacing.attainment_pct:.1f}% ({pacing.total_impressions:,} / {pacing.target_total:,})",
+            "================================================================================",
+            f"  Elapsed Days:       {elapsed_days} / {self.target_days}",
+            f"  Daily Target Pace:  {pacing.daily_target:,.2f} impressions/day",
+            f"  Actual Daily Pace:  {pacing.actual_daily_pace:,.2f} impressions/day",
+            f"  30-Day Projection:  {pacing.projected_30d_volume:,} impressions",
+            f"  Deficit / Buffer:   {pacing.deficit:,.2f} impressions",
+            "--------------------------------------------------------------------------------",
+            "  PLATFORM BREAKDOWN:",
+            f"  • Naukri Searches:      {self.naukri_searches:,}",
+            f"  • LinkedIn Searches:    {self.linkedin_searches:,}",
+            f"  • LinkedIn Impressions: {self.linkedin_impressions:,}",
+            "================================================================================"
+        ]
+        return "\n".join(lines)
+
+    def calculate_pace(
+        self,
+        naukri_searches: int = 0,
+        linkedin_searches: int = 0,
+        linkedin_impressions: int = 0,
+        days: int = 7
+    ) -> BenchmarkPacing:
+        """Calculates unified pacing across all channels."""
+        return compute_unified_pacing(
+            naukri_appearances=naukri_searches,
+            linkedin_appearances=linkedin_searches,
+            linkedin_impressions=linkedin_impressions,
+            days=days,
+            target_monthly=self.target_monthly
+        )
+
+    def aggregate_telemetry(
+        self,
+        naukri_telemetry: Optional[Dict[str, Any]] = None,
+        linkedin_telemetry: Optional[Dict[str, Any]] = None,
+        days: int = 7
+    ) -> Dict[str, Any]:
+        """Combines platform telemetry dictionaries into unified speedometer report."""
+        n_tel = naukri_telemetry or {}
+        l_tel = linkedin_telemetry or {}
+
+        n_search = n_tel.get("search_appearances", n_tel.get("search_appearances_7d", 0))
+        l_search = l_tel.get("search_appearances", 0)
+        l_impr = l_tel.get("impressions", l_tel.get("profile_views", 0))
+
+        pacing = self.calculate_pace(
+            naukri_searches=n_search,
+            linkedin_searches=l_search,
+            linkedin_impressions=l_impr,
+            days=days
+        )
+
+        return {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "target_monthly": self.target_monthly,
+            "daily_target": self.daily_target,
+            "naukri_searches": n_search,
+            "linkedin_searches": l_search,
+            "linkedin_impressions": l_impr,
+            "total_unified_impressions": pacing.total_impressions,
+            "daily_pace": pacing.current_daily_pace,
+            "projected_monthly": pacing.projected_monthly,
+            "percent_attainment": pacing.percent_attainment,
+            "pacing_status": pacing.status,
+            "deficit": pacing.deficit,
+            "daily_shortfall": pacing.daily_shortfall,
+            "platform_breakdown": pacing.platform_breakdown,
+            "naukri_telemetry": n_tel,
+            "linkedin_telemetry": l_tel
+        }
+
+# Canonical MLOps / ML Platform / AI Infrastructure Engineer target keywords (2+ YOE) per 01_FACT_MATRIX.md & AGENTS.md
+TARGET_MLOPS_KEYWORDS = [
+    "MLOps Engineer",
+    "ML Platform Engineer",
+    "AI Infrastructure Engineer",
+    "Kubernetes",
+    "Docker",
+    "Helm",
+    "CI/CD",
+    "GitHub Actions",
+    "Terraform",
+    "Prometheus",
+    "Grafana",
+    "Triton",
+    "Triton Inference Server",
+    "vLLM",
+    "MLflow",
+    "Kafka",
+    "Python",
+    "Linux",
+    "FastAPI",
+    "EKS",
+    "AWS",
+    "Redis",
+    "StatefulSets"
+]
+
+# Verified Azure Data Engineer target keywords and spelling standards (Retained for backwards compatibility)
 TARGET_DE_KEYWORDS = [
     "Azure Data Engineer",
     "PySpark",
@@ -83,7 +326,9 @@ TARGET_DE_KEYWORDS = [
     "Terraform",
     "ETL",
     "Data Pipeline",
-    "Data Lakehouse"
+    "Data Lakehouse",
+    "Azure Synapse",
+    "Microsoft Fabric"
 ]
 
 def decode_naukri_jwt(token_str):
@@ -102,8 +347,10 @@ def decode_naukri_jwt(token_str):
     return {}
 
 class ProfilePerformanceEngine:
-    def __init__(self):
+    def __init__(self, tracker_path: Optional[str] = None, history_file: Optional[str] = None, **kwargs):
         self.cfg = load_config()
+        self.tracker_path = tracker_path
+        self.history_file = history_file
 
     def get_session_entitlements(self, cookies=None):
         """
@@ -386,8 +633,44 @@ class ProfilePerformanceEngine:
         """Calculates benchmark pacing against monthly search target."""
         return compute_benchmark_pacing(appearances, days, target_monthly)
 
-    def log_performance_snapshot(self, metrics, tracker_path=None, history_file=None):
-        """Persists the 5 live numbers and benchmark pacing to historical JSON ledger and Excel tracker."""
+    def compute_unified_pacing(
+        self,
+        naukri_appearances: int = 0,
+        linkedin_appearances: int = 0,
+        linkedin_impressions: int = 0,
+        days: int = 7,
+        target_monthly: int = 100000
+    ) -> BenchmarkPacing:
+        """Calculates unified pacing across all channels."""
+        return compute_unified_pacing(
+            naukri_appearances=naukri_appearances,
+            linkedin_appearances=linkedin_appearances,
+            linkedin_impressions=linkedin_impressions,
+            days=days,
+            target_monthly=target_monthly
+        )
+
+    def get_unified_speedometer(
+        self,
+        naukri_telemetry: Optional[Dict[str, Any]] = None,
+        linkedin_telemetry: Optional[Dict[str, Any]] = None,
+        days: int = 7,
+        target_monthly: int = 100000
+    ) -> Dict[str, Any]:
+        """Provides a unified speedometer summary aggregating Naukri and LinkedIn impressions."""
+        speedometer = Unified100KSpeedometer(target_monthly=target_monthly)
+        return speedometer.aggregate_telemetry(
+            naukri_telemetry=naukri_telemetry,
+            linkedin_telemetry=linkedin_telemetry,
+            days=days
+        )
+
+    def log_performance_snapshot(self, metrics, tracker_path=None, history_file=None, db_path=None):
+        """Persists the 5 live numbers and benchmark pacing to multi-sink destinations:
+        1. Historical JSON ledger (naukri_system/profile_performance_history.json)
+        2. Excel tracker (Naukri_Live_Application_Tracker.xlsx § Recruiter_Performance_Log)
+        3. SQLite database (search_appearance_weekly & unified_impressions_ledger)
+        """
         h_file = history_file or HISTORY_FILE
         t_path = tracker_path or TRACKER_PATH
         os.makedirs(os.path.dirname(h_file), exist_ok=True)
@@ -399,21 +682,41 @@ class ProfilePerformanceEngine:
             except Exception:
                 history = []
 
-        apps = max(metrics.get("search_appearances", 0), 0)
-        views = max(metrics.get("profile_views", 0), 0)
+        apps = max(metrics.get("search_appearances", metrics.get("searches", metrics.get("searches_7d", 0))), 0)
+        views = max(metrics.get("profile_views", metrics.get("views", metrics.get("views_7d", 0))), 0)
         downloads = max(metrics.get("resume_downloads", 0), 0)
         contacts = max(metrics.get("contact_views", 0), 0)
+        n_search = metrics.get("naukri_searches", apps)
+        l_search = metrics.get("linkedin_searches", 0)
+        l_impr = metrics.get("linkedin_impressions", 0)
+        elapsed_days = metrics.get("elapsed_days", 7)
 
-        pacing = compute_benchmark_pacing(appearances=apps, days=7, target_monthly=100000)
+        pacing = compute_benchmark_pacing(
+            appearances=apps,
+            days=elapsed_days,
+            target_monthly=100000,
+            naukri_searches=n_search,
+            linkedin_searches=l_search,
+            linkedin_impressions=l_impr
+        )
         ctr = round((views / apps) * 100, 2) if apps > 0 else 0.0
         contact_conv = round((contacts / views) * 100, 2) if views > 0 else 0.0
 
+        metrics["searches_7d"] = apps
+        metrics["views_7d"] = views
         metrics["daily_pace"] = pacing.current_daily_pace
         metrics["projected_monthly"] = pacing.projected_monthly
         metrics["percent_attainment"] = pacing.percent_attainment
         metrics["pacing_status"] = pacing.status
+        metrics["deficit"] = pacing.deficit
+        metrics["daily_shortfall"] = pacing.daily_shortfall
         metrics["ctr_pct"] = ctr
         metrics["contact_conv_pct"] = contact_conv
+        metrics["total_impressions"] = pacing.total_impressions
+        metrics["total_unified_impressions"] = pacing.total_impressions
+        metrics["naukri_searches"] = pacing.naukri_searches
+        metrics["linkedin_searches"] = pacing.linkedin_searches
+        metrics["linkedin_impressions"] = pacing.linkedin_impressions
 
         history.append(metrics)
         try:
@@ -422,7 +725,7 @@ class ProfilePerformanceEngine:
         except Exception as e:
             logger.warning("Could not save performance history JSON: %s", e)
 
-        # Log to Excel Tracker under Recruiter_Performance_Log
+        # Multi-sink Destination 2: Excel Tracker under Recruiter_Performance_Log
         try:
             perf_headers_10 = [
                 "Timestamp",
@@ -487,16 +790,61 @@ class ProfilePerformanceEngine:
                     pacing.status
                 ])
             wb.save(t_path)
-            return True
         except Exception as e:
             logger.warning("Could not append to Excel tracker: %s", e)
-            return False
 
-    def generate_keyword_diff_report(self, live_search_terms=None):
+        # Multi-sink Destination 3: SQLite Database
+        try:
+            self.record_weekly_telemetry(
+                week_start_date=metrics.get("timestamp", datetime.now().strftime("%Y-%m-%d")),
+                search_appearances=apps,
+                profile_views=views,
+                contact_views=contacts,
+                platform=metrics.get("platform", "naukri"),
+                db_path=db_path
+            )
+            # Also record unified telemetry if LinkedIn is present
+            if l_search > 0 or l_impr > 0:
+                self.record_weekly_telemetry(
+                    week_start_date=metrics.get("timestamp", datetime.now().strftime("%Y-%m-%d")),
+                    search_appearances=l_search,
+                    profile_views=l_impr,
+                    contact_views=0,
+                    platform="linkedin",
+                    db_path=db_path
+                )
+            # Direct insert into profile_performance table if present in db_path
+            if db_path and os.path.exists(db_path):
+                import sqlite3
+                conn = sqlite3.connect(db_path)
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_performance'")
+                if cursor.fetchone():
+                    conn.execute("""
+                        INSERT INTO profile_performance (
+                            timestamp, searches_7d, views_7d, calls_today, total_impressions, daily_pace, pacing_status, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        metrics.get("timestamp", datetime.now().isoformat()),
+                        apps,
+                        views,
+                        metrics.get("calls_today", 0),
+                        pacing.total_impressions,
+                        pacing.current_daily_pace,
+                        pacing.status,
+                        metrics.get("notes", "")
+                    ))
+                    conn.commit()
+                conn.close()
+        except Exception as sqle:
+            logger.debug("SQLite telemetry write notice: %s", sqle)
+
+        return True
+
+    def generate_keyword_diff_report(self, live_search_terms=None, persona: str = "mlops"):
         """
         Calculates exact diff between:
         1. Recruiter search terms that found candidate (from Profile Performance)
-        2. Verified target Azure Data Engineer keywords
+        2. Verified target MLOps or Azure Data Engineer keywords
         3. Current headline and technical skills configured
         """
         cfg = load_config()
@@ -511,11 +859,42 @@ class ProfilePerformanceEngine:
             elif isinstance(skills, str):
                 current_skills.extend([s.strip() for s in skills.split(",") if s.strip()])
 
-        headline_lower = headline.lower()
-        skills_lower = [s.lower() for s in current_skills]
+        # Select benchmark terms based on persona
+        is_mlops = persona.lower() in ("mlops", "ai", "platform") and persona.lower() != "de"
 
-        # Use live search terms if available, otherwise target DE keywords
-        benchmark_terms = live_search_terms if (live_search_terms and len(live_search_terms) > 0) else TARGET_DE_KEYWORDS
+        if live_search_terms and isinstance(live_search_terms, list):
+            skills_lower = [str(s).lower().strip() for s in live_search_terms]
+            headline_lower = ""
+        else:
+            skills_lower = [s.lower().strip() for s in current_skills]
+            headline_lower = headline.lower()
+
+        if is_mlops:
+            benchmark_terms = TARGET_MLOPS_KEYWORDS
+            diluting_candidates = ["sysadmin", "frontend", "php", "wordpress", "html css", "junior web", "trivy only"]
+            recommended_headline = (
+                "MLOps Engineer | Kubernetes · Docker · Helm · Terraform · "
+                "CI/CD · Prometheus · MLflow · Kafka · FastAPI · AWS EKS | "
+                "2.5 YOE Platform Engineering | 15 Days Notice"
+            )
+            recommended_key_skills = (
+                "Kubernetes, Docker, Helm, CI/CD, GitHub Actions, Terraform, "
+                "Prometheus, Grafana, Triton, vLLM, MLflow, Kafka, Python, "
+                "Linux, FastAPI, EKS, AWS, Redis"
+            )
+        else:
+            benchmark_terms = TARGET_DE_KEYWORDS
+            diluting_candidates = ["devops", "security analyst", "trivy", "jenkins only", "sysadmin"]
+            recommended_headline = (
+                "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
+                "Azure Data Factory (ADF) · SQL · Apache Kafka · ADLS Gen2 · Terraform | "
+                "2.5 YOE Cloud Data Platforms & Medallion Lakehouse"
+            )
+            recommended_key_skills = (
+                "PySpark, Azure Databricks, Delta Lake, Azure Data Factory (ADF), "
+                "SQL, Apache Kafka, ADLS Gen2, Medallion Architecture, Terraform, "
+                "Python, Spark SQL, Data Pipelines, ETL, Unity Catalog, Docker, Linux"
+            )
 
         matched_terms = []
         missing_high_intent = []
@@ -526,31 +905,21 @@ class ProfilePerformanceEngine:
             else:
                 missing_high_intent.append(t_clean)
 
-        # Detect diluting terms (generic non-DE terms that dilute data platform ranking)
         diluting_terms = []
-        diluting_candidates = ["devops", "security analyst", "trivy", "jenkins only", "sysadmin"]
         for dt in diluting_candidates:
             if dt in headline_lower:
                 diluting_terms.append(dt.capitalize())
 
-        # Build recommended aligned headline
-        recommended_headline = (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-            "Azure Data Factory (ADF) · SQL · Apache Kafka · ADLS Gen2 · Terraform | "
-            "2.5 YOE Cloud Data Platforms & Medallion Lakehouse"
-        )
-
         return {
             "current_headline": headline,
             "matched_terms": matched_terms,
+            "matched_keywords": matched_terms,
             "missing_high_intent": missing_high_intent,
+            "missing_keywords": missing_high_intent,
             "diluting_terms": diluting_terms,
             "recommended_headline": recommended_headline,
-            "recommended_key_skills": (
-                "PySpark, Azure Databricks, Delta Lake, Azure Data Factory (ADF), "
-                "SQL, Apache Kafka, ADLS Gen2, Medallion Architecture, Terraform, "
-                "Python, Spark SQL, Data Pipelines, ETL, Unity Catalog, Docker, Linux"
-            )
+            "recommended_key_skills": recommended_key_skills,
+            "persona": "mlops" if is_mlops else "de"
         }
 
     def display_weekly_report(self, page=None):
@@ -711,13 +1080,53 @@ class ProfilePerformanceEngine:
 # Canonical alias for CLI and module compatibility
 ProfilePerformanceTracker = ProfilePerformanceEngine
 
+
+def get_unified_speedometer(target_total: int = MONTHLY_SEARCH_BENCHMARK, target_days: int = 30) -> Unified100KSpeedometer:
+    """Convenience factory returning an initialized Unified100KSpeedometer instance."""
+    return Unified100KSpeedometer(target_total=target_total, target_days=target_days)
+
+
+def generate_keyword_diff_report(live_search_terms=None, persona: str = "mlops") -> Dict[str, Any]:
+    """Module-level helper to generate keyword diff report for specified persona."""
+    engine = ProfilePerformanceEngine()
+    return engine.generate_keyword_diff_report(live_search_terms=live_search_terms, persona=persona)
+
+
+def log_performance_snapshot(
+    metrics: Optional[Dict[str, Any]] = None,
+    tracker_path: Optional[str] = None,
+    history_file: Optional[str] = None,
+    db_path: Optional[str] = None,
+    **kwargs
+) -> bool:
+    """Module-level helper to log performance snapshot across JSON, Excel, and SQLite sinks."""
+    h_file = history_file or kwargs.get("json_path") or HISTORY_FILE
+    t_path = tracker_path or kwargs.get("excel_path") or TRACKER_PATH
+    d_path = db_path or kwargs.get("db_path")
+    engine = ProfilePerformanceEngine(tracker_path=t_path, history_file=h_file)
+    data = dict(metrics or {})
+    data.update(kwargs)
+    return engine.log_performance_snapshot(
+        metrics=data,
+        tracker_path=t_path,
+        history_file=h_file,
+        db_path=d_path
+    )
+
+
 __all__ = [
     "ProfilePerformanceEngine",
     "ProfilePerformanceTracker",
     "compute_benchmark_pacing",
+    "compute_unified_pacing",
+    "Unified100KSpeedometer",
+    "get_unified_speedometer",
+    "generate_keyword_diff_report",
+    "log_performance_snapshot",
     "BenchmarkPacing",
     "MONTHLY_SEARCH_BENCHMARK",
     "DAILY_SEARCH_BENCHMARK",
-    "TARGET_DE_KEYWORDS"
+    "TARGET_DE_KEYWORDS",
+    "TARGET_MLOPS_KEYWORDS"
 ]
 

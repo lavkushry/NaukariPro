@@ -15,13 +15,203 @@ Provides:
 import os
 import re
 import json
+import time
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 from naukari_pro.modules.learning.mutator import LinkedInTokenRotator, LinkedInWhitelist
 from naukari_pro.modules.db import record_profile_mutation
 
 logger = logging.getLogger("naukariPro.LinkedInOptimizer")
+
+# ==============================================================================
+# CANONICAL 100K+ LINKEDIN MLOPS & AI INFRASTRUCTURE RECRUITER BLUEPRINT
+# ==============================================================================
+
+LINKEDIN_100K_MLOPS_BLUEPRINT: Dict[str, Any] = {
+    "headline": (
+        "MLOps / AI Infrastructure Engineer | Kubernetes · Docker · Helm · CI/CD · "
+        "Terraform · Prometheus · MLflow · Triton · vLLM · Kafka | 2.5 YOE | Immediate – 15 Days Notice"
+    ),
+    "headline_length": 182,  # Under 220-character limit
+    "target_titles": [
+        "MLOps Engineer",
+        "ML Platform Engineer",
+        "AI Infrastructure Engineer",
+        "DevOps Engineer",
+        "Platform Engineer"
+    ],
+    "target_locations": [
+        "Bengaluru, Karnataka, India",
+        "Hyderabad, Telangana, India",
+        "Pune, Maharashtra, India",
+        "Gurugram, Haryana, India",
+        "Noida, Uttar Pradesh, India",
+        "Remote"
+    ],
+    "open_to_work_settings": {
+        "job_titles": [
+            "MLOps Engineer",
+            "ML Platform Engineer",
+            "AI Infrastructure Engineer",
+            "DevOps Engineer",
+            "Platform Engineer"
+        ],
+        "locations_on_site": [
+            "Bengaluru, Karnataka, India",
+            "Hyderabad, Telangana, India",
+            "Pune, Maharashtra, India",
+            "Gurugram, Haryana, India",
+            "Noida, Uttar Pradesh, India"
+        ],
+        "remote": True,
+        "start_date": "Immediately, I'm actively applying",
+        "employment_types": ["Full-time", "Contract"],
+        "visibility": "Recruiters only"
+    },
+    "about": (
+        "MLOps and Platform Engineer with 2.5 years of experience architecting high-throughput container platforms, "
+        "production Kubernetes clusters (kubeadm, AWS EKS), CI/CD automation pipelines, and distributed data and ML infrastructure.\n\n"
+        "Engineered bare-metal 50-node Kubernetes clusters hosting 15+ distributed microservices with 99.95% uptime, "
+        "authoring 40+ Ansible roles that slashed cluster bootstrap time from 2 days to 4 hours (83% reduction). "
+        "Orchestrated stateful distributed backbones on Kubernetes (Apache Kafka, Redis, PostgreSQL/TimescaleDB, MongoDB) "
+        "with PVC storage and Velero disaster recovery, cutting RTO from 8h to 30min (93%) and MTTR by 45%. "
+        "Built AegisAgent (AI Security Gateway in Rust & Cedar) and Vulcan (Automation Platform with Redis & pgvector).\n\n"
+        "⚡ CORE TECHNICAL EXPERTISE:\n"
+        "• Container & Orchestration: Kubernetes (kubeadm, EKS), Docker, Helm, ArgoCD, Namespace Isolation, RBAC, HPA, Linux/Bash.\n"
+        "• Model Serving & ML Inference: Triton Inference Server, vLLM, MLflow, FastAPI, Redis Redlock, gRPC, Model Caching.\n"
+        "• CI/CD & Infrastructure as Code: Terraform (Modular IaC), Ansible (40+ Playbooks), Jenkins Declarative Pipelines, GitLab CI, GitHub Actions, Trivy Security Scanning.\n"
+        "• Observability & Telemetry: Prometheus, Grafana, OpenTelemetry, ELK Stack (Logstash Grok parsing), Alerting & Incident MTTR reduction.\n"
+        "• Distributed Streaming & Data Platforms: Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, PySpark, Databricks Lakehouses.\n\n"
+        "💼 PRODUCTION HIGHLIGHTS & GROUND TRUTH METRICS:\n"
+        "• Kubernetes Lifecycle Automation: Built 40+ Ansible playbooks with Jinja2 for K8s lifecycle (kubeadm, CNI, Harbor, Helm), cutting setup 2 days to 4 hours (83%).\n"
+        "• 50-Node Cluster Operations: Managed 50-node K8s platform for 15+ distributed microservices, ensuring 99.95% uptime.\n"
+        "• Distributed Stateful Backbones: Managed StatefulSets (Kafka, Redis, TimescaleDB, Mongo) with Velero DR, cutting RTO from 8h to 30m, MTTR by 45%.\n"
+        "• Security Log Telemetry: Centralized multi-source log ingestion using ELK Stack, authoring Grok patterns cutting log triage time by 45%.\n\n"
+        "📍 Current Location: Bengaluru, India\n"
+        "🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote\n"
+        "⏱ Notice Period: 15 Days or less (Immediate Joiner)\n"
+        "📫 Contact: lavkushry@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry"
+    ),
+    "experience": [
+        {
+            "company": "CGI India",
+            "title": "DevOps Engineer",
+            "dates": "June 2026 – Present",
+            "location": "Bengaluru, India",
+            "bullets": [
+                "Standardized AWS EKS container platform deployments using Terraform modules and Ansible, establishing multi-tenant cluster baselines, node groups, and IAM roles.",
+                "Engineered automated CI/CD pipelines in Jenkins and GitLab CI with Trivy vulnerability scanning, container linting, and automated staging smoke tests.",
+                "Hardened cluster ingress routing and API gateway policies using Nginx Ingress Controller and Kong Gateway, optimizing path-based routing, rate-limiting, and TLS termination across microservices.",
+                "Automated GitOps deployment synchronization using ArgoCD and Helm charts, enforcing declarative configuration state and automated rollback policies."
+            ],
+            "skills": [
+                "Kubernetes", "AWS EKS", "Terraform", "Ansible", "Docker", "Helm", "ArgoCD", "Jenkins", "GitLab CI", "Linux"
+            ]
+        },
+        {
+            "company": "Himachal Futuristic Communications (HFCL)",
+            "title": "Engineer 1 - DevOps / Platform Engineering",
+            "dates": "August 2025 – June 2026",
+            "location": "Gurugram / Bangalore, India",
+            "bullets": [
+                "Authored 40+ Ansible playbooks and Jinja2 templates to automate Kubernetes cluster lifecycle (kubeadm, CNI, Harbor, Helm), reducing bootstrap time from 2 days to 4 hours (83% reduction).",
+                "Built and operated a 50-node on-premise Kubernetes platform for 15+ distributed microservices, managing Deployments, StatefulSets, Ingress, RBAC, and HPA for 99.95% uptime.",
+                "Managed StatefulSet workloads (MongoDB, Redis, Kafka, TimescaleDB) with PVC storage, Velero backup and Prometheus/Grafana alerts, cutting RTO from 8h to 30min and MTTR by 45%."
+            ],
+            "skills": [
+                "Kubernetes", "Ansible", "Docker", "Helm", "Kafka", "Redis", "Prometheus", "Grafana", "Linux", "Terraform"
+            ]
+        },
+        {
+            "company": "CGI India",
+            "title": "Security Analyst Apprentice",
+            "dates": "September 2024 – August 2025",
+            "location": "Bengaluru, India",
+            "bullets": [
+                "Centralized multi-source log ingestion using the ELK Stack (Elasticsearch, Logstash, Kibana), designing operational dashboards that reduced root-cause investigation time by 35%.",
+                "Authored custom Grok parsing patterns in Logstash to parse high-volume syslog and telemetry streams into structured fields, cutting log triage time by 45%."
+            ],
+            "skills": [
+                "ELK Stack", "Logstash", "Elasticsearch", "Kibana", "Python", "SQL", "Linux", "Grok"
+            ]
+        },
+        {
+            "company": "Stipe Solutions",
+            "title": "Full Stack Developer Intern",
+            "dates": "March 2024 – September 2024",
+            "location": "Bengaluru, India",
+            "bullets": [
+                "Developed cross-platform mobile application modules (React Native, Flutter) and RESTful API integrations for 1,000+ daily active users.",
+                "Integrated automated unit testing and Docker containerization into GitHub Actions CI pipelines."
+            ],
+            "skills": [
+                "Python", "Docker", "REST APIs", "SQL", "GitHub Actions", "Git"
+            ]
+        }
+    ],
+    "top_50_skills": [
+        "Kubernetes",
+        "MLOps",
+        "Docker",
+        "Helm",
+        "CI/CD",
+        "Terraform",
+        "Prometheus",
+        "Grafana",
+        "MLflow",
+        "vLLM",
+        "Triton Inference Server",
+        "AWS",
+        "EKS",
+        "Apache Kafka",
+        "Redis",
+        "Python",
+        "Linux",
+        "FastAPI",
+        "Ansible",
+        "ArgoCD",
+        "GitLab CI",
+        "GitHub Actions",
+        "OpenTelemetry",
+        "ELK Stack",
+        "Model Deployment",
+        "Inference Serving",
+        "PostgreSQL",
+        "TimescaleDB",
+        "MongoDB",
+        "Microservices",
+        "Bash",
+        "Git",
+        "Container Security",
+        "Trivy",
+        "Kong Gateway",
+        "Nginx Ingress",
+        "Velero",
+        "StatefulSets",
+        "HPA",
+        "RBAC",
+        "Cloud Infrastructure",
+        "Platform Engineering",
+        "AI Infrastructure",
+        "Vector Search",
+        "pgvector",
+        "Data Pipelines",
+        "PySpark",
+        "Databricks",
+        "Delta Lake",
+        "Azure Data Factory"
+    ]
+}
+LINKEDIN_100K_MLOPS_BLUEPRINT["employment_history"] = LINKEDIN_100K_MLOPS_BLUEPRINT["experience"]
+
+
+def get_100k_blueprint(persona: str = "mlops") -> Dict[str, Any]:
+    """Returns canonical 100K blueprint for either 'mlops' or 'de' persona."""
+    if str(persona).lower() in ("mlops", "ai", "platform"):
+        return LINKEDIN_100K_MLOPS_BLUEPRINT
+    return LINKEDIN_100K_BLUEPRINT
 
 # ==============================================================================
 # CANONICAL 100K+ LINKEDIN RECRUITER BLUEPRINT
@@ -109,8 +299,8 @@ LINKEDIN_100K_BLUEPRINT: Dict[str, Any] = {
             ]
         },
         {
-            "company": "HFCL Limited",
-            "title": "Engineer 1 — DevOps / Platform Engineering",
+            "company": "Himachal Futuristic Communications (HFCL)",
+            "title": "Engineer 1 - DevOps / Platform Engineering",
             "dates": "August 2025 – June 2026",
             "location": "Gurugram, Haryana, India",
             "bullets": [
@@ -224,7 +414,7 @@ class LinkedInProfileAuditor:
     """
     Audits LinkedIn profile content for recruiter search discoverability (100k+ searches/mo).
     Verifies exact title coverage, core technology density, character length limits,
-    and boolean recruiter filter alignment.
+    and boolean recruiter filter alignment for both MLOps Engineer and Data Engineer personas.
     """
 
     CRITICAL_RECRUITER_KEYWORDS = [
@@ -244,6 +434,24 @@ class LinkedInProfileAuditor:
         "spark sql"
     ]
 
+    CRITICAL_MLOPS_KEYWORDS = [
+        "mlops engineer",
+        "kubernetes",
+        "docker",
+        "helm",
+        "ci/cd",
+        "terraform",
+        "prometheus",
+        "grafana",
+        "mlflow",
+        "python",
+        "linux",
+        "fastapi",
+        "eks",
+        "aws",
+        "redis"
+    ]
+
     HIGH_VALUE_DIFFERENTIATORS = [
         "unity catalog",
         "microsoft fabric",
@@ -254,35 +462,79 @@ class LinkedInProfileAuditor:
         "immediate"
     ]
 
+    HIGH_VALUE_MLOPS_DIFFERENTIATORS = [
+        "vllm",
+        "triton",
+        "argocd",
+        "kafka",
+        "15 days notice",
+        "immediate"
+    ]
+
     def audit(
         self,
-        headline: Optional[str] = None,
+        headline_or_blueprint: Union[Dict[str, Any], str, None] = None,
         about: Optional[str] = None,
         skills: Optional[List[str]] = None,
-        current_title: Optional[str] = None
+        current_title: Optional[str] = None,
+        persona: str = "auto",
+        headline: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Calculates a comprehensive LinkedIn Recruiter SEO Score (0–100)
-        and provides detailed diagnostic recommendations.
+        Calculates a comprehensive LinkedIn Recruiter SEO Score and Saturation Score (0–100)
+        and provides detailed diagnostic recommendations for MLOps and Data Engineering personas.
         """
         score = 0.0
         findings: List[str] = []
         recommendations: List[str] = []
 
+        if isinstance(headline_or_blueprint, dict):
+            bp = headline_or_blueprint
+            hl = bp.get("headline", "")
+            ab = bp.get("about", "")
+            sk_list = bp.get("skills") or bp.get("top_50_skills") or bp.get("featured_skills") or []
+            cur_t = bp.get("current_title", "")
+            if not cur_t and "experience" in bp and len(bp["experience"]) > 0:
+                cur_t = bp["experience"][0].get("title", "")
+            elif not cur_t and "employment_history" in bp and len(bp["employment_history"]) > 0:
+                cur_t = bp["employment_history"][0].get("title", "")
+        else:
+            hl = headline or headline_or_blueprint or ""
+            ab = about or ""
+            sk_list = skills or []
+            cur_t = current_title or ""
+
+        hl_lower = hl.lower()
+        hl_len = len(hl)
+        ab_lower = ab.lower()
+        ab_len = len(ab)
+        sk_lower = [s.lower().strip() for s in sk_list]
+        sk_count = len(sk_list)
+        cur_t_lower = (cur_t or "").lower().strip()
+
+        # Determine persona
+        is_mlops = (
+            persona.lower() in ("mlops", "ai", "platform")
+            or (
+                persona.lower() == "auto"
+                and ("mlops" in hl_lower or "ai infrastructure" in hl_lower or "ml platform" in hl_lower or "mlops" in cur_t)
+                and not ("azure data engineer" in cur_t and "databricks" in hl_lower)
+            )
+        )
+
+        crit_keywords = self.CRITICAL_MLOPS_KEYWORDS if is_mlops else self.CRITICAL_RECRUITER_KEYWORDS
+        diff_keywords = self.HIGH_VALUE_MLOPS_DIFFERENTIATORS if is_mlops else self.HIGH_VALUE_DIFFERENTIATORS
+
         # -------------------------------------------------------------
         # 1. Headline Audit (25 Points)
         # -------------------------------------------------------------
-        hl = headline or ""
-        hl_lower = hl.lower()
-        hl_len = len(hl)
-
         if hl_len == 0:
             findings.append("❌ Headline is empty.")
             recommendations.append("Add a keyword-dense 200+ char headline with target title, tech stack, and notice period.")
         elif hl_len < 120:
             score += 10.0
             findings.append(f"⚠️ Headline is too short ({hl_len} chars). 220 chars allowed — missing valuable search real estate.")
-            recommendations.append("Expand headline to ~200-215 characters incorporating PySpark, Databricks, ADF, Delta Lake, and Kafka.")
+            recommendations.append("Expand headline to ~180-215 characters incorporating core platform and serving technologies.")
         elif hl_len <= 220:
             score += 15.0
             findings.append(f"✓ Headline length is optimal ({hl_len} chars, within 220 char limit).")
@@ -292,11 +544,13 @@ class LinkedInProfileAuditor:
             recommendations.append("Trim headline to under 220 characters so it is not truncated on mobile or desktop.")
 
         # Headline Keyword Checks (10 Points)
-        hl_kw_matches = 0
-        for kw in ["azure data engineer", "databricks", "pyspark", "adf", "delta lake"]:
-            if kw in hl_lower:
-                hl_kw_matches += 1
-        hl_kw_score = (hl_kw_matches / 5.0) * 10.0
+        if is_mlops:
+            hl_target_kws = ["mlops", "kubernetes", "docker", "ci/cd", "terraform"]
+        else:
+            hl_target_kws = ["azure data engineer", "databricks", "pyspark", "adf", "delta lake"]
+
+        hl_kw_matches = sum(1 for kw in hl_target_kws if kw in hl_lower)
+        hl_kw_score = (hl_kw_matches / float(len(hl_target_kws))) * 10.0
         score += hl_kw_score
 
         if "15 days" in hl_lower or "immediate" in hl_lower:
@@ -307,10 +561,6 @@ class LinkedInProfileAuditor:
         # -------------------------------------------------------------
         # 2. About Section Audit (25 Points)
         # -------------------------------------------------------------
-        ab = about or ""
-        ab_lower = ab.lower()
-        ab_len = len(ab)
-
         if ab_len == 0:
             findings.append("❌ 'About' section is empty.")
             recommendations.append("Add structured 'About' summary featuring core technical competencies clusters and quantified impact.")
@@ -323,29 +573,25 @@ class LinkedInProfileAuditor:
             findings.append(f"✓ 'About' section length is strong ({ab_len} chars).")
 
         # About Keyword Indexation (10 Points)
-        ab_matches = sum(1 for kw in self.CRITICAL_RECRUITER_KEYWORDS if kw in ab_lower)
-        ab_kw_score = min(10.0, (ab_matches / len(self.CRITICAL_RECRUITER_KEYWORDS)) * 10.0)
+        ab_matches = sum(1 for kw in crit_keywords if kw in ab_lower)
+        ab_kw_score = min(10.0, (ab_matches / float(len(crit_keywords))) * 10.0)
         score += ab_kw_score
 
-        if ab_matches >= 10:
-            findings.append(f"✓ Excellent recruiter keyword density ({ab_matches}/{len(self.CRITICAL_RECRUITER_KEYWORDS)} core keywords present).")
+        if ab_matches >= int(len(crit_keywords) * 0.7):
+            findings.append(f"✓ Excellent recruiter keyword density ({ab_matches}/{len(crit_keywords)} core keywords present).")
         else:
-            recommendations.append(f"Incorporate missing core tokens in About section: {[kw for kw in self.CRITICAL_RECRUITER_KEYWORDS if kw not in ab_lower]}")
+            recommendations.append(f"Incorporate missing core tokens in About section: {[kw for kw in crit_keywords if kw not in ab_lower]}")
 
         # -------------------------------------------------------------
         # 3. Skills Taxonomy Saturation (25 Points)
         # -------------------------------------------------------------
-        sk_list = skills or []
-        sk_lower = [s.lower().strip() for s in sk_list]
-        sk_count = len(sk_list)
-
         if sk_count == 0:
             findings.append("❌ Skills section has 0 skills.")
             recommendations.append("Add all 50 allowed skills to maximize recruiter boolean filter matching.")
         elif sk_count < 30:
             score += 10.0
             findings.append(f"⚠️ Only {sk_count} skills listed. LinkedIn allows up to 50 skills.")
-            recommendations.append("Saturate all 50 skill slots with Data Engineering, Lakehouse, Streaming, and DataOps terms.")
+            recommendations.append("Saturate all 50 skill slots with core platform, infra, and tooling keywords.")
         elif sk_count <= 50:
             score += 15.0
             findings.append(f"✓ Skills saturation is high ({sk_count}/50 skills populated).")
@@ -353,36 +599,52 @@ class LinkedInProfileAuditor:
             score += 15.0
 
         # Top 3 Pinned Skills Check (10 Points)
-        top3_target = ["azure databricks", "pyspark", "azure data factory"]
+        if is_mlops:
+            top3_target = ["kubernetes", "mlops", "docker"]
+            top3_labels = ["Kubernetes", "MLOps", "Docker"]
+        else:
+            top3_target = ["azure databricks", "pyspark", "azure data factory"]
+            top3_labels = ["Azure Databricks", "PySpark", "Azure Data Factory (ADF)"]
+
         top3_present = sum(1 for t in top3_target if any(t in s for s in sk_lower[:5]))
         top3_score = (top3_present / 3.0) * 10.0
         score += top3_score
 
         if top3_present == 3:
-            findings.append("✓ Top pinned skills correctly prioritize Azure Databricks, PySpark, and Azure Data Factory.")
+            findings.append(f"✓ Top pinned skills correctly prioritize {', '.join(top3_labels)}.")
         else:
-            recommendations.append("Pin 'Azure Databricks', 'PySpark', and 'Azure Data Factory (ADF)' as your top 3 profile skills.")
+            recommendations.append(f"Pin '{top3_labels[0]}', '{top3_labels[1]}', and '{top3_labels[2]}' as your top 3 profile skills.")
 
         # -------------------------------------------------------------
         # 4. Experience & Title Alignment (25 Points)
         # -------------------------------------------------------------
-        cur_t = (current_title or "").lower().strip()
-        if "azure data engineer" in cur_t:
-            score += 15.0
-            findings.append(f"✓ Current designation matches primary search target: '{current_title}'.")
-        elif "data engineer" in cur_t:
-            score += 12.0
-            findings.append(f"✓ Current designation is a strong Data Engineering variant: '{current_title}'.")
-        elif "devops" in cur_t:
-            score += 10.0
-            findings.append(f"⚠️ Current designation is '{current_title}'. Recruiters searching 'Azure Data Engineer' give higher weight to exact title matches.")
-            recommendations.append("Update current designation on LinkedIn to 'DevOps Engineer / Azure Data Engineer' or 'Azure Data Engineer'.")
+        if is_mlops:
+            if any(t in cur_t_lower for t in ["mlops engineer", "ml platform", "ai infrastructure"]):
+                score += 15.0
+                findings.append(f"✓ Current designation matches primary search target: '{cur_t}'.")
+            elif any(t in cur_t_lower for t in ["devops", "platform engineer", "infrastructure"]):
+                score += 15.0
+                findings.append(f"✓ Current designation is an authoritative Platform/DevOps foundation: '{cur_t}'.")
+            else:
+                score += 8.0
+                recommendations.append("Align current job title to 'DevOps Engineer' or 'MLOps Engineer' to rank in recruiter boolean queries.")
         else:
-            score += 5.0
-            recommendations.append("Align current job title to 'Azure Data Engineer' to rank in exact-match recruiter boolean queries.")
+            if "azure data engineer" in cur_t_lower:
+                score += 15.0
+                findings.append(f"✓ Current designation matches primary search target: '{cur_t}'.")
+            elif "data engineer" in cur_t_lower:
+                score += 12.0
+                findings.append(f"✓ Current designation is a strong Data Engineering variant: '{cur_t}'.")
+            elif "devops" in cur_t_lower:
+                score += 10.0
+                findings.append(f"⚠️ Current designation is '{cur_t}'. Recruiters searching 'Azure Data Engineer' give higher weight to exact title matches.")
+                recommendations.append("Update current designation on LinkedIn to 'DevOps Engineer / Azure Data Engineer' or 'Azure Data Engineer'.")
+            else:
+                score += 5.0
+                recommendations.append("Align current job title to 'Azure Data Engineer' to rank in exact-match recruiter boolean queries.")
 
-        # Differentators check (10 Points)
-        diff_matches = sum(1 for kw in self.HIGH_VALUE_DIFFERENTIATORS if kw in hl_lower or kw in ab_lower or any(kw in s for s in sk_lower))
+        # Differentiators check (10 Points)
+        diff_matches = sum(1 for kw in diff_keywords if kw in hl_lower or kw in ab_lower or any(kw in s for s in sk_lower))
         diff_score = min(10.0, (diff_matches / 4.0) * 10.0)
         score += diff_score
 
@@ -398,13 +660,249 @@ class LinkedInProfileAuditor:
             grade = "D (Poor Discoverability, Requires Complete Overhaul)"
 
         return {
+            "score": final_score,
             "seo_score": final_score,
+            "seo_saturation_score": final_score,
             "grade": grade,
+            "persona": "mlops" if is_mlops else "de",
             "findings": findings,
             "recommendations": recommendations,
-            "critical_keywords_covered": [kw for kw in self.CRITICAL_RECRUITER_KEYWORDS if kw in hl_lower or kw in ab_lower or any(kw in s for s in sk_lower)],
-            "missing_critical_keywords": [kw for kw in self.CRITICAL_RECRUITER_KEYWORDS if kw not in hl_lower and kw not in ab_lower and not any(kw in s for s in sk_lower)]
+            "critical_keywords_covered": [kw for kw in crit_keywords if kw in hl_lower or kw in ab_lower or any(kw in s for s in sk_lower)],
+            "missing_critical_keywords": [kw for kw in crit_keywords if kw not in hl_lower and kw not in ab_lower and not any(kw in s for s in sk_lower)]
         }
+
+
+def calculate_seo_saturation_score(
+    text_or_headline: Optional[Union[str, Dict[str, Any]]] = None,
+    about: Optional[str] = None,
+    skills: Optional[List[str]] = None,
+    current_title: Optional[str] = None,
+    persona: str = "mlops",
+    headline: Optional[str] = None,
+    **kwargs
+) -> float:
+    """Calculates LinkedIn Profile SEO Saturation Score (0–100 scale)."""
+    target = headline or text_or_headline
+    if isinstance(target, str) and not about and not skills and not current_title:
+        text_lower = target.lower()
+        from naukari_pro.modules.profile_performance import TARGET_MLOPS_KEYWORDS, TARGET_DE_KEYWORDS
+        kw_list = TARGET_MLOPS_KEYWORDS if persona.lower() in ("mlops", "ai", "platform") else TARGET_DE_KEYWORDS
+        matches = sum(1 for kw in kw_list if kw.lower() in text_lower)
+        return round(min(100.0, (matches / 15.0) * 100.0), 1)
+
+    auditor = LinkedInProfileAuditor()
+    res = auditor.audit(
+        headline_or_blueprint=target,
+        about=about,
+        skills=skills,
+        current_title=current_title,
+        persona=persona
+    )
+    return float(res.get("seo_saturation_score", res.get("seo_score", 0.0)))
+
+
+def extract_linkedin_search_appearances(page_or_html: Union[Any, str]) -> Dict[str, Any]:
+    """
+    Extracts search appearance metrics from LinkedIn search appearances analytics.
+    Accepts a Playwright Page object or an HTML string (for simulated/offline testing).
+    Parses:
+    - search_appearances (int)
+    - top_companies / top_searcher_companies (List[str])
+    - top_titles / top_searcher_titles (List[str])
+    - timestamp & extraction_timestamp & data_source
+    """
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    metrics = {
+        "search_appearances": 0,
+        "top_companies": [],
+        "top_searcher_companies": [],
+        "top_titles": [],
+        "top_searcher_titles": [],
+        "timestamp": now_str,
+        "extraction_timestamp": now_str,
+        "platform": "linkedin",
+        "data_source": "LinkedIn Analytics"
+    }
+
+    html_text = ""
+    page = None
+
+    if isinstance(page_or_html, str):
+        html_text = page_or_html
+        metrics["data_source"] = "Offline HTML / Simulated Fixture"
+    else:
+        page = page_or_html
+        try:
+            if hasattr(page, "content"):
+                html_text = page.content()
+            elif hasattr(page, "locator"):
+                body = page.locator("body")
+                html_text = body.inner_text() if body.count() > 0 else ""
+        except Exception as e:
+            logger.warning("Error reading page content: %s", e)
+
+    # 1. Search appearances count
+    count = 0
+    patterns = [
+        r'class="[^"]*(?:analytics-count-text|search-appearances__count|analytics-card__value|searchAppCount)[^"]*">\s*([\d,]+)\s*<',
+        r'([\d,]+)\s*(?:search\s+appearance[s]?|searches\s+this\s+week|times?\s+you\s+appeared\s+in\s+search)',
+        r'appeared\s+in\s*([\d,]+)\s*searches',
+        r'You\s+appeared\s+in\s*([\d,]+)\s*searches',
+        r'([\d,]+)\s*recruiter\s+searches'
+    ]
+    for pat in patterns:
+        m = re.search(pat, html_text, re.IGNORECASE)
+        if m:
+            clean_num = m.group(1).replace(",", "").strip()
+            if clean_num.isdigit():
+                count = int(clean_num)
+                break
+
+    if count == 0 and page and hasattr(page, "locator"):
+        selectors = [
+            ".search-appearances__count",
+            ".analytics-card__value",
+            "span[class*='search-appearance']",
+            "div[class*='search-appearance--value']",
+            "p[class*='search-count']"
+        ]
+        for sel in selectors:
+            try:
+                el = page.locator(sel).first
+                if el.count() > 0:
+                    txt = el.inner_text().strip()
+                    num_m = re.search(r'\b\d+\b', txt)
+                    if num_m:
+                        count = int(num_m.group(0))
+                        break
+            except Exception:
+                pass
+
+    metrics["search_appearances"] = count
+
+    # 2. Top searcher companies
+    companies: List[str] = []
+    company_section_m = re.search(
+        r'(?:Where\s+your\s+searchers\s+work|top\s+companies\s+your\s+searchers\s+work\s+at).*?(?=<div\s+class="[^"]*title|<section|What\s+your\s+searchers\s+do|$)',
+        html_text,
+        re.IGNORECASE | re.DOTALL
+    )
+    section_text = company_section_m.group(0) if company_section_m else html_text
+
+    comp_matches = re.findall(
+        r'(?:class="[^"]*(?:company|searcher-company|org-name)[^"]*">|<li>|<span class="name">)\s*([A-Za-z0-9\s&.,\-]+?)\s*<',
+        section_text,
+        re.IGNORECASE
+    )
+    for c in comp_matches:
+        c_clean = c.strip()
+        if (
+            c_clean
+            and len(c_clean) > 1
+            and len(c_clean) < 60
+            and not any(term in c_clean.lower() for term in ["searcher", "work", "where", "what", "title", "company", "view", "percent"])
+            and c_clean not in companies
+        ):
+            companies.append(c_clean)
+
+    if not companies and page and hasattr(page, "locator"):
+        for sel in [".search-appearances__top-companies li", "[class*='company-item']", ".top-company-name"]:
+            try:
+                items = page.locator(sel).all()
+                for it in items[:10]:
+                    t = it.inner_text().strip()
+                    if t and t not in companies:
+                        companies.append(t)
+            except Exception:
+                pass
+
+    metrics["top_companies"] = companies[:10]
+    metrics["top_searcher_companies"] = companies[:10]
+
+    # 3. Top searcher titles
+    titles: List[str] = []
+    title_section_m = re.search(
+        r'(?:What\s+your\s+searchers\s+do|titles\s+of\s+your\s+searchers).*?(?=<div\s+class="[^"]*company|<section|Where\s+your\s+searchers\s+work|$)',
+        html_text,
+        re.IGNORECASE | re.DOTALL
+    )
+    t_section_text = title_section_m.group(0) if title_section_m else html_text
+
+    title_matches = re.findall(
+        r'(?:class="[^"]*(?:title|searcher-title|role-name)[^"]*">|<li>|<span class="title">)\s*([A-Za-z0-9\s&.,\-]+?)\s*<',
+        t_section_text,
+        re.IGNORECASE
+    )
+    for t in title_matches:
+        t_clean = t.strip()
+        if (
+            t_clean
+            and len(t_clean) > 2
+            and len(t_clean) < 60
+            and not any(term in t_clean.lower() for term in ["searcher", "work", "where", "what", "title", "company", "view", "percent"])
+            and t_clean not in titles
+        ):
+            titles.append(t_clean)
+
+    if not titles and page and hasattr(page, "locator"):
+        for sel in [".search-appearances__top-titles li", "[class*='title-item']", ".top-title-name"]:
+            try:
+                items = page.locator(sel).all()
+                for it in items[:10]:
+                    t = it.inner_text().strip()
+                    if t and t not in titles:
+                        titles.append(t)
+            except Exception:
+                pass
+
+    metrics["top_titles"] = titles[:10]
+    metrics["top_searcher_titles"] = titles[:10]
+
+    return metrics
+
+
+class LinkedInAnalyticsCollector:
+    """
+    Extracts telemetry and search appearances from LinkedIn.
+    Supports both offline HTML testing and live Playwright automation.
+    """
+
+    def __init__(self, session_manager=None):
+        self.session_manager = session_manager
+        self.last_telemetry: Dict[str, Any] = {}
+
+    def parse_offline_html(self, html_content: str) -> Dict[str, Any]:
+        """Parses simulated or recorded offline HTML content and stores last_telemetry."""
+        data = extract_linkedin_search_appearances(html_content)
+        self.last_telemetry = data
+        return data
+
+    def update_speedometer(self, speedometer: Any, impressions: int = 0) -> None:
+        """Updates a Unified100KSpeedometer instance with the latest telemetry."""
+        searches = self.last_telemetry.get("search_appearances", 0)
+        speedometer.add_linkedin_metrics(search_appearances=searches, impressions=impressions)
+
+    def fetch_live_analytics(self, page: Any) -> Dict[str, Any]:
+        """Navigates to LinkedIn analytics and extracts live search appearance telemetry."""
+        logger.info("Accessing LinkedIn analytics at https://www.linkedin.com/analytics/search-appearances/...")
+        try:
+            page.goto("https://www.linkedin.com/analytics/search-appearances/", wait_until="domcontentloaded", timeout=30000)
+            time.sleep(3)
+            data = extract_linkedin_search_appearances(page)
+            self.last_telemetry = data
+            return data
+        except Exception as e:
+            logger.warning("Error querying LinkedIn analytics: %s", e)
+            res = {
+                "search_appearances": 0,
+                "top_searcher_companies": [],
+                "top_searcher_titles": [],
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "platform": "linkedin",
+                "data_source": f"Extraction Notice: {str(e)}"
+            }
+            self.last_telemetry = res
+            return res
 
 
 # ==============================================================================
@@ -562,3 +1060,18 @@ def rotate_and_record_headline(cycle: int = 0, db_path: Optional[str] = None) ->
         db_path=db_path
     )
     return new_hl, int(mut_id)
+
+
+__all__ = [
+    "LINKEDIN_100K_BLUEPRINT",
+    "LINKEDIN_100K_MLOPS_BLUEPRINT",
+    "get_100k_blueprint",
+    "LinkedInProfileAuditor",
+    "calculate_seo_saturation_score",
+    "extract_linkedin_search_appearances",
+    "LinkedInAnalyticsCollector",
+    "export_100k_blueprint_markdown",
+    "get_rotated_headline",
+    "get_injected_about",
+    "rotate_and_record_headline"
+]

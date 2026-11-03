@@ -479,5 +479,47 @@
       "education",
       "certifications"
     ]
+  },
+  "mlops_persona": {
+    "target_title": "MLOps Engineer",
+    "headline_template": "MLOps Engineer | 2.5 YOE | Kubernetes · Docker · Triton · vLLM · MLflow · CI/CD · Terraform · AWS · Kafka | 15 Days Notice",
+    "summary": "MLOps & DevOps Engineer with 2.5 YOE specializing in Kubernetes (EKS, StatefulSets), high-throughput model serving (vLLM, Triton), CI/CD pipelines, and cloud platform infrastructure. Automated deployment workflows and monitoring (Prometheus, Grafana), sustaining 99.95% production availability.",
+    "keywords": [
+      "Kubernetes",
+      "Docker",
+      "Helm",
+      "CI/CD",
+      "GitHub Actions",
+      "Terraform",
+      "Prometheus",
+      "Grafana",
+      "Triton Inference Server",
+      "vLLM",
+      "MLflow",
+      "Kafka",
+      "Python",
+      "Linux",
+      "FastAPI",
+      "AWS",
+      "EKS",
+      "Redis",
+      "StatefulSets",
+      "PyTorch"
+    ],
+    "it_skills": [
+      {"skill": "Kubernetes", "version": "1.30+", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+      {"skill": "Docker", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+      {"skill": "Helm", "version": "v3", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+      {"skill": "Terraform", "version": "1.8+", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+      {"skill": "MLflow", "version": "2.14+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+      {"skill": "vLLM", "version": "0.5+", "last_used": "2026", "exp_years": 1, "exp_months": 0},
+      {"skill": "Triton Inference Server", "version": "24.x", "last_used": "2026", "exp_years": 1, "exp_months": 0},
+      {"skill": "Prometheus & Grafana", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+      {"skill": "Apache Kafka", "version": "3.x", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+      {"skill": "Python", "version": "3.11+", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+      {"skill": "Linux & Bash", "version": "Ubuntu/RHEL", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+      {"skill": "CI/CD & GitHub Actions", "version": "Enterprise", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+      {"skill": "AWS (EKS, IAM, S3)", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 0}
+    ]
   }
 }

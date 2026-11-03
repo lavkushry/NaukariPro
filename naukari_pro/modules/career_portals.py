@@ -22,93 +22,26 @@ from typing import Optional, List, Dict, Any, Union
 import openpyxl
 
 from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH, load_config
+from naukari_pro.modules.candidate_profile import (
+    DEFAULT_HYBRID_PROFILE,
+    OFFICIAL_WORK_HISTORY,
+    PROFILE_PATH,
+    PROJECT_PROOF_POINTS,
+    TARGET_TITLE,
+    load_hybrid_profile,
+)
 from naukari_pro.modules.learning.screening_solver import FactMatrixScreeningSolver
 from naukari_pro.modules.learning.evidence import EvidenceVerifier
 
 logger = logging.getLogger("naukariPro.CareerPortals")
 
-# Candidate Ground Truth
-PROFILE_PATH = Path.home() / ".job-apply" / "profile.json"
-
-DEFAULT_CANDIDATE = {
-    "firstName": "Lavkush",
-    "lastName": "Kumar",
-    "fullName": "Lavkush Kumar",
-    "email": "lavkushry@gmail.com",
-    "applicantEmail": "lav84095@gmail.com",
-    "phone": "+91-9122036484",
-    "city": "Hyderabad",
-    "state": "Telangana",
-    "country": "India",
-    "zip": "500081",
-    "linkedInUrl": "https://linkedin.com/in/lavkushry",
-    "githubUrl": "https://github.com/lavkushry",
-    "portfolioUrl": "https://github.com/lavkushry",
-    "experienceYears": "2.5",
-    "noticePeriodDays": "15",
-    "currentCtcLpa": "12",
-    "expectedCtcLpa": "25",
-    "resumePath": RESUME_PDF_PATH,
-    "currentCompany": "CGI India (PNC Bank GCC)",
-    "currentTitle": "DevOps Engineer / Azure Data Engineer",
-    "workHistory": [
-        {
-            "company": "CGI India (PNC Bank GCC)",
-            "title": "DevOps Engineer / Azure Data Engineer",
-            "startDate": "2026-06",
-            "endDate": None,
-            "current": True,
-            "duration": "Jun 2026 – Present",
-            "location": "Hyderabad / Bangalore",
-            "description": "Engineered scalable cloud data lakehouse infrastructure on Azure using Terraform modules, establishing automated ADLS Gen2 storage tiers, Azure Databricks workspaces, and Unity Catalog RBAC governance across 3 environments, cutting provisioning time by 60%."
-        },
-        {
-            "company": "HFCL Limited",
-            "title": "Engineer 1 — DevOps / Platform Engineering",
-            "startDate": "2025-08",
-            "endDate": "2026-06",
-            "current": False,
-            "duration": "Aug 2025 – Jun 2026",
-            "location": "Gurugram / Bangalore",
-            "description": "Orchestrated stateful distributed data backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets, cutting RTO from 8h to 30min (93% reduction) and MTTR by 45%."
-        },
-        {
-            "company": "CGI India",
-            "title": "Security Analyst Apprentice",
-            "startDate": "2024-09",
-            "endDate": "2025-08",
-            "current": False,
-            "duration": "Sep 2024 – Aug 2025",
-            "location": "Bangalore",
-            "description": "Engineered centralized log telemetry ingestion pipelines via ELK Stack (Elasticsearch, Logstash, Kibana) and SQL analytical queries, accelerating incident triage by 50%."
-        },
-        {
-            "company": "Stipe Solutions",
-            "title": "Full Stack Developer Intern",
-            "startDate": "2024-03",
-            "endDate": "2024-09",
-            "current": False,
-            "duration": "Mar 2024 – Sep 2024",
-            "location": "Bengaluru",
-            "description": "Shipped 30+ responsive UI screens and data validation workflows using React Native and Flutter, integrating RESTful APIs and SQL queries for 1,000+ daily active users."
-        }
-    ],
-    "education": [
-        {
-            "degree": "B.Tech in Computer Science and Engineering",
-            "institution": "Maharishi Dayanand University (MDU), Rohtak",
-            "field": "Computer Science and Engineering",
-            "startDate": "2020-06",
-            "endDate": "2023-05",
-            "dates": "2020 – 2023"
-        }
-    ]
-}
+# Hybrid ground truth: FACT_MATRIX titles + Azure DE market surface
+DEFAULT_CANDIDATE = json.loads(json.dumps(DEFAULT_HYBRID_PROFILE))
 
 def load_applicant_profile():
-    data = json.loads(json.dumps(DEFAULT_CANDIDATE))
+    data = load_hybrid_profile()
 
-    # 1. Overlay ~/.job-apply/profile.json if it exists
+    # 1. Overlay ~/.job-apply/profile.json contact fields only (titles locked in hybrid loader)
     if PROFILE_PATH.exists():
         try:
             with open(PROFILE_PATH, "r", encoding="utf-8") as f:
@@ -171,6 +104,12 @@ def load_applicant_profile():
     except Exception:
         pass
 
+    # Hybrid lock: official FACT_MATRIX titles + project proofs; market target stays Azure DE
+    data["currentTitle"] = "DevOps Engineer"
+    data["workHistory"] = json.loads(json.dumps(OFFICIAL_WORK_HISTORY))
+    data["targetTitle"] = TARGET_TITLE
+    data["marketTitle"] = TARGET_TITLE
+    data["projectProofPoints"] = json.loads(json.dumps(PROJECT_PROOF_POINTS))
     return data
 
 def log_portal_application(
@@ -706,10 +645,43 @@ class WorkdayHandler(BaseATSHandler):
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
         super().__init__(profile, solver, ats_type="Workday")
 
+    def attempt_vault_sign_in(self, page: Any, job_url: str = "") -> bool:
+        """Fill Workday sign-in from portal_accounts vault. Never logs password."""
+        try:
+            from naukari_pro.modules.portal_accounts import PortalAccountManager
+            mgr = PortalAccountManager()
+            acct = mgr.ensure_account(job_url or (page.url if page else ""))
+            email_loc = page.locator("input[data-automation-id='email']").first
+            pass_loc = page.locator("input[data-automation-id='password']").first
+            if safe_count(email_loc) > 0 and email_loc.is_visible():
+                email_loc.fill(str(acct.get("email") or self.profile.get("email", "")))
+            if safe_count(pass_loc) > 0 and pass_loc.is_visible():
+                pass_loc.fill(str(acct.get("password") or ""))
+            submit = page.locator("button[data-automation-id='signInSubmitButton']").first
+            if safe_count(submit) > 0 and submit.is_visible():
+                submit.click()
+                time.sleep(2)
+                return True
+            # Create Account path
+            create_btn = page.locator("button:has-text('Create Account'), a:has-text('Create Account')").first
+            if safe_count(create_btn) > 0 and create_btn.is_visible():
+                create_btn.click()
+                time.sleep(1)
+                if safe_count(email_loc) > 0:
+                    email_loc.fill(str(acct.get("email") or ""))
+                if safe_count(pass_loc) > 0:
+                    pass_loc.fill(str(acct.get("password") or ""))
+                return True
+        except Exception:
+            return False
+        return False
+
     def detect_barriers(self, page: Any) -> Optional[str]:
         parent_barrier = super().detect_barriers(page)
         if parent_barrier:
-            return parent_barrier
+            # Captcha/checkpoint still hard-stop
+            if any(k in parent_barrier.lower() for k in ("captcha", "checkpoint", "otp", "turnstile")):
+                return parent_barrier
         if not page:
             return None
         try:
@@ -721,13 +693,25 @@ class WorkdayHandler(BaseATSHandler):
                 "h2:has-text('Sign In')",
                 "h3:has-text('Create Account')"
             ]
+            wall = False
             for sel in account_selectors:
                 try:
                     loc = page.locator(sel)
                     if safe_count(loc) > 0 and loc.first.is_visible():
-                        return f"Workday Account / Sign-In Barrier detected ({sel})"
+                        wall = True
+                        break
                 except Exception:
                     pass
+            if wall:
+                # Beast H4: attempt vault login/create instead of hard-stop
+                signed = self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+                if signed:
+                    # Re-check captcha after sign-in attempt
+                    parent_barrier = super().detect_barriers(page)
+                    if parent_barrier:
+                        return parent_barrier
+                    return None
+                return "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)"
         except Exception:
             pass
         return None
@@ -927,20 +911,47 @@ class CareerPortalFiller:
             return "Generic Portal"
         if "linkedin.com" in u:
             return "LinkedIn"
-        elif "greenhouse.io" in u or "gh_jid" in u:
+        if "greenhouse.io" in u or "gh_jid" in u:
             return "Greenhouse"
-        elif "ashbyhq.com" in u:
+        if "ashbyhq.com" in u:
             return "Ashby"
-        elif "lever.co" in u:
+        if "lever.co" in u:
             return "Lever"
-        elif "myworkdayjobs.com" in u or "workday" in u:
+        if "myworkdayjobs.com" in u or "workday" in u:
             return "Workday"
-        elif "rippling.com" in u:
+        if "rippling.com" in u:
             return "Rippling"
-        elif "smartrecruiters.com" in u:
+        if "smartrecruiters.com" in u:
             return "SmartRecruiters"
-        else:
-            return "Generic Portal"
+        if "icims.com" in u:
+            return "iCIMS"
+        if "taleo.net" in u or "taleo." in u:
+            return "Taleo"
+        if "oraclecloud.com" in u and "recruiting" in u:
+            return "Oracle Recruiting"
+        if "successfactors.com" in u or "successfactors.eu" in u:
+            return "SuccessFactors"
+        if "workable.com" in u:
+            return "Workable"
+        if "breezy.hr" in u:
+            return "Breezy"
+        if "jazz.co" in u or "applytojob.com" in u:
+            return "JazzHR"
+        if "recruitee.com" in u:
+            return "Recruitee"
+        if "teamtailor.com" in u:
+            return "Teamtailor"
+        if "personio.de" in u or "personio.com" in u:
+            return "Personio"
+        if "bamboohr.com" in u:
+            return "BambooHR"
+        if "jobvite.com" in u:
+            return "Jobvite"
+        if "phenom.com" in u or "phenompeople.com" in u:
+            return "Phenom"
+        if "eightfold.ai" in u:
+            return "Eightfold"
+        return "Generic Portal"
 
     def generate_fill_script(self, ats_type: str) -> str:
         """
@@ -1298,10 +1309,10 @@ class CareerPortalFiller:
         limit: int = 10,
         headless: bool = True,
         dry_run: bool = False,
-        min_score: float = 70.0,
+        min_score: float = 0.0,
         max_exp: float = 4.0,
         auto_submit: bool = True,
-        universal_apply: Optional[bool] = None
+        universal_apply: Optional[bool] = True
     ) -> Dict[str, Any]:
         """
         Processes pending external career portal redirects from Naukri_Live_Application_Tracker.xlsx.
@@ -1314,7 +1325,7 @@ class CareerPortalFiller:
         from naukari_pro.modules.auto_apply import is_experience_eligible
         from naukari_pro.modules.db import is_job_already_applied, record_applied_job
 
-        is_universal = universal_apply if universal_apply is not None else (min_score <= 0.0)
+        is_universal = universal_apply if universal_apply is not None else True
 
         if not os.path.exists(TRACKER_PATH):
             print(f"  [!] Tracker file not found: {TRACKER_PATH}")
@@ -1370,6 +1381,17 @@ class CareerPortalFiller:
                     "url": url,
                     "status": status
                 })
+
+        # Beast CONVERT: oldest-first backlog (date ascending, unknown dates last)
+        def _redirect_sort_key(item: Dict[str, Any]):
+            d = item.get("date")
+            if d is None:
+                return "9999-12-31"
+            if hasattr(d, "strftime"):
+                return d.strftime("%Y-%m-%d %H:%M:%S")
+            return str(d)
+
+        candidates_to_process.sort(key=_redirect_sort_key)
 
         # Contextual bandit selection policy gating & volume floor enforcement (v2.1-linucb)
         active_policy = getattr(self, "policy", None)

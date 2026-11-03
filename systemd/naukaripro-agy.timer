@@ -6,8 +6,8 @@ PartOf=naukaripro-agy.service
 # 09:15 AM IST - Morning recruiter opening queue
 OnCalendar=*-*-* 09:15:00 Asia/Kolkata
 
-# 02:30 PM IST - Post-lunch recruiter search batch
-OnCalendar=*-*-* 14:30:00 Asia/Kolkata
+# 02:31 PM IST - Block 2 hunt + apply + convert + outreach
+OnCalendar=*-*-* 14:31:00 Asia/Kolkata
 
 # 06:00 PM IST - Evening shortlisting review
 OnCalendar=*-*-* 18:00:00 Asia/Kolkata

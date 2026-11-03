@@ -91,9 +91,22 @@ def print_menu():
     print("  [0] Exit")
     print("========================================================================")
 
-def handle_pro(limit=35, headless=False, dry_run=False, force=False):
-    engine = ProAutoPilotEngine(limit=limit, headless=headless, dry_run=dry_run, force=force)
+def handle_pro(limit=35, headless=False, dry_run=False, force=False, block=None, execute_outreach_live=False):
+    engine = ProAutoPilotEngine(
+        limit=limit,
+        headless=headless,
+        dry_run=dry_run,
+        force=force,
+        block=block,
+        execute_outreach_live=execute_outreach_live,
+    )
     return engine.run_full_pipeline()
+
+
+def handle_mail_test():
+    from naukari_pro.modules.mail_reader import mail_test
+    result = mail_test()
+    return 0 if result.get("ok") else 1
 
 def handle_performance(headless=False):
     engine = ProfilePerformanceEngine()
@@ -1185,7 +1198,6 @@ def handle_monday_digest(output: Optional[str] = None, db_path: Optional[str] = 
     print(digest)
     if send_email:
         send_monday_digest_email(digest_content=digest)
-    return digest
 
 
 def handle_intent_apply(
@@ -1358,6 +1370,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
     pro_parser = subparsers.add_parser("pro", help="Run Complete All-in-One Pro Autonomous Pipeline", parents=[common_parser])
     pro_parser.add_argument("--force", action="store_true", help="Force profile sync and bump even if already updated today")
+    pro_parser.add_argument("--block", type=int, choices=[1, 2, 3], default=None, help="Beast time block: 1 morning, 2 afternoon outreach, 3 evening follow-ups")
+    pro_parser.add_argument("--live-outreach", action="store_true", default=False, help="Send LinkedIn outreach live (Mac/residential only)")
 
     for cmd, hlp in [
         ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),
@@ -1455,6 +1469,8 @@ def main():
     digest_parser.add_argument("--output", "-o", type=str, default=None, help="Output markdown path")
     digest_parser.add_argument("--send-email", action="store_true", default=False, help="Send digest email via Gmail SMTP")
 
+    subparsers.add_parser("mail-test", help="Test Gmail IMAP connection for ATS verification links", parents=[common_parser])
+
     intent_parser = subparsers.add_parser("intent-apply", help="Autonomous Intent-Based Job Apply Agent (Naukri, LinkedIn, Greenhouse, Lever, Ashby, Workday)", parents=[common_parser])
     intent_parser.add_argument("--intent", "-i", type=str, default="", help="Natural-language application intent description")
     intent_parser.add_argument("--roles", nargs="+", default=None, help="Target roles (e.g. 'Azure Data Engineer' 'Databricks Engineer')")
@@ -1534,8 +1550,17 @@ def main():
         handle_policy_arm()
     elif args.command == "monday-digest":
         handle_monday_digest(output=getattr(args, "output", None), send_email=getattr(args, "send_email", False))
+    elif args.command == "mail-test":
+        sys.exit(handle_mail_test())
     elif args.command == "pro":
-        handle_pro(limit=args.limit, headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False))
+        handle_pro(
+            limit=args.limit,
+            headless=args.headless,
+            dry_run=args.dry_run,
+            force=getattr(args, "force", False),
+            block=getattr(args, "block", None),
+            execute_outreach_live=getattr(args, "live_outreach", False),
+        )
     elif args.command == "weekly-report":
         handle_weekly_report(headless=args.headless)
     elif args.command == "performance":

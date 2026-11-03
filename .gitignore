@@ -36,6 +36,7 @@ venv.bak/
 .env.*.local
 *.key
 *.pem
+portal_accounts.json
 cookies_seed.json
 *cookie*.json
 naukri_system/cookies_seed.json

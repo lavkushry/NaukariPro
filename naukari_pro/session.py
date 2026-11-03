@@ -373,10 +373,46 @@ def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.
     return context
 
 
-def detect_challenge(page):
-    """Inspects page DOM for OTP or Captcha challenges."""
+class SecurityChallengeError(Exception):
+    """
+    Raised when an automated challenge (CAPTCHA, OTP, Cloudflare turnstile, or checkpoint)
+    is detected in the browser DOM. Triggers an immediate, non-bypassing channel halt.
+    """
+    def __init__(self, challenge_type: str = "Unknown Security Challenge", details: str = ""):
+        self.challenge_type = challenge_type
+        self.details = details
+        super().__init__(f"Security challenge encountered ({challenge_type}): {details}")
+
+
+def detect_challenge(page) -> Optional[str]:
+    """Inspects sync Playwright page DOM for OTP, Captcha, or security checkpoint challenges."""
     challenge_type = None
     try:
+        eval_js = """
+        () => {
+            const bodyText = (document.body ? document.body.innerText : "").toLowerCase();
+            const challengePhrases = [
+                "verify you are human", "security check", "security verification",
+                "enter the code", "enter otp", "one-time password", "verification code",
+                "unusual traffic", "checkpoint", "are you a robot", "bot detection"
+            ];
+            for (const phrase of challengePhrases) {
+                if (bodyText.includes(phrase)) return "Checkpoint: " + phrase;
+            }
+            if (document.querySelector("iframe[src*='captcha'], iframe[src*='recaptcha'], iframe[src*='turnstile'], iframe[src*='hcaptcha'], #captcha, .g-recaptcha, .cf-turnstile")) {
+                return "Visual Captcha/Turnstile";
+            }
+            if (document.querySelector("input[placeholder*='OTP' i], #otp, input[name*='otp' i], input[autocomplete='one-time-code']")) {
+                return "OTP Verification";
+            }
+            return null;
+        }
+        """
+        detected = page.evaluate(eval_js)
+        if detected:
+            return str(detected)
+
+        # Fallback to locator check
         body = page.locator("body").inner_text().lower()
         if "otp" in body or page.locator("input[placeholder*='OTP'], #otp, input[name*='otp']").count() > 0:
             challenge_type = "OTP Verification"
@@ -385,6 +421,38 @@ def detect_challenge(page):
     except Exception:
         pass
     return challenge_type
+
+
+async def detect_challenge_async(page) -> Optional[str]:
+    """Inspects async Playwright page DOM for OTP, Captcha, or security checkpoint challenges."""
+    try:
+        eval_js = """
+        () => {
+            const bodyText = (document.body ? document.body.innerText : "").toLowerCase();
+            const challengePhrases = [
+                "verify you are human", "security check", "security verification",
+                "enter the code", "enter otp", "one-time password", "verification code",
+                "unusual traffic", "checkpoint", "are you a robot", "bot detection"
+            ];
+            for (const phrase of challengePhrases) {
+                if (bodyText.includes(phrase)) return "Checkpoint: " + phrase;
+            }
+            if (document.querySelector("iframe[src*='captcha'], iframe[src*='recaptcha'], iframe[src*='turnstile'], iframe[src*='hcaptcha'], #captcha, .g-recaptcha, .cf-turnstile")) {
+                return "Visual Captcha/Turnstile";
+            }
+            if (document.querySelector("input[placeholder*='OTP' i], #otp, input[name*='otp' i], input[autocomplete='one-time-code']")) {
+                return "OTP Verification";
+            }
+            return null;
+        }
+        """
+        detected = await page.evaluate(eval_js)
+        if detected:
+            return str(detected)
+    except Exception as e:
+        logger.debug("Async challenge detection notice: %s", e)
+    return None
+
 
 
 def ensure_authenticated(page, headless=False):

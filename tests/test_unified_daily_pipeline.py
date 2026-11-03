@@ -123,7 +123,9 @@ def test_unified_pipeline_dry_run_full_execution(strict_airgap, capsys):
     assert "linkedin_status" in summary
     assert "naukri_status" in summary
 
-    assert summary["applied_count"] == summary["applied_naukri"] + summary["applied_linkedin"]
+    assert summary["applied_count"] == (
+        summary["applied_naukri"] + summary["applied_linkedin"] + summary.get("applied_external", 0)
+    )
     assert summary["seo_score"] >= 90.0
     assert summary["linkedin_status"] in ("DRY_RUN_VERIFIED", "SUCCESS")
 
@@ -266,7 +268,14 @@ def test_cli_pro_command_parsing():
     with patch("sys.argv", test_args), \
          patch("naukari_pro.cli.handle_pro") as mock_pro:
         main()
-        mock_pro.assert_called_once_with(limit=12, headless=True, dry_run=True, force=True)
+        mock_pro.assert_called_once_with(
+            limit=12,
+            headless=True,
+            dry_run=True,
+            force=True,
+            block=None,
+            execute_outreach_live=False,
+        )
 
 
 # ==============================================================================

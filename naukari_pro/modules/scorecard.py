@@ -15,9 +15,16 @@ from naukari_pro.config import DB_PATH, TRACKER_PATH
 
 @dataclass
 class PlatformStats:
+    # 7 Core Channel Metrics (Mandatory per R1 Feature 3)
     discovered: int = 0
     applied: int = 0
     confirmed: int = 0
+    redirects_pending: int = 0
+    outreach_sent: int = 0
+    followups_sent: int = 0
+    calls_booked: int = 0
+
+    # Diagnostic & Pipeline Sub-metrics (Preserved for backwards compatibility)
     form_autofilled: int = 0
     skipped_duplicate: int = 0
     skipped_closed: int = 0
@@ -36,10 +43,13 @@ class PlatformStats:
 
 class CycleScorecard:
     """
-    Consolidates cycle performance metrics across all active job channels:
+    Consolidates cycle performance metrics across all 6 active job channels:
     - Naukri (1-click & screening chatbot)
     - LinkedIn Easy Apply
     - External ATS Portals (Greenhouse, Lever, Ashby, Workday, Career Portals)
+    - Recruiter Outreach (Block 2 pitches)
+    - Follow-ups (Block 3 48-hour follow-ups)
+    - Callbacks (Screening & interview calls booked)
     """
 
     def __init__(self, cycle_name: str = "Autonomous Application Cycle"):
@@ -48,15 +58,26 @@ class CycleScorecard:
         self.platforms: Dict[str, PlatformStats] = {
             "naukri": PlatformStats(),
             "linkedin": PlatformStats(),
-            "external_ats": PlatformStats()
+            "external_ats": PlatformStats(),
+            "recruiter_outreach": PlatformStats(),
+            "follow_ups": PlatformStats(),
+            "callbacks": PlatformStats()
         }
 
     def _get_platform_key(self, platform: str) -> str:
         p_low = (platform or "").lower().strip()
-        if "linkedin" in p_low:
+        if "linkedin" in p_low and "outreach" not in p_low:
             return "linkedin"
-        elif any(k in p_low for k in ("greenhouse", "lever", "ashby", "workday", "career_portal", "external")):
+        elif any(k in p_low for k in ("greenhouse", "lever", "ashby", "workday", "career_portal", "external", "portal")):
             return "external_ats"
+        elif any(k in p_low for k in ("followup", "follow_up", "follow-up", "follow_ups")):
+            return "follow_ups"
+        elif any(k in p_low for k in ("callback", "callbacks", "call_booked", "calls_scheduled", "calls")):
+            return "callbacks"
+        elif any(k in p_low for k in ("outreach", "recruiter_outreach", "pitch", "gcc")):
+            return "recruiter_outreach"
+        elif "naukri" in p_low:
+            return "naukri"
         return "naukri"
 
     def record_discovered(self, platform: str, count: int = 1):
@@ -90,11 +111,31 @@ class CycleScorecard:
         key = self._get_platform_key(platform)
         self.platforms[key].failed_session += count
 
+    def record_redirect_pending(self, platform: str = "external_ats", count: int = 1):
+        key = self._get_platform_key(platform)
+        self.platforms[key].redirects_pending += count
+
+    def record_outreach_sent(self, platform: str = "recruiter_outreach", count: int = 1):
+        key = self._get_platform_key(platform)
+        self.platforms[key].outreach_sent += count
+        self.platforms[key].discovered += count
+
+    def record_followup_sent(self, platform: str = "follow_ups", count: int = 1):
+        key = self._get_platform_key(platform)
+        self.platforms[key].followups_sent += count
+        self.platforms[key].discovered += count
+
+    def record_call_booked(self, platform: str = "callbacks", count: int = 1):
+        key = self._get_platform_key(platform)
+        self.platforms[key].calls_booked += count
+
     def record_status(self, platform: str, status: str, evidence_path: Optional[str] = None):
         """Dispatches an attempt status to the correct scorecard category."""
         s = (status or "").upper()
         if "CONFIRMED" in s:
             self.record_applied(platform, confirmed=True, evidence_path=evidence_path)
+        elif "REDIRECT" in s:
+            self.record_redirect_pending(platform)
         elif "AUTO-FILLED" in s or "AUTOFILLED" in s or "SUBMITTED" in s or "APPLIED" in s:
             self.record_applied(platform, confirmed=False, evidence_path=evidence_path)
         elif "ALREADY" in s or "DUPLICATE" in s:
@@ -106,11 +147,133 @@ class CycleScorecard:
         elif "FAIL" in s or "ERROR" in s:
             self.record_failed_form(platform)
         else:
-            # Default to failed form if unknown failure, or form autofill if unknown progress
             if "REJECT" in s or "SKIP" in s:
                 self.record_skipped_duplicate(platform)
             else:
                 self.record_applied(platform, confirmed=False)
+
+    def sync_from_db(
+        self,
+        db_path: Optional[str] = None,
+        since: Optional[datetime] = None,
+        reset_existing: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Reads all 7 scorecard metrics directly from applied_jobs.db.
+        """
+        from naukari_pro.modules.db import get_db_connection, init_db
+        actual_db = db_path or DB_PATH
+        init_db(actual_db)
+
+        if reset_existing:
+            self.platforms = {
+                "naukri": PlatformStats(),
+                "linkedin": PlatformStats(),
+                "external_ats": PlatformStats(),
+                "recruiter_outreach": PlatformStats(),
+                "follow_ups": PlatformStats(),
+                "callbacks": PlatformStats()
+            }
+
+        cutoff_dt = since or self.start_time
+        cutoff_str = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        conn = get_db_connection(actual_db)
+        try:
+            # 1. Query applied_jobs for applications in this cycle
+            # PROOF: exclude dry-runs and backfills from live scorecard counts
+            try:
+                rows = conn.execute("""
+                    SELECT platform, status, evidence_path, outcome_label, is_backfill
+                    FROM applied_jobs
+                    WHERE applied_at >= ?
+                      AND UPPER(COALESCE(status, '')) NOT LIKE '%DRY_RUN%'
+                      AND UPPER(COALESCE(status, '')) NOT LIKE '%DRY-RUN%'
+                      AND COALESCE(is_backfill, 0) = 0
+                """, (cutoff_str,)).fetchall()
+            except Exception:
+                rows = conn.execute("""
+                    SELECT platform, status, evidence_path, outcome_label
+                    FROM applied_jobs
+                    WHERE applied_at >= ?
+                      AND UPPER(COALESCE(status, '')) NOT LIKE '%DRY_RUN%'
+                      AND UPPER(COALESCE(status, '')) NOT LIKE '%DRY-RUN%'
+                """, (cutoff_str,)).fetchall()
+
+            for r in rows:
+                p_key = self._get_platform_key(r["platform"])
+                s = (r["status"] or "").strip()
+                ep = r["evidence_path"]
+                outcome = (r["outcome_label"] or "").strip().lower()
+
+                if "DRY_RUN" in s.upper() or "DRY-RUN" in s.upper():
+                    continue
+
+                self.platforms[p_key].discovered += 1
+
+                if s == "Submitted (Confirmed)":
+                    self.platforms[p_key].applied += 1
+                    self.platforms[p_key].confirmed += 1
+                    if ep and os.path.isfile(ep):
+                        self.platforms[p_key].evidence_paths.append(str(ep))
+                elif any(s.startswith(prefix) for prefix in ("Submitted", "Applied", "Form Auto-Filled")):
+                    self.platforms[p_key].applied += 1
+                    self.platforms[p_key].form_autofilled += 1
+                elif s == "External Redirect":
+                    self.platforms[p_key].redirects_pending += 1
+                elif "ALREADY" in s or "DUPLICATE" in s:
+                    self.platforms[p_key].skipped_duplicate += 1
+                elif "CLOSED" in s or "EXPIRED" in s or "404" in s:
+                    self.platforms[p_key].skipped_closed += 1
+                elif "SESSION" in s or "AUTH" in s or "LOGIN" in s:
+                    self.platforms[p_key].failed_session += 1
+                else:
+                    self.platforms[p_key].failed_form += 1
+
+                if outcome == "callback":
+                    self.platforms["callbacks"].calls_booked += 1
+
+            # 2. Check total current pending redirects backlog in DB
+            try:
+                pending_cur = conn.execute("""
+                    SELECT COUNT(*) FROM applied_jobs WHERE status = 'External Redirect'
+                """).fetchone()[0]
+                if pending_cur > self.platforms["external_ats"].redirects_pending:
+                    self.platforms["external_ats"].redirects_pending = int(pending_cur)
+            except Exception:
+                pass
+
+            # 3. Query recruiter_outreach if table exists
+            table_check = conn.execute("""
+                SELECT name FROM sqlite_master WHERE type='table' AND name='recruiter_outreach'
+            """).fetchone()
+
+            if table_check:
+                out_rows = conn.execute("""
+                    SELECT message_type, status, call_scheduled_at
+                    FROM recruiter_outreach
+                    WHERE created_at >= ? OR updated_at >= ?
+                """, (cutoff_str, cutoff_str)).fetchall()
+
+                for o in out_rows:
+                    m_type = (o["message_type"] or "").lower()
+                    stat = (o["status"] or "").upper()
+                    has_call = (stat == "CALL_SCHEDULED") or bool(o["call_scheduled_at"])
+
+                    if "follow" in m_type or "48" in m_type:
+                        self.platforms["follow_ups"].discovered += 1
+                        self.platforms["follow_ups"].followups_sent += 1
+                    else:
+                        self.platforms["recruiter_outreach"].discovered += 1
+                        self.platforms["recruiter_outreach"].outreach_sent += 1
+
+                    if has_call:
+                        self.platforms["callbacks"].calls_booked += 1
+
+        finally:
+            conn.close()
+
+        return self.generate_summary()
 
     def generate_summary(self) -> Dict[str, Any]:
         total_discovered = sum(p.discovered for p in self.platforms.values())
@@ -125,6 +288,27 @@ class CycleScorecard:
 
         duration_sec = (datetime.now() - self.start_time).total_seconds()
 
+        by_plat = {
+            name: {
+                "discovered": stats.discovered,
+                "applied": stats.applied,
+                "confirmed": stats.confirmed,
+                "redirects_pending": stats.redirects_pending,
+                "outreach_sent": stats.outreach_sent,
+                "followups_sent": stats.followups_sent,
+                "calls_booked": stats.calls_booked,
+                "form_autofilled": stats.form_autofilled,
+                "skipped_duplicate": stats.skipped_duplicate,
+                "skipped_closed": stats.skipped_closed,
+                "total_skipped": stats.total_skipped,
+                "failed_form": stats.failed_form,
+                "failed_session": stats.failed_session,
+                "total_failed": stats.total_failed,
+                "evidence_count": len(stats.evidence_paths),
+            }
+            for name, stats in self.platforms.items()
+        }
+
         return {
             "cycle_name": self.cycle_name,
             "duration_seconds": round(duration_sec, 1),
@@ -133,26 +317,16 @@ class CycleScorecard:
                 "discovered": total_discovered,
                 "applied": total_applied,
                 "confirmed": total_confirmed,
+                "redirects_pending": sum(p.redirects_pending for p in self.platforms.values()),
+                "outreach_sent": sum(p.outreach_sent for p in self.platforms.values()),
+                "followups_sent": sum(p.followups_sent for p in self.platforms.values()),
+                "calls_booked": sum(p.calls_booked for p in self.platforms.values()),
                 "form_autofilled": total_autofilled,
                 "skipped": total_skipped,
                 "failed": total_failed,
             },
-            "by_platform": {
-                name: {
-                    "discovered": stats.discovered,
-                    "applied": stats.applied,
-                    "confirmed": stats.confirmed,
-                    "form_autofilled": stats.form_autofilled,
-                    "skipped_duplicate": stats.skipped_duplicate,
-                    "skipped_closed": stats.skipped_closed,
-                    "total_skipped": stats.total_skipped,
-                    "failed_form": stats.failed_form,
-                    "failed_session": stats.failed_session,
-                    "total_failed": stats.total_failed,
-                    "evidence_count": len(stats.evidence_paths),
-                }
-                for name, stats in self.platforms.items()
-            },
+            "by_platform": by_plat,
+            "by_channel": by_plat,
             "evidence_paths": all_evidence
         }
 
@@ -161,35 +335,76 @@ class CycleScorecard:
         t = summary["totals"]
         b = summary["by_platform"]
 
-        print("\n" + "=" * 78)
-        print(f"  📊 NAUKARIPRO AUTONOMOUS MULTI-PLATFORM APPLY SCORECARD")
-        print(f"  Cycle: {self.cycle_name} | Elapsed: {summary['duration_seconds']}s")
-        print("=" * 78)
-        print(f"  {'Platform':<15} {'Discovered':<12} {'Applied':<10} {'Confirmed':<11} {'AutoFilled':<12} {'Skipped':<10} {'Failed':<8}")
-        print("  " + "-" * 74)
+        print("\n" + "=" * 98)
+        print(f"  📊 NAUKARIPRO AUTONOMOUS MULTI-PLATFORM APPLY SCORECARD | UNIFIED MULTI-CHANNEL SCORECARD")
+        print(f"  Cycle: {self.cycle_name} | Elapsed: {summary['duration_seconds']}s | {summary['timestamp']}")
+        print("=" * 98)
+        print(f"  {'Channel':<20} {'Discovered':<12} {'Applied':<10} {'Confirmed':<11} {'Redirects':<11} {'Outreach':<10} {'Follow-ups':<12} {'Calls Booked':<12}")
+        print("  " + "-" * 94)
 
         labels = {
             "naukri": "Naukri",
             "linkedin": "LinkedIn",
-            "external_ats": "External ATS"
+            "external_ats": "External Portals (External ATS)",
+            "recruiter_outreach": "Recruiter Outreach",
+            "follow_ups": "Follow-ups",
+            "callbacks": "Callbacks"
         }
 
         for k, label in labels.items():
-            p = b[k]
-            print(f"  {label:<15} {p['discovered']:<12} {p['applied']:<10} {p['confirmed']:<11} {p['form_autofilled']:<12} {p['total_skipped']:<10} {p['total_failed']:<8}")
+            p = b.get(k, {})
+            print(f"  {label:<20} {p.get('discovered', 0):<12} {p.get('applied', 0):<10} {p.get('confirmed', 0):<11} {p.get('redirects_pending', 0):<11} {p.get('outreach_sent', 0):<10} {p.get('followups_sent', 0):<12} {p.get('calls_booked', 0):<12}")
 
-        print("  " + "-" * 74)
-        print(f"  {'TOTAL':<15} {t['discovered']:<12} {t['applied']:<10} {t['confirmed']:<11} {t['form_autofilled']:<12} {t['skipped']:<10} {t['failed']:<8}")
-        print("=" * 78)
+        print("  " + "-" * 94)
+        print(f"  {'TOTAL':<20} {t['discovered']:<12} {t['applied']:<10} {t['confirmed']:<11} {t['redirects_pending']:<11} {t['outreach_sent']:<10} {t['followups_sent']:<12} {t['calls_booked']:<12}")
+        print("=" * 98)
 
         if summary["evidence_paths"]:
-            print("  📸 Real Submission Evidence Verified on Disk:")
+            print("  Real Submission Evidence Verified on Disk:")
             for idx, ep in enumerate(summary["evidence_paths"][:10], 1):
                 sz = os.path.getsize(ep) if os.path.exists(ep) else 0
                 print(f"    {idx}. [{sz} bytes] {ep}")
         else:
-            print("  ℹ️ No new PNG submission screenshots captured in this cycle.")
-        print("=" * 78 + "\n")
+            print("  No new PNG submission screenshots captured in this cycle.")
+
+        # Beast EOD bottleneck + tomorrow fix
+        bottleneck, remedy = self.identify_bottleneck(summary)
+        print(f"  BIGGEST BOTTLENECK: {bottleneck}")
+        print(f"  QUEUED FIX (next cycle): {remedy}")
+        print("=" * 98 + "\n")
+
+    def identify_bottleneck(self, summary: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
+        """Name the single biggest bottleneck and the remedy for tomorrow's cycle."""
+        summary = summary or self.generate_summary()
+        t = summary["totals"]
+        b = summary["by_platform"]
+        if t.get("applied", 0) < 35:
+            return (
+                f"Applications below 35/day ({t.get('applied', 0)} counted this window)",
+                "Widen hunt keywords + raise --limit; ensure universal_apply and Block 1/2 both run",
+            )
+        if b.get("external_ats", {}).get("redirects_pending", 0) > 0:
+            return (
+                f"External redirects pending: {b['external_ats']['redirects_pending']}",
+                "Run portal-apply / Track 2 with oldest-first convert until backlog is 0",
+            )
+        if b.get("recruiter_outreach", {}).get("outreach_sent", 0) < 15:
+            return (
+                "Recruiter outreach under 15/day",
+                "Block 2 with --live-outreach on Mac/residential; refresh GCC lead list",
+            )
+        if b.get("follow_ups", {}).get("followups_sent", 0) < 8:
+            return (
+                "Follow-ups under 8/day",
+                "Block 3 evening cycle: generate_followup_batch(8) + evening Resdex bump",
+            )
+        if b.get("callbacks", {}).get("calls_booked", 0) < 1:
+            return (
+                "No recruiter calls booked yet",
+                "Same-day reply labeling + denser GCC outreach with project Lakehouse proof points",
+            )
+        return ("No critical bottleneck detected", "Maintain cadence; Mon learn + Tue/Thu mutate")
+
 
 
 def sync_dual_log(
