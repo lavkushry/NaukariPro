@@ -2290,6 +2290,38 @@ class GenericPortalHandler(BaseATSHandler):
             except Exception as e_f:
                 logger.debug("GenericPortalHandler field fill notice [%s]: %s", label, e_f)
 
+        # AIHawk Lesson: Label text anchor fallback for custom/obfuscated input IDs (e.g. Zoho, Keka, Darwinbox)
+        label_fallbacks = [
+            ("First Name", p.get("firstName", "Lavkush")),
+            ("Last Name", p.get("lastName", "Kumar")),
+            ("Email", p.get("email", "lav84095@gmail.com")),
+            ("Phone", p.get("phone", "+91-9122036484")),
+            ("Mobile", p.get("phone", "+91-9122036484")),
+            ("Current Company", p.get("currentCompany", "CGI India (PNC Bank GCC)")),
+            ("LinkedIn", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")),
+            ("GitHub", p.get("githubUrl", "https://github.com/lavkush-kumar")),
+        ]
+        for lbl_name, val in label_fallbacks:
+            if lbl_name not in filled:
+                try:
+                    lbl_el = page.locator(f"label:has-text('{lbl_name}')").first
+                    if safe_count(lbl_el) > 0 and lbl_el.is_visible():
+                        inp_el = lbl_el.locator("xpath=following::input[1] | ..//input").first
+                        if safe_count(inp_el) > 0 and inp_el.is_visible() and not inp_el.input_value():
+                            inp_el.fill(str(val))
+                            filled.append(lbl_name)
+                            self.record_field(
+                                label=lbl_name,
+                                value=val,
+                                field_name=f"label_{lbl_name}",
+                                field_type="text",
+                                step=1,
+                                step_name="BASIC_INFO",
+                                action_type="FILLED"
+                            )
+                except Exception:
+                    pass
+
         # Consent and privacy checkboxes
         try:
             for cb in page.locator("input[type='checkbox']").all():
@@ -2708,7 +2740,43 @@ class CareerPortalFiller:
             page.goto(portal_url, wait_until="domcontentloaded", timeout=30000)
         except Exception as e_nav:
             print(f"    Notice navigating: {e_nav}")
-        time.sleep(3)
+        time.sleep(2)
+
+        # Universal Cookie & Overlay Dismissal
+        try:
+            cookie_buttons = page.locator(
+                "button:has-text('Accept'), button:has-text('Allow'), button:has-text('Agree'), "
+                "button:has-text('Accept all'), button:has-text('Got it'), button:has-text('OK'), "
+                "[data-automation-id*='cookie' i], .cw-cookie-freeze-layer"
+            )
+            if safe_count(cookie_buttons) > 0 and cookie_buttons.first.is_visible():
+                cookie_buttons.first.click(force=True, timeout=2000)
+                time.sleep(0.5)
+        except Exception:
+            pass
+
+        # Universal Landing Page CTA Opener (reveals form if on job description / view page)
+        try:
+            visible_inputs = safe_count(page.locator("input:not([type='hidden'])"))
+            if visible_inputs < 2:
+                cta_selectors = [
+                    "button:has-text('interested')",
+                    "button:has-text('Apply for this job')",
+                    "a:has-text('Apply for this job')",
+                    "button:has-text('Apply Now')",
+                    "a:has-text('Apply Now')",
+                    "button:has-text('Apply')",
+                    "a:has-text('Apply')"
+                ]
+                for cta_sel in cta_selectors:
+                    cta = page.locator(cta_sel).first
+                    if safe_count(cta) > 0 and cta.is_visible():
+                        print(f"    🔘 Opening application form via CTA: {cta_sel}...")
+                        cta.click(force=True, timeout=5000)
+                        time.sleep(2)
+                        break
+        except Exception as e_cta:
+            logger.debug("CTA opener notice: %s", e_cta)
 
         handler = self.get_handler(ats_type)
         filled_fields: List[str] = []
