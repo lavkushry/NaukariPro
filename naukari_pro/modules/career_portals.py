@@ -342,20 +342,29 @@ def fetch_greenhouse_security_code(since_ts: float = 0.0, timeout_sec: float = 4
                 status, mdata = mail.fetch(mid, "(RFC822)")
                 msg = email.message_from_bytes(mdata[0][1])
                 subj = msg.get("Subject", "")
-                if "security code for your application" in subj.lower():
+                if any(k in subj.lower() for k in ["security code", "verification code", "verify your application", "verification"]):
                     # Check email date if available
                     date_tuple = email.utils.parsedate_tz(msg.get("Date"))
                     msg_epoch = email.utils.mktime_tz(date_tuple) if date_tuple else 0
                     if since_ts > 0 and msg_epoch > 0 and msg_epoch < (since_ts - 15):
                         continue
 
-                    html = ""
+                    clean_text = ""
                     for part in msg.walk():
-                        if "html" in part.get_content_type():
-                            html = part.get_payload(decode=True).decode("utf-8", errors="ignore")
-                    clean_text = re.sub(r"<[^>]+>", " ", html)
+                        ctype = part.get_content_type()
+                        if ctype == "text/plain":
+                            clean_text += " " + part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                        elif ctype == "text/html":
+                            raw_html = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                            clean_text += " " + re.sub(r"<[^>]+>", " ", raw_html)
                     clean_text = re.sub(r"\s+", " ", clean_text).strip()
+
                     match = re.search(r"into the security code field on your application:\s*([a-zA-Z0-9]{8})", clean_text)
+                    if not match:
+                        match = re.search(r"\b(?:security code|verification code|your code is|enter the code)[:\s]+([a-zA-Z0-9]{6,8})\b", clean_text, re.IGNORECASE)
+                    if not match:
+                        match = re.search(r"\b([A-Z0-9]{8})\b", clean_text)
+
                     if match:
                         code = match.group(1)
                         if code in USED_GREENHOUSE_SECURITY_CODES:
@@ -775,12 +784,29 @@ class GreenhouseHandler(BaseATSHandler):
                 if safe_count(verif) > 0 and verif.first.is_visible():
                     print("    📧 Greenhouse Email Verification detected. Retrieving 8-character security code from Gmail...")
                     code = fetch_greenhouse_security_code(since_ts=t_click, timeout_sec=45.0)
-                    if code and len(code) == 8:
+                    if code and len(code) in [6, 8]:
                         print(f"    🔑 Entering Greenhouse security code: {code}")
-                        for i, ch in enumerate(code):
-                            inp_i = page.locator(f"input#security-input-{i}")
-                            if safe_count(inp_i) > 0:
-                                inp_i.fill(ch)
+                        entered = False
+                        # 1. Try segmented inputs (e.g. input#security-input-0 .. 7)
+                        first_seg = page.locator("input#security-input-0")
+                        if safe_count(first_seg) > 0:
+                            for i, ch in enumerate(code):
+                                inp_i = page.locator(f"input#security-input-{i}")
+                                if safe_count(inp_i) > 0:
+                                    inp_i.fill(ch)
+                            entered = True
+
+                        # 2. Fallback to unified single code input if segmented not found
+                        if not entered:
+                            single_inputs = page.locator(
+                                "input#security_code, input[name*='security_code' i], input[name*='code' i], "
+                                "input[placeholder*='code' i], input[aria-label*='code' i], input[type='text'][maxlength='8'], "
+                                "input[type='text'][maxlength='6']"
+                            )
+                            if safe_count(single_inputs) > 0 and single_inputs.first.is_visible():
+                                single_inputs.first.fill(code)
+                                entered = True
+
                         self.record_field(
                             label="Greenhouse Email Verification Code",
                             value="Security Code Verified via Gmail",

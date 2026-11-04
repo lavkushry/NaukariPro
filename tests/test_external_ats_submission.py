@@ -726,4 +726,63 @@ class TestSOTACommunityATSHandlerFixes:
         assert ok is True
         assert mock_file_inp.set_input_files.called
 
+    def test_greenhouse_security_code_regex_variations(self):
+        import re
+
+        clean_text_1 = "Please enter the following into the security code field on your application: C9X2M4K8"
+        m1 = re.search(r"into the security code field on your application:\s*([a-zA-Z0-9]{8})", clean_text_1)
+        assert m1 and m1.group(1) == "C9X2M4K8"
+
+        clean_text_2 = "Your verification code: AB12CD34"
+        m2 = re.search(r"\b(?:security code|verification code|your code is|enter the code)[:\s]+([a-zA-Z0-9]{6,8})\b", clean_text_2, re.IGNORECASE)
+        assert m2 and m2.group(1) == "AB12CD34"
+
+        clean_text_3 = "Security code: 123456"
+        m3 = re.search(r"\b(?:security code|verification code|your code is|enter the code)[:\s]+([a-zA-Z0-9]{6,8})\b", clean_text_3, re.IGNORECASE)
+        assert m3 and m3.group(1) == "123456"
+
+    def test_greenhouse_single_code_input_fallback(self, monkeypatch):
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        monkeypatch.setattr("naukari_pro.modules.career_portals.fetch_greenhouse_security_code", lambda *a, **k: "H7K2P9Q1")
+        from naukari_pro.modules.career_portals import GreenhouseHandler
+        handler = GreenhouseHandler({"firstName": "Lavkush", "lastName": "Kumar", "email": "lav84095@gmail.com"})
+        monkeypatch.setattr(handler, "verify_confirmation", lambda *a, **k: False)
+        
+        mock_page = MagicMock()
+        mock_page.url = "https://boards.greenhouse.io/job/123"
+        mock_page.title.return_value = "Job Application"
+        mock_page.evaluate.return_value = ""
+        
+        def mock_locator(sel):
+            loc = MagicMock()
+            loc.first = loc
+            if "security-input" in sel:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            elif "security_code" in sel or "code" in sel:
+                loc.count.return_value = 1
+                loc.is_visible.return_value = True
+            elif ".email-verification" in sel or "security code" in sel:
+                loc.count.return_value = 1
+                loc.is_visible.return_value = True
+            elif "submit" in sel.lower():
+                loc.count.return_value = 1
+                loc.is_visible.return_value = True
+            else:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            return loc
+
+        mock_page.locator.side_effect = mock_locator
+        mock_page.evaluate.return_value = None
+
+        res = handler.submit_form(mock_page)
+        assert res is True
+        # Verify field record was added
+        rec = [r for r in handler.field_records if r["name"] == "security_code"]
+        assert len(rec) == 1
+        assert rec[0]["step_name"] == "EMAIL_VERIFICATION"
+        assert rec[0]["type"] == "code"
+
+
 
