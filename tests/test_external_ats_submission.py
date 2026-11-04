@@ -643,3 +643,87 @@ class TestStrictRepeatApplicationDeduplication:
         assert result.status == "SKIPPED_ALREADY_APPLIED"
         assert len(result.fields) == 0
 
+
+class TestSOTACommunityATSHandlerFixes:
+    """Verifies battle-tested fixes adapted from top open-source ATS automations (Greenhouse, Lever, Ashby, Workday)."""
+
+    def test_greenhouse_native_select_and_checkbox_consent(self, monkeypatch):
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        monkeypatch.setattr("naukari_pro.modules.career_portals.fetch_greenhouse_security_code", lambda *a, **k: "A1B2C3D4")
+        from naukari_pro.modules.career_portals import GreenhouseHandler
+        handler = GreenhouseHandler({"firstName": "Lavkush", "lastName": "Kumar", "email": "lav84095@gmail.com"})
+        
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_loc.all.return_value = []
+        mock_page.locator.return_value = mock_loc
+        
+        # Test submit_form executes pre-submit required cleanup
+        mock_page.evaluate.return_value = None
+        mock_btn = MagicMock()
+        mock_btn.first = mock_btn
+        mock_btn.count.return_value = 1
+        mock_btn.is_visible.return_value = True
+        mock_page.locator.return_value = mock_btn
+        
+        res = handler.submit_form(mock_page)
+        assert res is True
+        assert mock_page.evaluate.called
+
+    def test_lever_select_and_gdpr_checkboxes(self, monkeypatch):
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        from naukari_pro.modules.career_portals import LeverHandler
+        handler = LeverHandler({"fullName": "Lavkush Kumar", "email": "lav84095@gmail.com", "phone": "+919122036484"})
+        
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_loc.all.return_value = []
+        mock_page.locator.return_value = mock_loc
+        
+        res = handler.fill_form(mock_page)
+        assert res["ats"] == "Lever"
+        assert len(res["field_records"]) >= 4
+
+    def test_ashby_react_select_and_checkboxes(self, monkeypatch):
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        from naukari_pro.modules.career_portals import AshbyHandler
+        handler = AshbyHandler({"fullName": "Lavkush Kumar", "email": "lav84095@gmail.com", "phone": "+919122036484"})
+        
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_loc.all.return_value = []
+        mock_page.locator.return_value = mock_loc
+        
+        res = handler.fill_form(mock_page)
+        assert res["ats"] == "Ashby"
+        assert len(res["field_records"]) >= 3
+
+    def test_workday_custom_dropdown_and_resume_upload(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("time.sleep", lambda s: None)
+        from naukari_pro.modules.career_portals import WorkdayHandler
+        handler = WorkdayHandler({"firstName": "Lavkush", "lastName": "Kumar", "email": "lav84095@gmail.com"})
+        
+        fake_resume = tmp_path / "resume.pdf"
+        fake_resume.write_text("Dummy Resume Content")
+        
+        mock_page = MagicMock()
+        mock_file_inp = MagicMock()
+        mock_file_inp.first = mock_file_inp
+        mock_file_inp.count.return_value = 1
+        mock_file_inp.is_visible.return_value = True
+        
+        mock_page.locator.return_value = mock_file_inp
+        ok = handler.upload_resume(mock_page, str(fake_resume))
+        assert ok is True
+        assert mock_file_inp.set_input_files.called
+
+

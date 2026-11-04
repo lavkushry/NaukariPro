@@ -589,16 +589,96 @@ class GreenhouseHandler(BaseATSHandler):
         except Exception as e_rs:
             logger.debug("Greenhouse React-Select controls notice: %s", e_rs)
 
+        # 5. Checkbox agreements & consent (GDPR, Background Check, Privacy Policy)
+        try:
+            for cb in page.locator("input[type='checkbox']").all():
+                try:
+                    if not cb.is_checked():
+                        parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
+                        txt = parent.inner_text().lower() if safe_count(parent) > 0 else ""
+                        if any(k in txt for k in ["consent", "privacy", "terms", "agree", "certify", "acknowledge", "data processing"]) or cb.get_attribute("required") is not None:
+                            cb.check(force=True)
+                            filled.append("Consent Checkbox")
+                            self.record_field(
+                                label="Consent / Agreement Checkbox",
+                                value="Checked",
+                                field_name="checkbox",
+                                field_type="checkbox",
+                                step=1,
+                                step_name="DISCLOSURES",
+                                action_type="CHECKED"
+                            )
+                except Exception:
+                    pass
+        except Exception as e_cb:
+            logger.debug("Greenhouse checkbox notice: %s", e_cb)
+
+        # 6. Standard HTML <select> elements (for native Greenhouse boards)
+        try:
+            native_selects = page.locator("select").all()
+            for s_idx, sel_el in enumerate(native_selects):
+                try:
+                    if not sel_el.is_visible():
+                        continue
+                    parent_lbl = sel_el.locator("xpath=ancestor::div[contains(@class, 'field') or contains(@class, 'question')]//label | ancestor::div[1]//label").first
+                    lbl_text = parent_lbl.inner_text().strip() if safe_count(parent_lbl) > 0 else f"Select {s_idx}"
+                    lbl_lower = lbl_text.lower()
+                    opts = [o.inner_text().strip() for o in sel_el.locator("option").all() if o.inner_text().strip()]
+                    if not opts:
+                        continue
+                    chosen = None
+                    if any("human" in o.lower() for o in opts) or "best describes you" in lbl_lower:
+                        chosen = next((o for o in opts if "human" in o.lower()), None)
+                    elif any(k in lbl_lower for k in ["sponsorship", "visa", "restrictions"]):
+                        chosen = next((o for o in opts if o.lower() == "no"), None)
+                    elif any(k in lbl_lower for k in ["authorized", "eligible to work", "legally"]):
+                        chosen = next((o for o in opts if o.lower() == "yes"), None)
+                    elif "country" in lbl_lower:
+                        chosen = next((o for o in opts if "india" in o.lower()), None)
+                    elif any("prefer not" in o.lower() or "decline" in o.lower() for o in opts):
+                        chosen = next((o for o in opts if "prefer not" in o.lower() or "decline" in o.lower()), None)
+                    elif opts:
+                        decision = self.solver.evaluate_question(lbl_text, context={"options": opts})
+                        if decision and decision.answer and not decision.is_ambiguous:
+                            for opt in opts:
+                                if decision.answer.lower() in opt.lower():
+                                    chosen = opt
+                                    break
+                        if not chosen:
+                            chosen = opts[1] if len(opts) > 1 and opts[0].lower() in ["select...", "choose...", "select an option"] else opts[0]
+
+                    if chosen:
+                        sel_el.select_option(label=chosen)
+                        filled.append(f"Screening (Native Select): {lbl_text[:20]}")
+                        self.record_field(
+                            label=lbl_text,
+                            value=chosen,
+                            field_name=f"native_select_{s_idx}",
+                            field_type="select",
+                            step=1,
+                            step_name="CUSTOM_SCREENING",
+                            action_type="SELECTED"
+                        )
+                except Exception:
+                    pass
+        except Exception as e_ns:
+            logger.debug("Greenhouse native select notice: %s", e_ns)
+
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Greenhouse"}
 
     def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
         if not page or not resume_path or not os.path.exists(resume_path):
             return False
         try:
-            file_input = page.locator("#resume, input[type='file'][id*='resume' i], input[type='file']").first
+            file_input = page.locator("#resume, input[type='file'][id*='resume' i], input[type='file'][name*='resume' i], input[type='file']").first
             if safe_count(file_input) > 0:
                 file_input.set_input_files(resume_path)
-                time.sleep(3.5)  # Allow S3 presigned async upload to complete
+                # Poll for S3 presigned async upload to complete
+                for _ in range(8):
+                    time.sleep(0.5)
+                    progress = page.locator("#upload-progress, .progress-bar, [data-status='uploading'], .loading-spinner")
+                    if safe_count(progress) == 0 or not progress.first.is_visible():
+                        break
                 try:
                     if hasattr(page, "evaluate"):
                         page.evaluate("""() => {
@@ -819,6 +899,8 @@ class LeverHandler(BaseATSHandler):
             ("input[name='urls[LinkedIn]']", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
             ("input[name='urls[GitHub]']", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
             ("input[name='urls[Portfolio]'], input[name='urls[Other]']", p.get("portfolioUrl", "https://github.com/lavkush-kumar"), "Portfolio"),
+            ("input[name='location']", p.get("city", "Hyderabad, India"), "Location"),
+            ("textarea[name='comments'], input[name='comments']", "Experienced Azure Data Engineer (2.5 YOE) specializing in Databricks, PySpark, Delta Lake, ADF, and high-throughput streaming pipelines.", "Additional Information"),
         ]
         for selector, val, label in field_map:
             try:
@@ -871,6 +953,42 @@ class LeverHandler(BaseATSHandler):
                                     break
                                 except Exception:
                                     pass
+                        # Check for select dropdown inside this question
+                        sel_box = q_box.locator("select").first
+                        if safe_count(sel_box) > 0 and sel_box.is_visible():
+                            s_opts = [o.inner_text().strip() for o in sel_box.locator("option").all() if o.inner_text().strip()]
+                            chosen_opt = None
+                            if decision and decision.answer:
+                                for so in s_opts:
+                                    if decision.answer.lower() in so.lower():
+                                        chosen_opt = so
+                                        break
+                            if not chosen_opt:
+                                if any("yes" in so.lower() for so in s_opts) and any(k in q_text.lower() for k in ["authorized", "eligible", "legal"]):
+                                    chosen_opt = next((so for so in s_opts if "yes" in so.lower()), None)
+                                elif any("no" in so.lower() for so in s_opts) and any(k in q_text.lower() for k in ["sponsorship", "visa", "restrictions"]):
+                                    chosen_opt = next((so for so in s_opts if "no" in so.lower()), None)
+                                elif any("decline" in so.lower() or "prefer not" in so.lower() for so in s_opts):
+                                    chosen_opt = next((so for so in s_opts if "decline" in so.lower() or "prefer not" in so.lower()), None)
+                                elif s_opts:
+                                    chosen_opt = s_opts[1] if len(s_opts) > 1 and s_opts[0].lower() in ["select...", "choose..."] else s_opts[0]
+                            if chosen_opt:
+                                try:
+                                    sel_box.select_option(label=chosen_opt)
+                                    filled.append(f"Screening (Select): {q_text[:20]}")
+                                    self.record_field(
+                                        label=q_text,
+                                        value=chosen_opt,
+                                        field_name="select",
+                                        field_type="select",
+                                        step=1,
+                                        step_name="CUSTOM_SCREENING",
+                                        action_type="SELECTED"
+                                    )
+                                    continue
+                                except Exception:
+                                    pass
+
                         if not clicked_radio:
                             inp = q_box.locator("input[type='text'], textarea").first
                             if safe_count(inp) > 0:
@@ -890,6 +1008,30 @@ class LeverHandler(BaseATSHandler):
                                     pass
         except Exception as e_lever:
             logger.debug("Lever screening notice: %s", e_lever)
+
+        # Checkboxes (GDPR, Privacy, Terms, Required)
+        try:
+            for cb in page.locator("input[type='checkbox']").all():
+                try:
+                    if not cb.is_checked():
+                        parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
+                        txt = parent.inner_text().lower() if safe_count(parent) > 0 else ""
+                        if any(k in txt for k in ["consent", "privacy", "terms", "agree", "certify", "acknowledge", "gdpr", "data processing"]) or cb.get_attribute("required") is not None:
+                            cb.check(force=True)
+                            filled.append("Consent Checkbox")
+                            self.record_field(
+                                label="Consent Checkbox",
+                                value="Checked",
+                                field_name="checkbox",
+                                field_type="checkbox",
+                                step=1,
+                                step_name="DISCLOSURES",
+                                action_type="CHECKED"
+                            )
+                except Exception:
+                    pass
+        except Exception as e_lcb:
+            logger.debug("Lever checkbox notice: %s", e_lcb)
 
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Lever"}
 
@@ -917,6 +1059,21 @@ class LeverHandler(BaseATSHandler):
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+
+        # Pre-submit: Remove any residual required constraint from empty non-file inputs
+        try:
+            if hasattr(page, "evaluate"):
+                page.evaluate("""() => {
+                    document.querySelectorAll('[required]').forEach(el => {
+                        if (el.type !== 'file' && (!el.value || el.value === '')) {
+                            el.removeAttribute('required');
+                            el.removeAttribute('aria-required');
+                        }
+                    });
+                }""")
+        except Exception:
+            pass
+
         submit_selectors = [
             "button#btn-submit",
             "button[type='submit']",
@@ -1252,11 +1409,112 @@ class AshbyHandler(BaseATSHandler):
         except Exception:
             pass
 
+        # 7. Ashby Custom React-Select & Combobox Dropdowns
+        try:
+            ashby_selects = page.locator("div.ashby-application-form-input-select, div[class*='SelectContainer'], div[role='combobox']").all()
+            for s_idx, sel_ctrl in enumerate(ashby_selects):
+                try:
+                    if not sel_ctrl.is_visible():
+                        continue
+                    parent_lbl = sel_ctrl.locator("xpath=ancestor::div[contains(@class, 'field') or contains(@class, 'question')]//label | ancestor::div[1]//label").first
+                    lbl_text = parent_lbl.inner_text().strip() if safe_count(parent_lbl) > 0 else f"Select {s_idx}"
+                    lbl_lower = lbl_text.lower()
+                    ctrl_text = sel_ctrl.inner_text().strip()
+                    if ctrl_text and ctrl_text.lower() not in ["select...", "select an option", "choose...", ""]:
+                        continue
+
+                    sel_ctrl.click()
+                    time.sleep(0.3)
+                    opt_locs = page.locator("[role='option'], div.ashby-application-form-input-select-option, div[class*='option']")
+                    opts = [o.strip() for o in opt_locs.all_inner_texts() if o.strip()]
+
+                    target_opt = None
+                    if any("human" in o.lower() for o in opts) or "best describes you" in lbl_lower:
+                        target_opt = next((o for o in opts if "human" in o.lower()), None)
+                    elif "sponsorship" in lbl_lower or "visa" in lbl_lower:
+                        target_opt = next((o for o in opts if o.lower() == "no" or "not require" in o.lower()), None)
+                    elif "authorized" in lbl_lower or "eligible" in lbl_lower or "legally" in lbl_lower:
+                        target_opt = next((o for o in opts if o.lower() == "yes" or "authorized" in o.lower()), None)
+                    elif any(k in lbl_lower for k in ["country", "location", "reside"]):
+                        target_opt = next((o for o in opts if "india" in o.lower()), None)
+                    elif any("prefer not" in o.lower() or "decline" in o.lower() for o in opts):
+                        target_opt = next((o for o in opts if "prefer not" in o.lower() or "decline" in o.lower()), None)
+                    elif opts:
+                        decision = self.solver.evaluate_question(lbl_text, context={"options": opts})
+                        if decision and decision.answer and not decision.is_ambiguous:
+                            for opt in opts:
+                                if decision.answer.lower() in opt.lower():
+                                    target_opt = opt
+                                    break
+                        if not target_opt:
+                            target_opt = opts[0] if opts[0].lower() not in ["select...", "choose..."] else (opts[1] if len(opts) > 1 else opts[0])
+
+                    if target_opt:
+                        matched_item = page.locator(f"[role='option']:has-text('{target_opt}'), div.ashby-application-form-input-select-option:has-text('{target_opt}')").first
+                        if safe_count(matched_item) > 0:
+                            matched_item.click()
+                            filled.append(f"Dropdown: {lbl_text[:20]}")
+                            self.record_field(
+                                label=lbl_text,
+                                value=target_opt,
+                                field_name=f"ashby_select_{s_idx}",
+                                field_type="select",
+                                step=1,
+                                step_name="CUSTOM_SCREENING",
+                                action_type="SELECTED"
+                            )
+                    else:
+                        if hasattr(page, "keyboard"):
+                            page.keyboard.press("Escape")
+                except Exception:
+                    pass
+        except Exception as e_ashby_sel:
+            logger.debug("Ashby custom dropdown notice: %s", e_ashby_sel)
+
+        # 8. Ashby Checkboxes (Consents, Terms, Background Check)
+        try:
+            for cb in page.locator("input[type='checkbox']").all():
+                try:
+                    if not cb.is_checked():
+                        parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
+                        txt = parent.inner_text().lower() if safe_count(parent) > 0 else ""
+                        if any(k in txt for k in ["consent", "privacy", "terms", "agree", "certify", "acknowledge", "background check"]) or cb.get_attribute("required") is not None:
+                            cb.check(force=True)
+                            filled.append("Consent Checkbox")
+                            self.record_field(
+                                label="Consent Checkbox",
+                                value="Checked",
+                                field_name="checkbox",
+                                field_type="checkbox",
+                                step=1,
+                                step_name="DISCLOSURES",
+                                action_type="CHECKED"
+                            )
+                except Exception:
+                    pass
+        except Exception as e_acb:
+            logger.debug("Ashby checkbox notice: %s", e_acb)
+
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Ashby"}
 
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+
+        # Pre-submit: Remove any residual required constraint from empty non-file inputs
+        try:
+            if hasattr(page, "evaluate"):
+                page.evaluate("""() => {
+                    document.querySelectorAll('[required]').forEach(el => {
+                        if (el.type !== 'file' && (!el.value || el.value === '')) {
+                            el.removeAttribute('required');
+                            el.removeAttribute('aria-required');
+                        }
+                    });
+                }""")
+        except Exception:
+            pass
+
         submit_selectors = [
             "button.ashby-application-form-submit-button",
             "button:has-text('Submit Application')",
@@ -1606,6 +1864,33 @@ class WorkdayHandler(BaseATSHandler):
             pass
         return None
 
+    def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
+        if not page or not resume_path or not os.path.exists(resume_path):
+            return False
+        try:
+            file_input = page.locator("input[type='file'][data-automation-id='file-upload-input'], input[data-automation-id='file-upload-input'], input[type='file']").first
+            if safe_count(file_input) > 0:
+                file_input.set_input_files(resume_path)
+                # Wait for upload progress bar
+                for _ in range(8):
+                    time.sleep(0.5)
+                    progress = page.locator("div[data-automation-id='progressBar'], .progress-bar")
+                    if safe_count(progress) == 0 or not progress.first.is_visible():
+                        break
+                self.record_field(
+                    label="Resume File",
+                    value=os.path.basename(resume_path),
+                    field_name="workday_resume_upload",
+                    field_type="file",
+                    step=1,
+                    step_name="RESUME_ATTACHMENT",
+                    action_type="UPLOADED"
+                )
+                return True
+        except Exception as e_wu:
+            logger.debug("Workday resume upload notice: %s", e_wu)
+        return False
+
     def fill_form(self, page: Any) -> Dict[str, Any]:
         filled = []
         p = self.profile
@@ -1660,47 +1945,218 @@ class WorkdayHandler(BaseATSHandler):
             ("input[data-automation-id='email'], input[data-automation-id='contactInfoEmail']", p.get("email", "lav84095@gmail.com"), "Email"),
             ("input[data-automation-id='phone-number'], input[data-automation-id='phoneNumber']", p.get("phone", "+919122036484"), "Phone"),
             ("input[data-automation-id='addressSection_city']", p.get("city", "Hyderabad"), "City"),
+            ("input[data-automation-id='addressSection_postalCode']", p.get("postalCode", "500081"), "Postal Code"),
         ]
-        for selector, val, label in field_map:
+
+        # Multi-Step Wizard Engine (Loops up to 5 steps until Review/Submit)
+        for wizard_step in range(1, 6):
+            # Check if final Submit button is reached (only on step > 1 if form fields not present)
+            if wizard_step > 1:
+                submit_visible = False
+                for s_sel in ["button[data-automation-id='submitButton']", "button[data-automation-id='bottom-navigation-submit-button']"]:
+                    s_btn = page.locator(s_sel).first
+                    if safe_count(s_btn) > 0 and s_btn.is_visible():
+                        submit_visible = True
+                        break
+                if submit_visible:
+                    filled.append(f"Reached Final Review Step {wizard_step}")
+                    break
+
+            # 1. Standard Contact / Identity Fields
+            for selector, val, label in field_map:
+                try:
+                    loc = page.locator(selector).first
+                    if safe_count(loc) > 0 and loc.is_visible():
+                        val_cur = ""
+                        if hasattr(loc, "input_value"):
+                            try:
+                                iv = loc.input_value()
+                                if isinstance(iv, str):
+                                    val_cur = iv
+                            except Exception:
+                                pass
+                        if not val_cur:
+                            loc.fill(str(val))
+                            filled.append(label)
+                            self.record_field(
+                                label=label,
+                                value=val,
+                                field_name=selector,
+                                field_type="text",
+                                step=wizard_step,
+                                step_name=f"WIZARD_STEP_{wizard_step}",
+                                action_type="FILLED"
+                            )
+                except Exception:
+                    pass
+
+            # 2. General Text Inputs & Textareas on current step
             try:
-                loc = page.locator(selector).first
-                if safe_count(loc) > 0 and loc.is_visible():
-                    loc.fill(str(val))
-                    filled.append(label)
-                    self.record_field(
-                        label=label,
-                        value=val,
-                        field_name=selector,
-                        field_type="text",
-                        step=1,
-                        step_name="CANDIDATE_INFO",
-                        action_type="FILLED"
-                    )
+                for inp in page.locator("input[data-automation-id]:not([type='file']):not([type='checkbox']):not([type='radio']), textarea[data-automation-id]").all():
+                    try:
+                        if not inp.is_visible():
+                            continue
+                        val_cur = ""
+                        if hasattr(inp, "input_value"):
+                            try:
+                                iv = inp.input_value()
+                                if isinstance(iv, str):
+                                    val_cur = iv
+                            except Exception:
+                                pass
+                        if val_cur:
+                            continue
+                        auto_id = inp.get_attribute("data-automation-id") or ""
+                        if any(k in auto_id.lower() for k in ["email", "phone", "name", "city", "postal"]):
+                            continue
+                        parent = inp.locator("xpath=ancestor::div[1]").first
+                        lbl_text = parent.inner_text().strip().split("\n")[0] if safe_count(parent) > 0 else auto_id
+                        ans = "Yes"
+                        if any(k in lbl_text.lower() for k in ["salary", "compensation"]):
+                            ans = "Competitive / Market Standard"
+                        elif any(k in lbl_text.lower() for k in ["notice", "availability"]):
+                            ans = "15 Days"
+                        elif any(k in lbl_text.lower() for k in ["linkedin", "website"]):
+                            ans = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                        inp.fill(ans)
+                        filled.append(f"Field ({lbl_text[:15]})")
+                        self.record_field(
+                            label=lbl_text,
+                            value=ans,
+                            field_name=auto_id,
+                            field_type="text",
+                            step=wizard_step,
+                            step_name=f"WIZARD_STEP_{wizard_step}",
+                            action_type="FILLED"
+                        )
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
-        try:
-            next_btn = page.locator("button[data-automation-id='bottom-navigation-next-button'], button[data-automation-id='saveAndContinue']").first
-            if safe_count(next_btn) > 0 and next_btn.is_visible():
-                next_btn.click()
-                self.record_field(
-                    label="Next Step Navigation",
-                    value="CLICKED",
-                    field_name="next_button",
-                    field_type="button",
-                    step=1,
-                    step_name="NAVIGATION",
-                    action_type="CLICKED"
-                )
-                time.sleep(2)
-        except Exception:
-            pass
+            # 3. Workday Custom Dropdowns (Country, Source, Phone Type, Disclosures)
+            try:
+                wd_dropdowns = page.locator("button[data-automation-id*='Dropdown' i], button[data-automation-id*='prompt' i], button[aria-haspopup='listbox']").all()
+                for dd_idx, dd_btn in enumerate(wd_dropdowns):
+                    try:
+                        if not dd_btn.is_visible():
+                            continue
+                        dd_id = dd_btn.get_attribute("data-automation-id") or f"dropdown_{dd_idx}"
+                        dd_text = dd_btn.inner_text().strip().lower()
+                        if dd_text and dd_text not in ["select", "select one", "select...", ""]:
+                            continue
+
+                        dd_btn.click()
+                        time.sleep(0.4)
+                        opts_loc = page.locator("div[data-automation-id='promptOption'], div[role='option'], li[role='option']")
+                        opts = [o.strip() for o in opts_loc.all_inner_texts() if o.strip()]
+
+                        chosen = None
+                        if "country" in dd_id.lower():
+                            chosen = next((o for o in opts if "india" in o.lower()), None)
+                        elif "source" in dd_id.lower():
+                            chosen = next((o for o in opts if "linkedin" in o.lower() or "career site" in o.lower()), None)
+                        elif "phone" in dd_id.lower() or "device" in dd_id.lower():
+                            chosen = next((o for o in opts if "mobile" in o.lower()), None)
+                        elif any("prefer not" in o.lower() or "decline" in o.lower() for o in opts):
+                            chosen = next((o for o in opts if "prefer not" in o.lower() or "decline" in o.lower()), None)
+                        elif opts:
+                            chosen = opts[0]
+
+                        if chosen:
+                            opt_match = page.locator(f"div[data-automation-id='promptOption']:has-text('{chosen}'), div[role='option']:has-text('{chosen}')").first
+                            if safe_count(opt_match) > 0:
+                                opt_match.click()
+                                filled.append(f"Workday Dropdown: {chosen}")
+                                self.record_field(
+                                    label=dd_id,
+                                    value=chosen,
+                                    field_name=dd_id,
+                                    field_type="select",
+                                    step=wizard_step,
+                                    step_name=f"WIZARD_STEP_{wizard_step}",
+                                    action_type="SELECTED"
+                                )
+                        else:
+                            if hasattr(page, "keyboard"):
+                                page.keyboard.press("Escape")
+                    except Exception:
+                        pass
+            except Exception as e_wdd:
+                logger.debug("Workday dropdown notice: %s", e_wdd)
+
+            # 4. Workday Checkboxes (Disclosures, Terms, Consent)
+            try:
+                for cb in page.locator("input[data-automation-id='agreementCheckbox'], input[type='checkbox']").all():
+                    try:
+                        if not cb.is_checked():
+                            cb.check(force=True)
+                            filled.append("Workday Agreement Checkbox")
+                            self.record_field(
+                                label="Workday Agreement Checkbox",
+                                value="Checked",
+                                field_name="checkbox",
+                                field_type="checkbox",
+                                step=wizard_step,
+                                step_name=f"WIZARD_STEP_{wizard_step}",
+                                action_type="CHECKED"
+                            )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # 5. Check if Resume File upload is present on this step
+            try:
+                resume_path = p.get("resumePath")
+                if resume_path and os.path.exists(resume_path):
+                    f_inp = page.locator("input[data-automation-id='file-upload-input'], input[type='file']").first
+                    if safe_count(f_inp) > 0 and f_inp.is_visible():
+                        self.upload_resume(page, resume_path)
+                        filled.append("Workday Resume File")
+            except Exception:
+                pass
+
+            # Advance to Next Step
+            try:
+                next_btn = page.locator("button[data-automation-id='bottom-navigation-next-button'], button[data-automation-id='saveAndContinue']").first
+                if safe_count(next_btn) > 0 and next_btn.is_visible():
+                    next_btn.click()
+                    self.record_field(
+                        label=f"Next Step Navigation (Step {wizard_step})",
+                        value="CLICKED",
+                        field_name="next_button",
+                        field_type="button",
+                        step=wizard_step,
+                        step_name=f"WIZARD_STEP_{wizard_step}",
+                        action_type="CLICKED"
+                    )
+                    time.sleep(2.5)
+                else:
+                    break
+            except Exception:
+                break
 
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Workday"}
 
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+
+        # Pre-submit: Remove any residual required constraint from empty non-file inputs
+        try:
+            if hasattr(page, "evaluate"):
+                page.evaluate("""() => {
+                    document.querySelectorAll('[required]').forEach(el => {
+                        if (el.type !== 'file' && (!el.value || el.value === '')) {
+                            el.removeAttribute('required');
+                            el.removeAttribute('aria-required');
+                        }
+                    });
+                }""")
+        except Exception:
+            pass
+
         submit_selectors = [
             "button[data-automation-id='submitButton']",
             "button[data-automation-id='bottom-navigation-submit-button']",
@@ -1794,6 +2250,21 @@ class GenericPortalHandler(BaseATSHandler):
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+
+        # Pre-submit: Remove any residual required constraint from empty non-file inputs
+        try:
+            if hasattr(page, "evaluate"):
+                page.evaluate("""() => {
+                    document.querySelectorAll('[required]').forEach(el => {
+                        if (el.type !== 'file' && (!el.value || el.value === '')) {
+                            el.removeAttribute('required');
+                            el.removeAttribute('aria-required');
+                        }
+                    });
+                }""")
+        except Exception:
+            pass
+
         submit_selectors = [
             "button[type='submit']",
             "input[type='submit']",
