@@ -15,10 +15,12 @@ import sys
 import json
 import time
 import logging
+import asyncio
 import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
+from concurrent.futures import ThreadPoolExecutor
 import openpyxl
 
 from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH, load_config
@@ -35,6 +37,17 @@ from naukari_pro.modules.learning.evidence import EvidenceVerifier
 from naukari_pro.modules.scorecard import sync_dual_log
 
 logger = logging.getLogger("naukariPro.CareerPortals")
+
+# Dedicated worker thread pool to isolate Playwright Sync API from any running asyncio loops
+_PORTAL_WORKER_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="PortalWorker")
+
+def _is_asyncio_loop_running() -> bool:
+    """Returns True if the current thread owns an active running asyncio event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+        return loop is not None and loop.is_running()
+    except RuntimeError:
+        return False
 
 # Hybrid ground truth: FACT_MATRIX titles + Azure DE market surface
 DEFAULT_CANDIDATE = json.loads(json.dumps(DEFAULT_HYBRID_PROFILE))
@@ -2244,15 +2257,18 @@ class GenericPortalHandler(BaseATSHandler):
         if not page:
             return {"filled": filled, "ats": self.ats_type}
 
+        # Semantic anchor hierarchy: autocomplete > data-automation-id > name/id > placeholder
         field_map = [
-            ("#first_name, input[name*='first_name' i], input[name*='firstName' i]", p.get("firstName", "Lavkush"), "First Name"),
-            ("#last_name, input[name*='last_name' i], input[name*='lastName' i]", p.get("lastName", "Kumar"), "Last Name"),
-            ("#email, input[type='email'], input[name*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
-            ("#phone, input[type='tel'], input[name*='phone' i], input[name*='mobile' i]", p.get("phone", "+91-9122036484"), "Phone"),
-            ("input[name*='company' i], input[name*='org' i]", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Company"),
-            ("input[name*='title' i], input[name*='designation' i]", p.get("currentTitle", "DevOps Engineer / Azure Data Engineer"), "Title"),
-            ("input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
-            ("input[name*='github' i], input[id*='github' i]", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
+            ("input[autocomplete='given-name'], input[data-automation-id*='firstName' i], input[name*='first_name' i], input[name*='firstName' i], #first_name, input[placeholder*='first name' i]", p.get("firstName", "Lavkush"), "First Name"),
+            ("input[autocomplete='family-name'], input[data-automation-id*='lastName' i], input[name*='last_name' i], input[name*='lastName' i], #last_name, input[placeholder*='last name' i]", p.get("lastName", "Kumar"), "Last Name"),
+            ("input[autocomplete='name'], input[data-automation-id*='fullName' i], input[name*='full_name' i], input[name*='fullName' i], input[name='name'], #name, input[placeholder*='full name' i]", p.get("fullName", "Lavkush Kumar"), "Full Name"),
+            ("input[type='email'], input[autocomplete='email'], input[data-automation-id*='email' i], input[name*='email' i], #email, input[placeholder*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
+            ("input[type='tel'], input[autocomplete='tel'], input[data-automation-id*='phone' i], input[name*='phone' i], input[name*='mobile' i], #phone, input[placeholder*='phone' i]", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[autocomplete='address-level2'], input[data-automation-id*='city' i], input[data-automation-id*='location' i], input[name*='city' i], input[name*='location' i], #location", p.get("city", "Hyderabad"), "Location"),
+            ("input[autocomplete='organization'], input[data-automation-id*='company' i], input[name*='company' i], input[name*='org' i], input[placeholder*='company' i]", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Company"),
+            ("input[autocomplete='organization-title'], input[data-automation-id*='title' i], input[name*='title' i], input[name*='designation' i], input[placeholder*='job title' i]", p.get("currentTitle", "DevOps Engineer / Azure Data Engineer"), "Title"),
+            ("input[data-automation-id*='linkedin' i], input[name*='linkedin' i], input[id*='linkedin' i], input[placeholder*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
+            ("input[data-automation-id*='github' i], input[name*='github' i], input[id*='github' i], input[placeholder*='github' i]", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
         ]
         for selector, val, label in field_map:
             try:
@@ -2269,8 +2285,35 @@ class GenericPortalHandler(BaseATSHandler):
                         step_name="BASIC_INFO",
                         action_type="FILLED"
                     )
-            except Exception:
-                pass
+                else:
+                    logger.debug("GenericPortalHandler selector miss for %s: %s", label, selector)
+            except Exception as e_f:
+                logger.debug("GenericPortalHandler field fill notice [%s]: %s", label, e_f)
+
+        # Consent and privacy checkboxes
+        try:
+            for cb in page.locator("input[type='checkbox']").all():
+                try:
+                    if not cb.is_checked():
+                        parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
+                        txt = parent.inner_text().lower() if safe_count(parent) > 0 else ""
+                        if any(k in txt for k in ["consent", "privacy", "terms", "agree", "certify", "acknowledge", "data processing"]) or cb.get_attribute("required") is not None:
+                            cb.check(force=True)
+                            filled.append("Consent Checkbox")
+                            self.record_field(
+                                label="Consent / Agreement Checkbox",
+                                value="Checked",
+                                field_name="checkbox",
+                                field_type="checkbox",
+                                step=1,
+                                step_name="DISCLOSURES",
+                                action_type="CHECKED"
+                            )
+                except Exception:
+                    pass
+        except Exception as e_cb:
+            logger.debug("GenericPortalHandler checkbox notice: %s", e_cb)
+
         return {"filled": filled, "field_records": list(self.field_records), "ats": self.ats_type}
 
     def submit_form(self, page: Any) -> bool:
@@ -2584,6 +2627,10 @@ class CareerPortalFiller:
 
         if sys.platform != "darwin":
             print("    [!] Notice: AppleScript Chrome automation is macOS-only. Routing via headless Playwright...")
+            if _is_asyncio_loop_running():
+                logger.info("Active asyncio loop detected in thread. Dispatching fill_in_chrome to dedicated worker thread...")
+                future = _PORTAL_WORKER_POOL.submit(self.fill_in_chrome, portal_url, company=company, role=role)
+                return future.result()
             try:
                 from playwright.sync_api import sync_playwright
                 from naukari_pro.session import get_stealth_context
@@ -2826,6 +2873,27 @@ class CareerPortalFiller:
         auto_submit: bool = True
     ):
         """Unified entrypoint supporting both live submission and offline dry-run."""
+        # P0-1: If called from inside an active asyncio event loop thread (e.g. from
+        # async auto_apply / NaukriAutoApplier), dispatch to a dedicated worker thread
+        # that owns NO running event loop. This completely eliminates Playwright's
+        # "sync API inside asyncio loop" crash.
+        if page is None and _is_asyncio_loop_running():
+            logger.info("Active asyncio loop detected in thread. Dispatching CareerPortalFiller.fill to dedicated worker thread...")
+            future = _PORTAL_WORKER_POOL.submit(
+                self.fill,
+                portal_url=portal_url,
+                company=company,
+                role=role,
+                headless=headless,
+                dry_run=dry_run,
+                raw_jd=raw_jd,
+                salary=salary,
+                page=None,
+                match_score=match_score,
+                auto_submit=auto_submit
+            )
+            return future.result()
+
         # Strict Deduplication Check: Never apply to the same job again
         from naukari_pro.modules.db import is_job_already_applied
         target_db = getattr(self, "db_path", None)
@@ -2885,6 +2953,19 @@ class CareerPortalFiller:
         and automates form-filling, resume attachment, and submission.
         Updates tracker Excel and applied_jobs.db.
         """
+        if _is_asyncio_loop_running():
+            logger.info("Active asyncio loop detected in thread. Dispatching process_external_redirects to dedicated worker thread...")
+            future = _PORTAL_WORKER_POOL.submit(
+                self.process_external_redirects,
+                limit=limit,
+                headless=headless,
+                dry_run=dry_run,
+                min_score=min_score,
+                max_exp=max_exp,
+                auto_submit=auto_submit,
+                universal_apply=universal_apply
+            )
+            return future.result()
         import openpyxl
         from naukari_pro.modules.auto_apply import is_experience_eligible
         from naukari_pro.modules.db import is_job_already_applied, record_applied_job
@@ -3636,6 +3717,21 @@ class ExternalPortalBatchRunner:
         min_salary: Optional[float] = None,
         universal_apply: Optional[bool] = None
     ) -> Dict[str, Any]:
+        if _is_asyncio_loop_running():
+            logger.info("Active asyncio loop detected in thread. Dispatching ExternalPortalBatchRunner.run_batch to dedicated worker thread...")
+            future = _PORTAL_WORKER_POOL.submit(
+                self.run_batch,
+                vacancies=vacancies,
+                roles=roles,
+                locations=locations,
+                ats_types=ats_types,
+                dry_run=dry_run,
+                limit=limit,
+                min_score=min_score,
+                min_salary=min_salary,
+                universal_apply=universal_apply
+            )
+            return future.result()
         active_dry_run = self.dry_run if dry_run is None else dry_run
         active_limit = self.limit if limit is None else limit
         active_min_score = self.min_score if min_score is None else min_score

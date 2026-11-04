@@ -1804,24 +1804,27 @@ class PlaywrightRunner:
                 print(f"    Resolved ATS URL: {target_url}")
                 from naukari_pro.modules.career_portals import CareerPortalManager
                 cpm = CareerPortalManager()
-                success, filled = cpm.fill(portal_url=target_url, company=company, role=title, headless=True, raw_jd=raw_jd, salary=salary)
+                fill_res = cpm.fill(portal_url=target_url, company=company, role=title, headless=True, raw_jd=raw_jd, salary=salary)
+                success = bool(fill_res[0]) if isinstance(fill_res, (tuple, list)) else bool(getattr(fill_res, "success", False))
+                evidence_path = getattr(fill_res, "evidence_path", None)
 
-                evidence_path = None
                 if ext_page and not ext_page.is_closed():
                     try:
-                        import re
-                        clean_id = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
-                        evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_portal_{clean_id}.png")
-                        os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
-                        await ext_page.screenshot(path=evidence_path)
+                        if not evidence_path or not os.path.exists(evidence_path):
+                            import re
+                            clean_id = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
+                            evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_portal_{clean_id}.png")
+                            os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
+                            await ext_page.screenshot(path=evidence_path)
                         await ext_page.close()
                     except Exception:
-                        evidence_path = None
+                        pass
 
-                status_str = "Submitted (Confirmed)" if (success and evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024) else "Form Auto-Filled (Ready for Review)"
+                is_confirmed = (success and evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024)
+                status_str = "Submitted (Confirmed)" if is_confirmed else "Form Auto-Filled (Ready for Review)"
                 sync_dual_log(title=title, company=company, platform="career_portal", status=status_str, job_url=target_url, match_score=match_score, evidence_path=evidence_path)
                 self.skip_list = add_to_skip(self.skip_list, title, company, "external-redirect")
-                return (status_str == "Submitted (Confirmed)"), f"External Portal: {status_str}"
+                return is_confirmed, f"External Portal: {status_str}"
 
             if btn_info.get("type") == "already_applied":
                 print(f"    ℹ️ Already applied previously. Skipping...")

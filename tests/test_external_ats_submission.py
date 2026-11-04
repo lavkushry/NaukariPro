@@ -785,4 +785,106 @@ class TestSOTACommunityATSHandlerFixes:
         assert rec[0]["type"] == "code"
 
 
+class TestAsyncioLoopWorkerIsolation:
+    """
+    P0-1 Regression Suite:
+    Guarantees that invoking synchronous Playwright portal operations from inside
+    an active asyncio event loop (the exact Arting Digital, Microland, Ambee failure)
+    executes cleanly via the dedicated worker thread pool without raising Playwright's
+    'It looks like you are using Playwright Sync API inside the asyncio loop.'
+    """
+
+    def test_portal_fill_dispatched_from_running_asyncio_loop(self, tmp_path, monkeypatch):
+        import asyncio
+        import threading
+        from naukari_pro.modules.career_portals import (
+            CareerPortalFiller,
+            CareerPortalManager,
+            FillResult,
+            _is_asyncio_loop_running
+        )
+
+        test_db = str(tmp_path / "test_asyncio_reg.db")
+        filler = CareerPortalFiller(db_path=test_db)
+        cpm = CareerPortalManager()
+        cpm.filler.db_path = test_db
+
+        thread_records = []
+
+        def mock_fill_in_playwright(page_ctx, portal_url, company, role, auto_submit=True):
+            current_thread = threading.current_thread().name
+            has_loop = _is_asyncio_loop_running()
+            thread_records.append({"thread": current_thread, "has_loop": has_loop})
+            return FillResult(True, ["Full Name", "Email"], "/tmp/evidence_test.png")
+
+        monkeypatch.setattr(filler, "fill_in_playwright", mock_fill_in_playwright)
+        monkeypatch.setattr(cpm.filler, "fill_in_playwright", mock_fill_in_playwright)
+
+        async def coroutine_simulating_auto_apply():
+            # Confirm that the event loop is active and running in this thread
+            assert _is_asyncio_loop_running() is True
+            
+            # 1. Test CareerPortalFiller.fill() from within the running asyncio loop
+            res1 = filler.fill(
+                portal_url="https://careers.microland.com/microland/jobview/123",
+                company="Microland",
+                role="Sr Engineer - Cloud and Datacenter",
+                headless=True,
+                dry_run=False
+            )
+            assert res1.success is True
+            assert res1.evidence_path == "/tmp/evidence_test.png"
+
+            # 2. Test CareerPortalManager.fill() from within the running asyncio loop
+            res2_success, res2_fields = cpm.fill(
+                portal_url="https://getambee.keka.com/careers/jobdetails/168788",
+                company="Ambee",
+                role="Sr Full Stack Engineer",
+                headless=True,
+                dry_run=False
+            )
+            assert res2_success is True
+            assert "Full Name" in res2_fields
+
+            # 3. Test Arting Digital dry-run from within the running asyncio loop
+            res3_success, res3_payload = cpm.fill(
+                portal_url="https://artingdigital.com/careers/python-dev",
+                company="Arting Digital",
+                role="Python Developer+AI/ML",
+                dry_run=True
+            )
+            assert res3_success is True
+
+        # Run the entire async coroutine
+        asyncio.run(coroutine_simulating_auto_apply())
+
+        # Verify that both live Playwright invocations executed inside dedicated PortalWorker threads
+        assert len(thread_records) == 2
+        for rec in thread_records:
+            assert "PortalWorker" in rec["thread"], f"Expected PortalWorker thread, got: {rec['thread']}"
+
+    def test_batch_runner_dispatched_from_running_asyncio_loop(self, tmp_path, monkeypatch):
+        import asyncio
+        from naukari_pro.modules.career_portals import (
+            ExternalPortalBatchRunner,
+            _is_asyncio_loop_running
+        )
+
+        runner = ExternalPortalBatchRunner(
+            dry_run=True,
+            limit=2,
+            db_path=str(tmp_path / "batch_async.db")
+        )
+
+        async def coroutine_batch():
+            assert _is_asyncio_loop_running() is True
+            # Running batch inside an asyncio event loop must execute cleanly
+            stats = runner.run_batch()
+            assert stats["total_evaluated"] >= 0
+            assert stats["dry_run"] is True
+
+        asyncio.run(coroutine_batch())
+
+
+
 
