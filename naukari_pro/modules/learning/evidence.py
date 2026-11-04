@@ -152,3 +152,66 @@ class EvidenceVerifier:
             db_path=db_path
         )
         return target_status
+
+    def verify_email_confirmation(
+        self,
+        company: str,
+        role: str = "",
+        since_ts: float = 0.0,
+        timeout_sec: float = 15.0
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Polls candidate Gmail via IMAP SSL to verify incoming post-submission confirmation
+        email ("Thank you for applying", "Application received", etc.) for the target company.
+        Returns: (is_confirmed: bool, email_subject: Optional[str])
+        """
+        import imaplib, email, email.utils, time
+        from dotenv import load_dotenv
+        load_dotenv()
+        user = os.getenv("GMAIL_USER", "lav84095@gmail.com")
+        pwd = os.getenv("GMAIL_APP_PASSWORD", "")
+        if not user or not pwd:
+            return False, None
+
+        c_clean = company.lower().split()[0] if company else ""
+        t_start = time.time()
+        while time.time() - t_start < timeout_sec:
+            try:
+                mail = imaplib.IMAP4_SSL("imap.gmail.com")
+                mail.login(user, pwd)
+                mail.select("INBOX")
+                status, data = mail.search(None, "ALL")
+                ids = data[0].split()
+                for mid in reversed(ids[-20:]):
+                    status, mdata = mail.fetch(mid, "(RFC822)")
+                    msg = email.message_from_bytes(mdata[0][1])
+                    subj = msg.get("Subject", "")
+                    subj_lower = subj.lower()
+                    date_tuple = email.utils.parsedate_tz(msg.get("Date"))
+                    msg_epoch = email.utils.mktime_tz(date_tuple) if date_tuple else 0
+                    if since_ts > 0 and msg_epoch > 0 and msg_epoch < (since_ts - 30):
+                        continue
+
+                    # Check for confirmation indicators
+                    is_confirmation_subj = any(k in subj_lower for k in [
+                        "thank you for applying",
+                        "application received",
+                        "we received your application",
+                        "application confirmation",
+                        "thanks for your interest",
+                        "application submitted",
+                        "applied to"
+                    ])
+                    company_match = not c_clean or c_clean in subj_lower or c_clean in (msg.get("From", "")).lower()
+
+                    if is_confirmation_subj and company_match:
+                        mail.close()
+                        mail.logout()
+                        return True, subj
+
+                mail.close()
+                mail.logout()
+            except Exception as e_imap:
+                logger.debug("IMAP confirmation poll notice: %s", e_imap)
+            time.sleep(3)
+        return False, None

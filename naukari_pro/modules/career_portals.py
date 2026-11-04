@@ -12,14 +12,17 @@ Fills external career portal applications:
 
 import os
 import sys
+import re
 import json
 import time
 import logging
 import asyncio
+import requests
 import subprocess
+from enum import Enum
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import openpyxl
 
@@ -242,6 +245,246 @@ def safe_count(locator: Any) -> int:
         return 0
 
 
+# ==============================================================================
+# ARCHITECTURE RULES A1–A5: STATE MACHINE, SCHEMAS & ANCHORS
+# ==============================================================================
+
+class PortalState(str, Enum):
+    """Architecture Rule A1: Explicit Unified State Machine."""
+    DETECT = "DETECT"
+    ACCOUNT = "ACCOUNT"
+    FILL = "FILL"
+    REVIEW = "REVIEW"
+    SUBMIT = "SUBMIT"
+    VERIFY = "VERIFY"
+    LOG = "LOG"
+
+
+class FallbackReason(str, Enum):
+    """Architecture Rule A1: Standardized Auditor Fallback Reason Codes."""
+    ASYNCIO_ERROR = "ASYNCIO_ERROR"
+    SIGNIN_WALL = "SIGNIN_WALL"
+    ACCOUNT_CREATE_FAILED = "ACCOUNT_CREATE_FAILED"
+    OTP_NOT_FOUND = "OTP_NOT_FOUND"
+    SELECTOR_MISS = "SELECTOR_MISS"
+    SUBMIT_NOT_FOUND = "SUBMIT_NOT_FOUND"
+    CLICKED_NO_CONFIRMATION = "CLICKED_NO_CONFIRMATION"
+    VALIDATION_ERRORS = "VALIDATION_ERRORS"
+    CAPTCHA = "CAPTCHA"
+    TIMEOUT_240S = "TIMEOUT_240S"
+    CLOSED_OR_EXPIRED = "CLOSED_OR_EXPIRED"
+    ALREADY_APPLIED = "SKIPPED_ALREADY_APPLIED"
+
+
+PER_JOB_TIME_BUDGET_SEC: float = 240.0
+
+
+def checkpoint_portal_state(
+    job_id: str,
+    state: PortalState,
+    company: str = "",
+    role: str = "",
+    db_path: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None
+):
+    """
+    Architecture Rule A4: Checkpoint State Machine Step to DB after every transition
+    so killed cycles can be audited or resumed cleanly.
+    """
+    try:
+        from naukari_pro.modules.db import get_db_connection
+        conn = get_db_connection(db_path)
+        c = conn.cursor()
+        chk = f"CHECKPOINT_{state.value}"
+        c.execute(
+            "UPDATE applied_jobs SET outcome_label = ? WHERE job_id = ?",
+            (chk, str(job_id))
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e_chk:
+        logger.debug("State checkpoint notice: %s", e_chk)
+
+
+class ATSFormSchemaPlanner:
+    """
+    Architecture Rule A2: SCHEMA BEFORE BROWSER.
+    Fetches ATS public form schemas (Greenhouse Job Board API, Lever postings API, Ashby public API)
+    offline before browser execution and constructs an AnswerPlan.
+    """
+    def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
+        self.profile = profile
+        self.solver = solver or FactMatrixScreeningSolver()
+
+    def fetch_schema_plan(self, portal_url: str) -> Optional[Dict[str, Any]]:
+        if not portal_url or not isinstance(portal_url, str):
+            return None
+        u = portal_url.lower()
+        if "greenhouse.io" in u:
+            return self._plan_greenhouse(portal_url)
+        elif "lever.co" in u:
+            return self._plan_lever(portal_url)
+        return None
+
+    def _plan_greenhouse(self, url: str) -> Optional[Dict[str, Any]]:
+        # Extract board and job_id from Greenhouse URL
+        m = re.search(r"greenhouse\.io/(?:embed/job_app\?for=([^&]+)&token=([^&]+)|([^/]+)/jobs/(\d+))", url)
+        board, jid = None, None
+        if m:
+            if m.group(1) and m.group(2):
+                board, jid = m.group(1), m.group(2)
+            elif m.group(3) and m.group(4):
+                board, jid = m.group(3), m.group(4)
+        if not board or not jid:
+            return None
+
+        api_url = f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{jid}?questions=true"
+        try:
+            r = requests.get(api_url, timeout=5)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            questions = data.get("questions", [])
+            answers: Dict[str, Any] = {}
+            p = self.profile
+            for q in questions:
+                lbl = q.get("label", "")
+                fields = q.get("fields", [])
+                for f in fields:
+                    fname = f.get("name", "")
+                    ftype = f.get("type", "")
+                    vals = f.get("values", [])
+                    opt_labels = [v.get("label") for v in vals if isinstance(v, dict) and "label" in v]
+                    ans = None
+                    if "first" in fname.lower():
+                        ans = p.get("firstName", "Lavkush")
+                    elif "last" in fname.lower():
+                        ans = p.get("lastName", "Kumar")
+                    elif "email" in fname.lower():
+                        ans = p.get("email", "lav84095@gmail.com")
+                    elif "phone" in fname.lower():
+                        ans = p.get("phone", "+91-9122036484")
+                    elif "location" in fname.lower():
+                        ans = p.get("city", "Hyderabad, India")
+                    elif "linkedin" in fname.lower():
+                        ans = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                    elif any(k in fname.lower() for k in ("website", "portfolio", "github")):
+                        ans = p.get("portfolioUrl", "https://github.com/lavkush-kumar")
+                    else:
+                        decision = self.solver.evaluate_question(lbl, context={"options": opt_labels})
+                        if decision and decision.answer and not decision.is_ambiguous:
+                            ans = decision.answer
+                    if ans:
+                        answers[fname] = ans
+                        answers[lbl] = ans
+            return {"ats": "Greenhouse", "board": board, "job_id": jid, "answers": answers}
+        except Exception as e:
+            logger.debug("Notice fetching Greenhouse schema plan: %s", e)
+            return None
+
+    def _plan_lever(self, url: str) -> Optional[Dict[str, Any]]:
+        m = re.search(r"lever\.co/([^/]+)/([a-zA-Z0-9-]+)", url)
+        if not m:
+            return None
+        company, jid = m.group(1), m.group(2)
+        api_url = f"https://api.lever.co/v0/postings/{company}/{jid}"
+        try:
+            r = requests.get(api_url, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                return {"ats": "Lever", "company": company, "job_id": jid, "data": data}
+        except Exception:
+            pass
+        return None
+
+
+def resolve_anchor_ladder(
+    container: Any,
+    field_id: str = "",
+    label_text: str = "",
+    autocomplete: str = "",
+    name: str = "",
+    aria_label: str = "",
+    css_fallback: str = ""
+) -> Tuple[Optional[Any], str]:
+    """
+    Architecture Rule A3: ANCHOR LADDER for every field in order:
+    1. data-automation-id
+    2. label text (label:has-text(...) -> for attribute or nested input)
+    3. autocomplete attribute
+    4. name or id attribute
+    5. aria-label attribute
+    6. CSS fallback (flags SELECTOR_MISS if only CSS matches)
+    Returns: (locator, rung_matched: str)
+    """
+    if not container:
+        return None, "NONE"
+
+    # Rung 1: data-automation-id
+    if field_id:
+        try:
+            loc = container.locator(f"[data-automation-id='{field_id}']")
+            if safe_count(loc) > 0 and loc.first.is_visible():
+                return loc.first, "data-automation-id"
+        except Exception:
+            pass
+
+    # Rung 2: label text
+    if label_text:
+        try:
+            lbl = container.locator(f"label:has-text('{label_text}')").first
+            if safe_count(lbl) > 0 and lbl.is_visible():
+                for_id = lbl.get_attribute("for")
+                if for_id:
+                    inp = container.locator(f"#{for_id}").first
+                    if safe_count(inp) > 0 and inp.is_visible():
+                        return inp, "label text (for)"
+                nested_inp = lbl.locator("input, textarea, select").first
+                if safe_count(nested_inp) > 0 and nested_inp.is_visible():
+                    return nested_inp, "label text (nested)"
+        except Exception:
+            pass
+
+    # Rung 3: autocomplete
+    if autocomplete:
+        try:
+            loc = container.locator(f"input[autocomplete='{autocomplete}']")
+            if safe_count(loc) > 0 and loc.first.is_visible():
+                return loc.first, "autocomplete"
+        except Exception:
+            pass
+
+    # Rung 4: name or id
+    if name:
+        try:
+            loc = container.locator(f"input[name='{name}'], textarea[name='{name}'], select[name='{name}'], input#{name}, textarea#{name}")
+            if safe_count(loc) > 0 and loc.first.is_visible():
+                return loc.first, "name/id"
+        except Exception:
+            pass
+
+    # Rung 5: aria-label
+    if aria_label:
+        try:
+            loc = container.locator(f"[aria-label*='{aria_label}' i]")
+            if safe_count(loc) > 0 and loc.first.is_visible():
+                return loc.first, "aria-label"
+        except Exception:
+            pass
+
+    # Rung 6: CSS fallback
+    if css_fallback:
+        try:
+            loc = container.locator(css_fallback)
+            if safe_count(loc) > 0 and loc.first.is_visible():
+                logger.warning("SELECTOR_MISS: Field matched only via CSS rung: %s", css_fallback)
+                return loc.first, "CSS (SELECTOR_MISS)"
+        except Exception:
+            pass
+
+    return None, "NONE"
+
+
 class BaseATSHandler:
     """Base class for dedicated ATS platform form handlers."""
 
@@ -259,7 +502,8 @@ class BaseATSHandler:
         field_type: str = "text",
         step: int = 1,
         step_name: str = "APPLICATION_FORM",
-        action_type: str = "FILLED"
+        action_type: str = "FILLED",
+        rung: str = "ladder"
     ):
         """Appends a field interaction record to the handler's audit ledger."""
         self.field_records.append({
@@ -269,7 +513,8 @@ class BaseATSHandler:
             "name": str(field_name or label),
             "type": field_type,
             "value": str(value),
-            "action_type": action_type
+            "action_type": action_type,
+            "rung": rung
         })
 
     def detect_barriers(self, page: Any) -> Optional[str]:
@@ -298,7 +543,7 @@ class BaseATSHandler:
             pass
         return None
 
-    def fill_form(self, page: Any) -> Dict[str, Any]:
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Fills standard form inputs and screening questions."""
         raise NotImplementedError
 
@@ -398,37 +643,77 @@ class GreenhouseHandler(BaseATSHandler):
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
         super().__init__(profile, solver, ats_type="Greenhouse")
 
-    def fill_form(self, page: Any) -> Dict[str, Any]:
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
         p = self.profile
         if not page:
             return {"filled": filled, "ats": "Greenhouse"}
 
-        # 1. Standard Contact Fields
-        field_map = [
-            ("#first_name, input[name*='first_name' i], input[autocomplete='given-name']", p.get("firstName", "Lavkush"), "First Name"),
-            ("#last_name, input[name*='last_name' i], input[autocomplete='family-name']", p.get("lastName", "Kumar"), "Last Name"),
-            ("#email, input[type='email'], input[name*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
-            ("#phone, input[type='tel'], input[name*='phone' i]", p.get("phone", "+91-9122036484"), "Phone"),
-            ("#job_application_location, input[name*='location' i]", p.get("city", "Hyderabad"), "Location"),
-            ("input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
-            ("input[name*='website' i], input[name*='portfolio' i], input[name*='github' i]", p.get("portfolioUrl", "https://github.com/lavkush-kumar"), "Website"),
+        # 0. Pre-apply answers from schema_plan if available (Architecture Rule A2: SCHEMA BEFORE BROWSER)
+        if schema_plan and isinstance(schema_plan, dict) and "answers" in schema_plan:
+            for k, v in schema_plan["answers"].items():
+                try:
+                    target_inp = page.locator(f"input[name='{k}'], textarea[name='{k}'], input#{k}, textarea#{k}").first
+                    if safe_count(target_inp) > 0 and target_inp.is_visible():
+                        val_now = ""
+                        if hasattr(target_inp, "input_value"):
+                            try:
+                                iv = target_inp.input_value()
+                                if isinstance(iv, str):
+                                    val_now = iv
+                            except Exception:
+                                pass
+                        if not val_now:
+                            target_inp.fill(str(v))
+                            filled.append(f"Schema: {k}")
+                            self.record_field(
+                                label=k,
+                                value=v,
+                                field_name=k,
+                                field_type="text",
+                                step=1,
+                                step_name="SCHEMA_PLAN",
+                                action_type="FILLED",
+                                rung="schema_plan"
+                            )
+                except Exception:
+                    pass
+
+        # 1. Standard Contact Fields via Anchor Ladder (Architecture Rule A3)
+        contact_ladder = [
+            ("first_name", "First Name", "given-name", "first_name", "first name", "#first_name, input[name*='first_name' i]", p.get("firstName", "Lavkush"), "First Name"),
+            ("last_name", "Last Name", "family-name", "last_name", "last name", "#last_name, input[name*='last_name' i]", p.get("lastName", "Kumar"), "Last Name"),
+            ("email", "Email", "email", "email", "email", "#email, input[type='email'], input[name*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
+            ("phone", "Phone", "tel", "phone", "phone", "#phone, input[type='tel'], input[name*='phone' i]", p.get("phone", "+91-9122036484"), "Phone"),
+            ("job_application_location", "Location", "address-level2", "location", "location", "#job_application_location, input[name*='location' i]", p.get("city", "Hyderabad"), "Location"),
+            ("linkedin", "LinkedIn", "", "linkedin", "linkedin", "input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
+            ("website", "Website", "", "website", "portfolio", "input[name*='website' i], input[name*='portfolio' i], input[name*='github' i]", p.get("portfolioUrl", "https://github.com/lavkush-kumar"), "Website"),
         ]
-        for selector, val, label in field_map:
+        for f_id, lbl_txt, ac, nm, aria, css, val, label in contact_ladder:
             try:
-                loc = page.locator(selector).first
-                if safe_count(loc) > 0 and loc.is_visible():
-                    loc.fill(str(val))
-                    filled.append(label)
-                    self.record_field(
-                        label=label,
-                        value=val,
-                        field_name=selector,
-                        field_type="text",
-                        step=1,
-                        step_name="BASIC_INFO",
-                        action_type="FILLED"
-                    )
+                loc, rung = resolve_anchor_ladder(page, field_id=f_id, label_text=lbl_txt, autocomplete=ac, name=nm, aria_label=aria, css_fallback=css)
+                if loc and safe_count(loc) > 0 and loc.is_visible():
+                    val_cur = ""
+                    if hasattr(loc, "input_value"):
+                        try:
+                            iv = loc.input_value()
+                            if isinstance(iv, str):
+                                val_cur = iv
+                        except Exception:
+                            pass
+                    if not val_cur:
+                        loc.fill(str(val))
+                        filled.append(label)
+                        self.record_field(
+                            label=label,
+                            value=val,
+                            field_name=nm or f_id,
+                            field_type="text",
+                            step=1,
+                            step_name="BASIC_INFO",
+                            action_type="FILLED",
+                            rung=rung
+                        )
             except Exception:
                 pass
 
@@ -904,7 +1189,7 @@ class LeverHandler(BaseATSHandler):
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
         super().__init__(profile, solver, ats_type="Lever")
 
-    def fill_form(self, page: Any) -> Dict[str, Any]:
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
         p = self.profile
         if not page:
@@ -1215,7 +1500,7 @@ class AshbyHandler(BaseATSHandler):
             pass
         return False
 
-    def fill_form(self, page: Any) -> Dict[str, Any]:
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
         p = self.profile
         if not page:
@@ -1930,7 +2215,7 @@ class WorkdayHandler(BaseATSHandler):
             logger.debug("Workday resume upload notice: %s", e_wu)
         return False
 
-    def fill_form(self, page: Any) -> Dict[str, Any]:
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
         p = self.profile
         if not page:
@@ -2251,7 +2536,7 @@ class GenericPortalHandler(BaseATSHandler):
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None, ats_type: str = "Generic Portal"):
         super().__init__(profile, solver, ats_type=ats_type)
 
-    def fill_form(self, page: Any) -> Dict[str, Any]:
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
         p = self.profile
         if not page:
@@ -2722,25 +3007,65 @@ class CareerPortalFiller:
         role: str = "Azure Data Engineer",
         auto_submit: bool = True
     ) -> FillResult:
-        """Fills career portal using Playwright context with dedicated handler and live submission."""
+        """
+        Architecture Rules A1–A5 Unified State Machine Executor.
+        State sequence: DETECT -> ACCOUNT -> FILL -> REVIEW -> SUBMIT -> VERIFY -> LOG.
+        Terminal outcomes: CONFIRMED (evidence attached) or FALLBACK (standard reason code).
+        """
+        t_start = time.time()
         if not portal_url or not isinstance(portal_url, str):
             print("    [!] Error: Invalid or empty portal URL.")
-            return FillResult(False, [], None)
+            return FillResult(False, [], None, status=FallbackReason.CLOSED_OR_EXPIRED.value)
 
-        # Strict Deduplication Check: Never apply to the same job again
-        from naukari_pro.modules.db import is_job_already_applied
+        from naukari_pro.modules.db import is_job_already_applied, generate_job_id, record_batch_field_audit
         target_db = getattr(self, "db_path", None)
-        if is_job_already_applied(title=role, company=company, job_url=portal_url, db_path=target_db):
+        cand_job_id = generate_job_id(role, company, portal_url)
+
+        # ── STATE 1: DETECT ──
+        checkpoint_portal_state(cand_job_id, PortalState.DETECT, company, role, target_db)
+
+        # A5 Idempotency Check 1
+        if is_job_already_applied(title=role, company=company, job_url=portal_url, job_id=cand_job_id, db_path=target_db):
             print(f"    [DEDUP] Already applied to '{role}' at '{company}' ({portal_url}). Skipping strictly per rule.")
-            return FillResult(False, [], None, status="SKIPPED_ALREADY_APPLIED")
+            return FillResult(False, [], None, status=FallbackReason.ALREADY_APPLIED.value)
+
+        # A4 Time budget check
+        if time.time() - t_start > PER_JOB_TIME_BUDGET_SEC:
+            print(f"    [FALLBACK: {FallbackReason.TIMEOUT_240S.value}] Per-job time budget exceeded.")
+            return FillResult(False, [], None, status=FallbackReason.TIMEOUT_240S.value)
 
         ats_type = self.detect_ats(portal_url)
-        print(f"\n[*] Navigating to {ats_type} Portal via Playwright...")
+        print(f"\n[*] [DETECT] Navigating to {ats_type} Portal via Playwright...")
+
+        # A2 Schema Before Browser: fetch offline schema plan if public API exists
+        schema_planner = ATSFormSchemaPlanner(self.profile, self.solver)
+        schema_plan = schema_planner.fetch_schema_plan(portal_url)
+        if schema_plan:
+            print(f"    [SCHEMA-FIRST] Pre-computed offline schema plan with {len(schema_plan.get('answers', {}))} answers")
+
         try:
             page.goto(portal_url, wait_until="domcontentloaded", timeout=30000)
         except Exception as e_nav:
             print(f"    Notice navigating: {e_nav}")
         time.sleep(2)
+
+        # Hard stop: closed or expired link
+        page_url_lower = (getattr(page, "url", "") or "").lower()
+        page_content_lower = ""
+        try:
+            page_content_lower = (page.content() or "").lower()
+        except Exception:
+            pass
+        if (
+            "expjd=true" in page_url_lower
+            or "/jobs-in-" in page_url_lower
+            or "job you are looking for is no longer active" in page_content_lower
+            or "this job has expired" in page_content_lower
+            or "position has been filled" in page_content_lower
+            or "job is no longer available" in page_content_lower
+        ):
+            print(f"    [FALLBACK: {FallbackReason.CLOSED_OR_EXPIRED.value}] Job posting expired or closed on host platform.")
+            return FillResult(False, [], None, status=FallbackReason.CLOSED_OR_EXPIRED.value)
 
         # Universal Cookie & Overlay Dismissal
         try:
@@ -2779,12 +3104,37 @@ class CareerPortalFiller:
             logger.debug("CTA opener notice: %s", e_cta)
 
         handler = self.get_handler(ats_type)
-        filled_fields: List[str] = []
 
+        # ── STATE 2: ACCOUNT & BARRIERS ──
+        checkpoint_portal_state(cand_job_id, PortalState.ACCOUNT, company, role, target_db)
+        if time.time() - t_start > PER_JOB_TIME_BUDGET_SEC:
+            print(f"    [FALLBACK: {FallbackReason.TIMEOUT_240S.value}] Per-job time budget exceeded.")
+            return FillResult(False, [], None, status=FallbackReason.TIMEOUT_240S.value)
+
+        barrier = handler.detect_barriers(page)
+        if barrier:
+            b_low = barrier.lower()
+            if any(k in b_low for k in ("captcha", "turnstile", "challenge", "recaptcha", "hcaptcha", "arkose")):
+                print(f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] Stopped on anti-bot challenge: {barrier}")
+                return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value)
+            elif any(k in b_low for k in ("sign-in", "login", "account", "vault")):
+                print(f"    [FALLBACK: {FallbackReason.SIGNIN_WALL.value}] Sign-in wall encountered: {barrier}")
+                return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.SIGNIN_WALL.value)
+            else:
+                print(f"    [FALLBACK: {FallbackReason.SIGNIN_WALL.value}] Barrier encountered: {barrier}")
+                return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.SIGNIN_WALL.value)
+
+        # ── STATE 3: FILL ──
+        checkpoint_portal_state(cand_job_id, PortalState.FILL, company, role, target_db)
+        if time.time() - t_start > PER_JOB_TIME_BUDGET_SEC:
+            print(f"    [FALLBACK: {FallbackReason.TIMEOUT_240S.value}] Per-job time budget exceeded.")
+            return FillResult(False, [], None, status=FallbackReason.TIMEOUT_240S.value)
+
+        filled_fields: List[str] = []
         try:
-            handler_res = handler.fill_form(page)
+            handler_res = handler.fill_form(page, schema_plan=schema_plan) if hasattr(handler.fill_form, "__code__") and "schema_plan" in handler.fill_form.__code__.co_varnames else handler.fill_form(page)
             filled_fields = handler_res.get("filled", [])
-            print(f"[✓] {ats_type} Form Auto-Filled via Handler: {', '.join(filled_fields) if filled_fields else 'Basic Fields'}")
+            print(f"[✓] [FILL] {ats_type} Form Auto-Filled via Handler: {', '.join(filled_fields) if filled_fields else 'Basic Fields'}")
         except Exception as e_h:
             print(f"    Handler fill notice: {e_h}")
 
@@ -2803,51 +3153,91 @@ class CareerPortalFiller:
         if resume_path and os.path.exists(resume_path):
             uploaded = handler.upload_resume(page, resume_path)
             if uploaded:
-                print(f"    📎 Resume PDF uploaded: {os.path.basename(resume_path)}")
+                print(f"    📎 [RESUME] Resume PDF uploaded: {os.path.basename(resume_path)}")
                 filled_fields.append("Resume PDF")
 
-        # Ensure cloud file upload completes before submit
-        time.sleep(4)
+        # Cloud upload settling delay
+        time.sleep(3)
+
+        # ── STATE 4: REVIEW ──
+        checkpoint_portal_state(cand_job_id, PortalState.REVIEW, company, role, target_db)
+        if time.time() - t_start > PER_JOB_TIME_BUDGET_SEC:
+            print(f"    [FALLBACK: {FallbackReason.TIMEOUT_240S.value}] Per-job time budget exceeded.")
+            return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=FallbackReason.TIMEOUT_240S.value)
+
+        # Check for validation errors on form
+        has_validation_errors = False
+        try:
+            error_elems = page.locator(".field-error, li.error, .error-message, div.error, [aria-invalid='true']")
+            if safe_count(error_elems) > 0 and error_elems.first.is_visible():
+                has_validation_errors = True
+        except Exception:
+            pass
+
+        # ── STATE 5: SUBMIT ──
+        checkpoint_portal_state(cand_job_id, PortalState.SUBMIT, company, role, target_db)
+
+        # A5 Idempotency Check 2: Immediately before submit
+        if is_job_already_applied(title=role, company=company, job_url=portal_url, job_id=cand_job_id, db_path=target_db):
+            print(f"    [DEDUP] Pre-submit check confirmed job already applied. Halting submit.")
+            return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=FallbackReason.ALREADY_APPLIED.value)
+
         evidence_file = None
         is_confirmed = False
 
         if auto_submit:
             submit_clicked = handler.submit_form(page)
-            if submit_clicked:
-                is_confirmed = handler.verify_confirmation(page, timeout=25.0)
-                if is_confirmed:
-                    from naukari_pro.modules.learning.evidence import EvidenceVerifier
-                    ev = EvidenceVerifier()
-                    sc_path = ev.capture_screenshot_sync(page, company, role)
-                    sub_status, evidence_file = ev.evaluate_submission_state(is_confirmed, sc_path)
-                    if sub_status == "Submitted (Confirmed)" and evidence_file and os.path.exists(evidence_file):
-                        print(f"    🚀 Form Submitted on {ats_type} Portal with verified evidence: {evidence_file}")
-                        log_portal_application(company, role, ats_type, "Submitted (Confirmed)", portal_url, evidence_path=evidence_file)
-                        all_field_records = list(handler.field_records)
-                        try:
-                            from naukari_pro.modules.db import record_batch_field_audit, generate_job_id
-                            t_job_id = generate_job_id(role, company, portal_url)
-                            record_batch_field_audit(t_job_id, f"career_portal ({ats_type})", company, role, all_field_records)
-                        except Exception:
-                            pass
-                        return FillResult(True, filled_fields, evidence_file, field_records=all_field_records)
-                    else:
-                        print(f"    ⚠️ Confirmation detected but screenshot header validation failed.")
+            if not submit_clicked:
+                all_records = list(handler.field_records)
+                fallback_reason = FallbackReason.VALIDATION_ERRORS.value if has_validation_errors else FallbackReason.SUBMIT_NOT_FOUND.value
+                print(f"    [FALLBACK: {fallback_reason}] Submit button not located or constrained.")
+                log_portal_application(company, role, ats_type, f"FALLBACK ({fallback_reason})", portal_url)
+                return FillResult(False, filled_fields, None, field_records=all_records, status=fallback_reason)
+
+            # ── STATE 6: VERIFY ──
+            checkpoint_portal_state(cand_job_id, PortalState.VERIFY, company, role, target_db)
+            is_confirmed = handler.verify_confirmation(page, timeout=25.0)
+            if is_confirmed:
+                from naukari_pro.modules.learning.evidence import EvidenceVerifier
+                ev = EvidenceVerifier()
+                sc_path = ev.capture_screenshot_sync(page, company, role)
+                sub_status, evidence_file = ev.evaluate_submission_state(is_confirmed, sc_path)
+                if sub_status == "Submitted (Confirmed)" and evidence_file and os.path.exists(evidence_file):
+                    print(f"    🚀 [CONFIRMED] Form Submitted on {ats_type} Portal with verified evidence: {evidence_file}")
+                    # Optional IMAP email confirmation audit
+                    try:
+                        email_conf, subj = ev.verify_email_confirmation(company, role, since_ts=t_start, timeout_sec=8.0)
+                        if email_conf:
+                            print(f"    ✉️ [IMAP-CONFIRMED] Confirmation email received: '{subj}'")
+                    except Exception:
+                        pass
+
+                    # ── STATE 7: LOG ──
+                    checkpoint_portal_state(cand_job_id, PortalState.LOG, company, role, target_db)
+                    log_portal_application(company, role, ats_type, "Submitted (Confirmed)", portal_url, evidence_path=evidence_file)
+                    all_field_records = list(handler.field_records)
+                    try:
+                        record_batch_field_audit(cand_job_id, f"career_portal ({ats_type})", company, role, all_field_records)
+                    except Exception:
+                        pass
+                    return FillResult(True, filled_fields, evidence_file, field_records=all_field_records, status="Submitted (Confirmed)")
                 else:
-                    print(f"    ⚠️ Submit clicked but confirmation not detected within timeout.")
+                    fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
+                    print(f"    [FALLBACK: {fallback_reason}] Confirmation detected but screenshot validation failed.")
+                    return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=fallback_reason)
             else:
-                print(f"    ℹ️ Final submit button requires manual review; form pre-filled.")
+                fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
+                print(f"    [FALLBACK: {fallback_reason}] Submit clicked but confirmation not detected within timeout.")
+                return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=fallback_reason)
 
         all_field_records = list(handler.field_records)
         try:
-            from naukari_pro.modules.db import record_batch_field_audit, generate_job_id
-            t_job_id = generate_job_id(role, company, portal_url)
-            record_batch_field_audit(t_job_id, f"career_portal ({ats_type})", company, role, all_field_records)
+            record_batch_field_audit(cand_job_id, f"career_portal ({ats_type})", company, role, all_field_records)
         except Exception:
             pass
 
         log_portal_application(company, role, ats_type, "Form Auto-Filled", portal_url)
-        return FillResult(is_confirmed, filled_fields, evidence_file, field_records=all_field_records)
+        return FillResult(is_confirmed, filled_fields, evidence_file, field_records=all_field_records, status="Form Auto-Filled")
 
     def fill_dry_run(
         self,
@@ -2967,7 +3357,7 @@ class CareerPortalFiller:
         target_db = getattr(self, "db_path", None)
         if not dry_run and is_job_already_applied(title=role, company=company, job_url=portal_url, db_path=target_db):
             print(f"  [DEDUP] Already applied to '{role}' at '{company}' ({portal_url}). Skipping strictly per rule.")
-            return FillResult(False, [], None, status="SKIPPED_ALREADY_APPLIED")
+            return FillResult(False, [], None, status=FallbackReason.ALREADY_APPLIED.value)
 
         if dry_run:
             payload = self.fill_dry_run(
@@ -3325,10 +3715,19 @@ class CareerPortalFiller:
                     barrier = handler.detect_barriers(active_page)
                     evidence_file = None
                     sub_status = "Form Auto-Filled (Ready for Review)"
+                    fallback_reason = None
                     ev = EvidenceVerifier()
 
                     if barrier:
-                        print(f"    ⚠️ Barrier encountered on {ats_type} portal: {barrier}. Halting auto-submit; maintaining status as Ready for Review.")
+                        b_low = barrier.lower()
+                        if any(k in b_low for k in ("captcha", "turnstile", "challenge", "recaptcha", "hcaptcha", "arkose")):
+                            fallback_reason = FallbackReason.CAPTCHA.value
+                        elif any(k in b_low for k in ("sign-in", "login", "account", "vault")):
+                            fallback_reason = FallbackReason.SIGNIN_WALL.value
+                        else:
+                            fallback_reason = FallbackReason.SIGNIN_WALL.value
+                        print(f"    [FALLBACK: {fallback_reason}] Barrier encountered on {ats_type} portal: {barrier}")
+                        sub_status = f"FALLBACK ({fallback_reason})"
                         try:
                             handler.fill_form(active_page)
                             js_code = self.generate_fill_script(ats_type)
@@ -3361,20 +3760,32 @@ class CareerPortalFiller:
                         if auto_submit:
                             submit_clicked = handler.submit_form(active_page)
                             if submit_clicked:
-                                is_confirmed = handler.verify_confirmation(active_page, timeout=12.0)
+                                is_confirmed = handler.verify_confirmation(active_page, timeout=25.0)
                                 if is_confirmed:
                                     sc_path = ev.capture_screenshot_sync(active_page, company, title)
                                     sub_status, evidence_file = ev.evaluate_submission_state(is_confirmed, sc_path)
                                     if sub_status == "Submitted (Confirmed)":
-                                        print(f"    🚀 Form Submitted on {ats_type} Portal with verified evidence: {evidence_file}")
+                                        print(f"    🚀 [CONFIRMED] Form Submitted on {ats_type} Portal with verified evidence: {evidence_file}")
                                     else:
-                                        print(f"    ⚠️ Form submitted but screenshot header validation failed; status maintained as Ready for Review.")
+                                        fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
+                                        print(f"    [FALLBACK: {fallback_reason}] Form submitted but screenshot header validation failed.")
+                                        sub_status = f"FALLBACK ({fallback_reason})"
                                 else:
-                                    print(f"    ⚠️ Submit clicked but confirmation not detected; status strictly maintained as Ready for Review.")
-                                    sub_status = "Form Auto-Filled (Ready for Review)"
+                                    fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
+                                    print(f"    [FALLBACK: {fallback_reason}] Submit clicked but confirmation not detected within timeout.")
+                                    sub_status = f"FALLBACK ({fallback_reason})"
                             else:
-                                print(f"    ℹ️ Final submit button requires manual review; form 100% pre-filled.")
-                                sub_status = "Form Auto-Filled (Ready for Review)"
+                                # Check for validation errors
+                                has_val_err = False
+                                try:
+                                    err_loc = active_page.locator(".field-error, li.error, .error-message, div.error, [aria-invalid='true']")
+                                    if safe_count(err_loc) > 0 and err_loc.first.is_visible():
+                                        has_val_err = True
+                                except Exception:
+                                    pass
+                                fallback_reason = FallbackReason.VALIDATION_ERRORS.value if has_val_err else FallbackReason.SUBMIT_NOT_FOUND.value
+                                print(f"    [FALLBACK: {fallback_reason}] Final submit button not located or constrained.")
+                                sub_status = f"FALLBACK ({fallback_reason})"
 
                     # Update Excel tracker row
                     ws.cell(row=row_idx, column=9, value=sub_status)
@@ -4068,7 +4479,13 @@ class ExternalPortalBatchRunner:
                     and os.path.exists(evidence_file)
                     and os.path.getsize(evidence_file) >= 1024
                 )
-                status_str = "Submitted (Confirmed)" if is_confirmed else "Form Auto-Filled (Ready for Review)"
+                res_status = getattr(fill_res, "status", None)
+                if is_confirmed:
+                    status_str = "Submitted (Confirmed)"
+                elif res_status and ("FALLBACK" in str(res_status) or any(r.value == str(res_status) for r in FallbackReason)):
+                    status_str = f"FALLBACK ({res_status})" if not str(res_status).startswith("FALLBACK") else str(res_status)
+                else:
+                    status_str = "Form Auto-Filled (Ready for Review)"
                 sync_dual_log(
                     title=title,
                     company=company,

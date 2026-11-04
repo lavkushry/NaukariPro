@@ -886,5 +886,221 @@ class TestAsyncioLoopWorkerIsolation:
         asyncio.run(coroutine_batch())
 
 
+class TestArchitectureRulesA1toA5:
+    """Verifies compliance with Architecture Rules A1–A5."""
+
+    def test_a1_fallback_reasons_enum(self):
+        from naukari_pro.modules.career_portals import FallbackReason, PortalState
+        assert FallbackReason.ASYNCIO_ERROR.value == "ASYNCIO_ERROR"
+        assert FallbackReason.SIGNIN_WALL.value == "SIGNIN_WALL"
+        assert FallbackReason.SUBMIT_NOT_FOUND.value == "SUBMIT_NOT_FOUND"
+        assert FallbackReason.CLICKED_NO_CONFIRMATION.value == "CLICKED_NO_CONFIRMATION"
+        assert FallbackReason.CAPTCHA.value == "CAPTCHA"
+        assert FallbackReason.TIMEOUT_240S.value == "TIMEOUT_240S"
+        assert FallbackReason.ALREADY_APPLIED.value in ("ALREADY_APPLIED", "SKIPPED_ALREADY_APPLIED")
+
+        assert PortalState.DETECT.value == "DETECT"
+        assert PortalState.ACCOUNT.value == "ACCOUNT"
+        assert PortalState.FILL.value == "FILL"
+        assert PortalState.REVIEW.value == "REVIEW"
+        assert PortalState.SUBMIT.value == "SUBMIT"
+        assert PortalState.VERIFY.value == "VERIFY"
+        assert PortalState.LOG.value == "LOG"
+
+    def test_a2_schema_before_browser_planning(self, sample_profile, monkeypatch):
+        import requests
+        from naukari_pro.modules.career_portals import ATSFormSchemaPlanner
+
+        planner = ATSFormSchemaPlanner(sample_profile)
+
+        # Mock Greenhouse API response
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "title": "Data Platform Engineer",
+            "questions": [
+                {
+                    "label": "First Name",
+                    "fields": [{"name": "first_name", "type": "input_text", "values": []}]
+                },
+                {
+                    "label": "Last Name",
+                    "fields": [{"name": "last_name", "type": "input_text", "values": []}]
+                },
+                {
+                    "label": "Are you authorized to work in India?",
+                    "fields": [{"name": "work_auth", "type": "select", "values": [{"label": "Yes"}, {"label": "No"}]}]
+                }
+            ]
+        }
+        monkeypatch.setattr(requests, "get", lambda *a, **k: mock_resp)
+
+        plan = planner.fetch_schema_plan("https://boards.greenhouse.io/databricks/jobs/5001")
+        assert plan is not None
+        assert plan["ats"] == "Greenhouse"
+        assert plan["answers"]["first_name"] == "Lavkush"
+        assert plan["answers"]["last_name"] == "Kumar"
+        assert plan["answers"]["work_auth"] == "Yes"
+
+    def test_a3_anchor_ladder_rungs(self):
+        from naukari_pro.modules.career_portals import resolve_anchor_ladder
+
+        mock_page = MagicMock()
+
+        # 1. Rung 1: data-automation-id
+        loc1 = MagicMock()
+        loc1.count.return_value = 1
+        loc1.first.is_visible.return_value = True
+        mock_page.locator.side_effect = lambda sel: loc1 if "data-automation-id" in sel else MagicMock(count=lambda: 0)
+
+        match_loc, rung = resolve_anchor_ladder(mock_page, field_id="legalName_firstName")
+        assert match_loc is not None
+        assert rung == "data-automation-id"
+
+        # 2. Rung 3: autocomplete
+        loc3 = MagicMock()
+        loc3.count.return_value = 1
+        loc3.first.is_visible.return_value = True
+        mock_page.locator.side_effect = lambda sel: loc3 if "autocomplete" in sel else MagicMock(count=lambda: 0)
+
+        match_loc, rung = resolve_anchor_ladder(mock_page, autocomplete="given-name")
+        assert match_loc is not None
+        assert rung == "autocomplete"
+
+        # 3. Rung 6: CSS fallback flags SELECTOR_MISS
+        loc6 = MagicMock()
+        loc6.count.return_value = 1
+        loc6.first.is_visible.return_value = True
+        mock_page.locator.side_effect = lambda sel: loc6 if sel == ".custom-css-input" else MagicMock(count=lambda: 0)
+
+        match_loc, rung = resolve_anchor_ladder(mock_page, css_fallback=".custom-css-input")
+        assert match_loc is not None
+        assert "SELECTOR_MISS" in rung
+
+    def test_a4_state_checkpointing(self, tmp_path):
+        import sqlite3
+        from naukari_pro.modules.career_portals import checkpoint_portal_state, PortalState
+        from naukari_pro.modules.db import init_db
+
+        test_db = str(tmp_path / "checkpoint_test.db")
+        init_db(test_db)
+
+        # Seed row
+        conn = sqlite3.connect(test_db)
+        c = conn.cursor()
+        c.execute("INSERT INTO applied_jobs (job_id, platform, company, title, status) VALUES ('job_123', 'career_portal', 'TestCo', 'Data Eng', 'Pending')")
+        conn.commit()
+        conn.close()
+
+        # Checkpoint to REVIEW
+        checkpoint_portal_state("job_123", PortalState.REVIEW, "TestCo", "Data Eng", db_path=test_db)
+
+        conn = sqlite3.connect(test_db)
+        c = conn.cursor()
+        c.execute("SELECT outcome_label FROM applied_jobs WHERE job_id = 'job_123'")
+        res = c.fetchone()[0]
+        conn.close()
+        assert res == "CHECKPOINT_REVIEW"
+
+    def test_a5_idempotency_pre_submit_abort(self, sample_profile, tmp_path, monkeypatch):
+        import sqlite3
+        from naukari_pro.modules.career_portals import CareerPortalFiller, FallbackReason
+        from naukari_pro.modules.db import init_db, record_applied_job
+
+        test_db = str(tmp_path / "idempotency_test.db")
+        init_db(test_db)
+
+        # Record prior application
+        record_applied_job(
+            title="Senior Azure Data Engineer",
+            company="Stripe",
+            platform="career_portal",
+            status="Submitted (Confirmed)",
+            job_url="https://boards.greenhouse.io/stripe/jobs/999",
+            db_path=test_db
+        )
+
+        filler = CareerPortalFiller(db_path=test_db)
+        mock_page = MagicMock()
+
+        # Attempting to fill the exact same applied job must abort immediately with ALREADY_APPLIED
+        res = filler.fill(
+            portal_url="https://boards.greenhouse.io/stripe/jobs/999",
+            company="Stripe",
+            role="Senior Azure Data Engineer",
+            headless=True,
+            page=mock_page
+        )
+        assert res.success is False
+        assert res.status == FallbackReason.ALREADY_APPLIED.value
+
+
+class TestComprehensiveDataEngineeringSkillsInScreeningSolver:
+    """Verifies that all 45+ skills requested by the user are resolved accurately."""
+
+    def test_data_engineering_lakehouse_skills(self):
+        solver = FactMatrixScreeningSolver()
+
+        skills = [
+            ("How many years of experience do you have with Delta Lake?", "2.5"),
+            ("Years of hands-on experience with Apache Spark?", "2.5"),
+            ("Total experience in Spark SQL?", "2.5"),
+            ("Years of experience in Data Engineering?", "2.5"),
+            ("Experience building ETL Pipelines?", "2.5"),
+            ("Experience with ELT Pipelines in cloud?", "2.5"),
+            ("Experience in Data Lakehouse architecture?", "2.5"),
+            ("Years of experience with Medallion Architecture?", "2.5"),
+            ("Experience with ADLS Gen2?", "2.5"),
+            ("Years of experience in Azure Synapse Analytics?", "2.5"),
+            ("Hands-on experience with Microsoft Fabric?", "2.0"),
+            ("Experience with Change Data Capture (CDC)?", "2.0"),
+            ("Experience in SQL and Query Optimization?", "2.5"),
+            ("Years of hands-on experience in PostgreSQL?", "2.0"),
+            ("Experience with Star Schema Data Modeling?", "2.5"),
+            ("Years of experience in Snowflake?", "2.0"),
+            ("Experience with Redis caching?", "2.0"),
+            ("Hands-on tenure with MongoDB?", "2.0"),
+            ("Experience with Apache Kafka event streaming?", "2.0"),
+            ("Experience in Spark Structured Streaming?", "2.0"),
+            ("Years of experience with Kafka Connect?", "2.0"),
+            ("Experience with Azure Event Hubs?", "2.0"),
+            ("Years of experience with Terraform IaC?", "2.0"),
+            ("Experience in Azure DevOps CI/CD?", "2.5"),
+            ("Hands-on experience with Docker and Kubernetes?", "2.5"),
+            ("Years of experience with Helm charts?", "2.0"),
+            ("Experience in Git and GitHub Actions?", "2.5"),
+            ("Experience in GitLab CI pipelines?", "2.0"),
+            ("Tenure with Linux and Bash scripting?", "2.5"),
+            ("Experience with Unity Catalog governance?", "2.0"),
+            ("Years of experience with Great Expectations data quality gates?", "2.0"),
+            ("Experience with Prometheus and Grafana monitoring?", "2.0"),
+            ("Experience in OpenTelemetry pipeline observability?", "2.0"),
+            ("Hands-on experience with dbt?", "2.0"),
+            ("Years of experience in Cloud Data Management?", "2.5"),
+            ("Experience with Python programming language?", "2.5"),
+        ]
+
+        for question, expected_years in skills:
+            decision = solver.evaluate_question(question)
+            assert decision.is_ambiguous is False, f"Question marked ambiguous: {question}"
+            assert decision.answer == expected_years, f"Skill '{question}' got '{decision.answer}', expected '{expected_years}'"
+
+    def test_boolean_skill_questions_affirmative(self):
+        solver = FactMatrixScreeningSolver()
+        # Radio questions: "Do you have experience with X?" -> "Yes"
+        q1 = solver.evaluate_question("Do you have experience with Delta Lake and Medallion Architecture?", context={"options": ["Yes", "No"]})
+        assert q1.answer == "Yes"
+
+        q2 = solver.evaluate_question("Are you proficient in Apache Kafka and Spark Structured Streaming?", context={"options": ["Yes", "No"]})
+        assert q2.answer == "Yes"
+
+        q3 = solver.evaluate_question("Have you worked with Terraform and Kubernetes?", context={"options": ["No", "Yes"]})
+        assert q3.answer == "Yes"
+
+        q4 = solver.evaluate_question("Do you have hands-on experience with dbt and Snowflake?", context={"options": ["Yes", "No"]})
+        assert q4.answer == "Yes"
+
+
+
 
 
