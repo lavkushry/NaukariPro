@@ -320,7 +320,7 @@ def gen_d_verifier() -> None:
         @pytest.mark.scenario
         @pytest.mark.parametrize("case_id,question", ROWS, ids=[r[0] for r in ROWS])
         def test_d5_answer_contract(case_id, question, profile_evidence):
-            ans = answer_screening_question(question, profile_evidence)
+            ans = answer_screening_question(profile=profile_evidence, question=question)
             assert isinstance(ans, dict), case_id
             assert "reason" in ans and "answer" in ans, case_id
             assert ans["reason"] in ("ok", "ASK_USER"), case_id

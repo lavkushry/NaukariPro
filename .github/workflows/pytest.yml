@@ -46,3 +46,13 @@ jobs:
             tests/test_tracking_ws6.py \
             tests/test_screening_answers_p4.py \
             -q --tb=line
+
+      - name: NP-0001…1000 scenario suite (socket-blocked, offline)
+        env:
+          NAUKARI_LLM_MODE: replay
+          CANDIDATE_NAME: CI Candidate
+          CANDIDATE_EMAIL: ci@example.com
+          CANDIDATE_PHONE: "+91-0000000000"
+        run: |
+          python -m pytest tests/scenarios -q --tb=line
+          python scripts/test_report.py

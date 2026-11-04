@@ -10,8 +10,11 @@ class PathTraversalError(ValueError):
 
 
 def resolve_safe_path(data_dir: Path, user_path: str) -> Path:
+    raw = str(user_path or "").replace("\\", "/")
+    if raw.startswith("/"):
+        raise PathTraversalError(f"path escapes data dir: {user_path}")
     root = Path(data_dir).resolve()
-    candidate = (root / user_path).resolve()
+    candidate = (root / raw).resolve()
     try:
         candidate.relative_to(root)
     except ValueError as exc:

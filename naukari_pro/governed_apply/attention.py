@@ -47,7 +47,24 @@ class AttentionQueue:
 
 def detect_blocker(page_text: str, *, url: str = "") -> Optional[BlockerClass]:
     t = (page_text or "").lower()
-    if any(k in t for k in ("captcha", "recaptcha", "hcaptcha", "cf-challenge")):
+    if any(
+        k in t
+        for k in (
+            "captcha",
+            "recaptcha",
+            "hcaptcha",
+            "cf-challenge",
+            "cf-turnstile",
+            "turnstile",
+            "arkose",
+            "funcaptcha",
+            "geetest",
+            "gt_captcha",
+            "grecaptcha",
+            "type the characters",
+            "enter the code shown",
+        )
+    ):
         return BlockerClass.CAPTCHA
     if any(k in t for k in ("two-factor", "2fa", "mfa", "authenticator", "verification code")):
         return BlockerClass.MFA

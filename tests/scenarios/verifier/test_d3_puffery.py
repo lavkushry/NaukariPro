@@ -1,9 +1,9 @@
 """Family D3 — PUFFERY regex (NP-0381–0400). trace: MP §4.5"""
-    import pytest
-    from naukari_pro.resume_gen.claim_validator import PUFFERY, validate_text
+import pytest
+from naukari_pro.resume_gen.claim_validator import PUFFERY, validate_text
 
-    ROWS = [
-        ("NP-0381", "world-class"),
+ROWS = [
+    ("NP-0381", "world-class"),
 ("NP-0382", "rockstar ninja"),
 ("NP-0383", "10x engineer"),
 ("NP-0384", "best-in-class"),
@@ -23,15 +23,15 @@
 ("NP-0398", "elite performer"),
 ("NP-0399", "unparalleled mastery"),
 ("NP-0400", "legendary coder")
-    ]
+]
 
-    @pytest.mark.redteam
-    @pytest.mark.scenario
-    @pytest.mark.parametrize("case_id,phrase", ROWS, ids=[r[0] for r in ROWS])
-    def test_d3_puffery(case_id, phrase):
-        sentence = f"I am a {phrase} DevOps engineer delivering results."
-        # Either regex hits OR validate_text rejects unsupported puffery
-        hit = bool(PUFFERY.search(sentence)) or bool(PUFFERY.search(phrase))
-        report = validate_text(sentence, ["DevOps engineer kubernetes"])
-        assert hit or (not report.ok and report.unsupported_claims), case_id
+@pytest.mark.redteam
+@pytest.mark.scenario
+@pytest.mark.parametrize("case_id,phrase", ROWS, ids=[r[0] for r in ROWS])
+def test_d3_puffery(case_id, phrase):
+    sentence = f"I am a {phrase} DevOps engineer delivering results."
+    # Either regex hits OR validate_text rejects unsupported puffery
+    hit = bool(PUFFERY.search(sentence)) or bool(PUFFERY.search(phrase))
+    report = validate_text(sentence, ["DevOps engineer kubernetes"])
+    assert hit or (not report.ok and report.unsupported_claims), case_id
 

@@ -1,9 +1,9 @@
 """Family D1 — sentence-support ≥ 0.25 boundary (NP-0341–0360). trace: MP §4.5"""
-    import pytest
-    from naukari_pro.resume_gen.claim_validator import validate_text, sentence_support
+import pytest
+from naukari_pro.resume_gen.claim_validator import validate_text, sentence_support
 
-    ROWS = [
-        ("NP-0341", "Kubernetes Docker Terraform", "Kubernetes Docker Terraform AWS", True),
+ROWS = [
+    ("NP-0341", "Kubernetes Docker Terraform", "Kubernetes Docker Terraform AWS", True),
 ("NP-0342", "xyzzy plugh foo bar baz qux", "unrelated evidence blob here", False),
 ("NP-0343", "Reduced deployment time", "Reduced deployment time from 45 minutes", True),
 ("NP-0344", "Certified Kubernetes Administrator expert", "AWS Cloud Practitioner only", False),
@@ -23,19 +23,19 @@
 ("NP-0358", "invented ISO27001 lead auditor", "no iso cert listed", False),
 ("NP-0359", "12 minutes deploy", "from 45 minutes to 12 minutes", True),
 ("NP-0360", "led fifty person org", "individual contributor devops", False)
-    ]
+]
 
-    @pytest.mark.unit
-    @pytest.mark.scenario
-    @pytest.mark.parametrize("case_id,sentence,evidence,expect_ok", ROWS, ids=[r[0] for r in ROWS])
-    def test_d1_sentence_support(case_id, sentence, evidence, expect_ok):
-        support = sentence_support(sentence, evidence)
-        report = validate_text(sentence, [evidence], drop_ungrounded=False)
-        if expect_ok:
-            assert support >= 0.25, f"{case_id} support={support}"
-            assert report.ok or all(s.support >= 0.25 for s in report.sentences if s.sentence), case_id
-        else:
-            assert support < 0.25 or (not report.ok and report.unsupported_claims), (
-                f"{case_id} expected reject support={support} ok={report.ok}"
-            )
+@pytest.mark.unit
+@pytest.mark.scenario
+@pytest.mark.parametrize("case_id,sentence,evidence,expect_ok", ROWS, ids=[r[0] for r in ROWS])
+def test_d1_sentence_support(case_id, sentence, evidence, expect_ok):
+    support = sentence_support(sentence, evidence)
+    report = validate_text(sentence, [evidence], drop_ungrounded=False)
+    if expect_ok:
+        assert support >= 0.25, f"{case_id} support={support}"
+        assert report.ok or all(s.support >= 0.25 for s in report.sentences if s.sentence), case_id
+    else:
+        assert support < 0.25 or (not report.ok and report.unsupported_claims), (
+            f"{case_id} expected reject support={support} ok={report.ok}"
+        )
 

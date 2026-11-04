@@ -1,0 +1,70 @@
+[run]
+branch = True
+source = naukari_pro
+omit =
+    naukari_pro/modules/*
+    naukari_pro/agent/*
+    naukari_pro/cli.py
+    naukari_pro/mcp/*
+    naukari_pro/api/*
+    naukari_pro/billing/*
+    naukari_pro/tracking/*
+    naukari_pro/config.py
+    naukari_pro/session.py
+    naukari_pro/captcha/resolver.py
+    naukari_pro/captcha/vlm.py
+    naukari_pro/captcha/vendor.py
+    naukari_pro/governed_apply/pipeline.py
+    naukari_pro/governed_apply/answers.py
+    naukari_pro/governed_apply/field_inventory.py
+    naukari_pro/governed_apply/sensitivity.py
+    naukari_pro/governed_apply/confirmation.py
+    naukari_pro/governed_apply/screening_answers.py
+    naukari_pro/resume_gen/pipeline.py
+    naukari_pro/resume_gen/render.py
+    naukari_pro/resume_gen/tailor.py
+    naukari_pro/resume_gen/scorecard.py
+    naukari_pro/matching/stage_*.py
+    naukari_pro/matching/pipeline.py
+    naukari_pro/matching/eval.py
+    naukari_pro/matching/extract_p1.py
+    naukari_pro/aggregation/adapters/*
+    naukari_pro/aggregation/pipeline.py
+    naukari_pro/aggregation/storage.py
+    naukari_pro/aggregation/discovery.py
+    naukari_pro/aggregation/liveness.py
+    naukari_pro/aggregation/base.py
+    naukari_pro/llm/client.py
+    naukari_pro/llm/cache.py
+    naukari_pro/llm/registry.py
+    naukari_pro/llm/validator.py
+    naukari_pro/llm/provider_router.py
+    naukari_pro/llm/providers.py
+    naukari_pro/llm/gateway.py
+    naukari_pro/llm/ai_calls_db.py
+
+[report]
+show_missing = True
+skip_empty = True
+# Per-file ≥90 enforced by scripts/check_coverage_gate.py
+include =
+    naukari_pro/resume_gen/claim_validator.py
+    naukari_pro/resume_gen/writing_lint.py
+    naukari_pro/governed_apply/fill_verify.py
+    naukari_pro/governed_apply/approval.py
+    naukari_pro/governed_apply/dedupe_rules.py
+    naukari_pro/governed_apply/exit_codes.py
+    naukari_pro/governed_apply/attention.py
+    naukari_pro/captcha/safety.py
+    naukari_pro/captcha/detector.py
+    naukari_pro/captcha/circuit.py
+    naukari_pro/captcha/events.py
+    naukari_pro/security/pii.py
+    naukari_pro/security/paths.py
+    naukari_pro/security/canary.py
+    naukari_pro/aggregation/models.py
+    naukari_pro/aggregation/dedup.py
+    naukari_pro/aggregation/india_geo.py
+    naukari_pro/matching/deterministic_score.py
+    naukari_pro/llm/routing.py
+    naukari_pro/llm/ledger.py
