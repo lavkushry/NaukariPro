@@ -133,8 +133,10 @@ def validate_text(
             # puffery only fails when not supported by evidence tokens
             if support < 0.5:
                 reasons.append("puffery")
+        evidence_nums = {n.lower() for n in NUMBER_RE.findall(evidence_blob)}
         for num in NUMBER_RE.findall(sentence):
-            if num.lower() not in evidence_blob.lower():
+            # Exact numeric token match — reject substring tricks (1 in 10).
+            if num.lower() not in evidence_nums:
                 reasons.append(f"unsourced_number:{num}")
 
         ok = len(reasons) == 0

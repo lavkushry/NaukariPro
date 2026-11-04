@@ -114,26 +114,64 @@ def parse_yaml_safe(raw: str) -> Any:
         raise ParseError("malformed YAML", context={"error": str(exc)}) from exc
 
 
+def _is_blocked_ssrf_host(host: str) -> bool:
+    h = (host or "").lower().strip(".")
+    if not h:
+        return True
+    blocked_names = {
+        "localhost",
+        "0.0.0.0",
+        "::1",
+        "metadata.google.internal",
+        "169.254.169.254",
+    }
+    if h in blocked_names or h.endswith(".local"):
+        return True
+    # Decimal / IPv4 forms
+    try:
+        import ipaddress
+
+        ip = ipaddress.ip_address(h)
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_private
+            or ip.is_reserved
+            or ip.is_multicast
+        ):
+            return True
+    except ValueError:
+        pass
+    # Numeric dotted loopback without full parse (e.g. 127.1)
+    if re.match(r"^127\.\d{1,3}(?:\.\d{1,3}){0,2}$", h):
+        return True
+    if h.startswith("10.") or h.startswith("192.168."):
+        return True
+    if h.startswith("172."):
+        parts = h.split(".")
+        if len(parts) >= 2 and parts[1].isdigit() and 16 <= int(parts[1]) <= 31:
+            return True
+    # Decimal IPv4 (e.g. 2130706433 == 127.0.0.1)
+    if h.isdigit():
+        try:
+            import ipaddress
+
+            ip = ipaddress.ip_address(int(h))
+            if ip.is_loopback or ip.is_private or ip.is_link_local:
+                return True
+        except ValueError:
+            pass
+    return False
+
+
 def validate_job_url(url: Any) -> str:
     text = assert_safe_string(url, field="job_url", max_bytes=4096).strip()
     parsed = urlparse(text)
     if parsed.scheme not in ("http", "https"):
         raise ValidationError("job URL scheme must be http/https", context={"url": text[:200]})
     host = (parsed.hostname or "").lower()
-    # SSRF deny: loopback / link-local / metadata
-    blocked_hosts = {
-        "localhost",
-        "127.0.0.1",
-        "0.0.0.0",
-        "::1",
-        "metadata.google.internal",
-        "169.254.169.254",
-    }
-    if host in blocked_hosts or host.endswith(".local") or host.startswith("10."):
+    if _is_blocked_ssrf_host(host):
         raise ValidationError("SSRF-blocked job URL host", context={"host": host})
-    if host.startswith("192.168.") or host.startswith("172."):
-        # 172.16–31.x.x private — coarse deny for hammer
-        raise ValidationError("SSRF-blocked private host", context={"host": host})
     return text
 
 

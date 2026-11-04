@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,24 @@ class CaptchaResolver(Protocol):
         ...
 
 
+_EXISTING_TOKEN_RE = re.compile(
+    r'name=["\'](?:g-recaptcha-response|h-captcha-response|cf-turnstile-response)["\']'
+    r'[^>]*value=["\']([^"\']+)["\']|'
+    r'value=["\']([^"\']+)["\'][^>]*'
+    r'name=["\'](?:g-recaptcha-response|h-captcha-response|cf-turnstile-response)["\']',
+    re.I,
+)
+
+
+def _extract_existing_token(html: str) -> Optional[str]:
+    m = _EXISTING_TOKEN_RE.search(html or "")
+    if not m:
+        return None
+    tok = m.group(1) or m.group(2) or ""
+    tok = tok.strip()
+    return tok or None
+
+
 class PassthroughResolver:
     name = "passthrough"
 
@@ -46,8 +65,11 @@ class PassthroughResolver:
         )
 
     def resolve(self, detection: CaptchaDetection) -> Optional[str]:
-        # Invisible token already on page — signal passthrough without solving
-        return "PASSTHROUGH"
+        # Only pass through when a non-empty token is already present on the page.
+        # Empty marker HTML must fall through to human (Phase-5 F4).
+        detail = getattr(detection, "raw_html", None) or ""
+        token = _extract_existing_token(detail)
+        return token
 
 
 class VendorResolver:

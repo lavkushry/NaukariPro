@@ -1,6 +1,6 @@
 """
 FastAPI OpenAPI 3.1 app — every MCP tool as an HTTP endpoint.
-API-key auth via NAUKARI_API_KEY (optional in local/dev when unset).
+API-key auth via NAUKARI_API_KEY (required unless NAUKARI_API_DEV_OPEN=1).
 """
 
 import hashlib
@@ -10,6 +10,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
+from naukari_pro.hammer_safe import redact_pii, redact_secrets
 from naukari_pro.mcp.server import TOOLS, handle_tool, list_tools
 
 
@@ -27,10 +28,17 @@ def create_api_app():
 
     api_key_env = os.environ.get("NAUKARI_API_KEY", "")
     webhook_secret = os.environ.get("NAUKARI_WEBHOOK_SECRET", "")
+    dev_open = (os.environ.get("NAUKARI_API_DEV_OPEN") or "").strip() in ("1", "true", "yes")
 
     def require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
+        # Fail closed: unset key refuses tool/webhook routes unless explicit dev open.
         if not api_key_env:
-            return
+            if dev_open:
+                return
+            raise HTTPException(
+                status_code=401,
+                detail="NAUKARI_API_KEY required (or set NAUKARI_API_DEV_OPEN=1 for local-only)",
+            )
         if not x_api_key or not hmac.compare_digest(x_api_key, api_key_env):
             raise HTTPException(status_code=401, detail="invalid api key")
 
@@ -94,13 +102,19 @@ def create_api_app():
         payload = await request.json()
         if not isinstance(payload, dict):
             payload = {}
-        event = str(payload.get("event") or "error.blocked")
-        raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        # Redact PII/secrets before ledger persistence (Phase-5 F5).
+        safe_payload = json.loads(
+            redact_pii(redact_secrets(json.dumps(payload, ensure_ascii=False)))
+        )
+        if not isinstance(safe_payload, dict):
+            safe_payload = {"redacted": True}
+        event = str(safe_payload.get("event") or payload.get("event") or "error.blocked")
+        raw = json.dumps(safe_payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
         secret = (webhook_secret or "dev-secret").encode("utf-8")
         sig = hmac.new(secret, raw, hashlib.sha256).hexdigest()
         record = {
             "event": event,
-            "payload": payload,
+            "payload": safe_payload,
             "signature": sig,
             "ts": time.time(),
             "deliveries": [],

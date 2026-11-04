@@ -59,6 +59,5 @@ Fixed since the 1549/67/29 run:
 - Phase-4 smoke: `scripts/mutation_hammer.py` → **0 surviving** safety mutants (SSRF/size/YAML).
 
 ## Still open
-- Hammer Phase 5 (fresh-agent independent exam — requires new session).
-- Remaining full-repo failures (Excel tracker schema, LinkedIn harvesting mocks, session flock).
+- Remaining full-repo pytest failures outside hammer (Excel tracker / LinkedIn harvest / flock).
 - Live dual MCP sessions; Next.js UI; git history scrub (needs explicit approval).

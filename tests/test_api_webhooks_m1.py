@@ -10,34 +10,42 @@ from naukari_pro.api.app import create_api_app, verify_webhook_signature
 from naukari_pro.mcp.server import handle_tool
 
 
-def test_api_health_and_apply_dry_run():
+def test_api_health_and_apply_dry_run(monkeypatch):
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
+    monkeypatch.setenv("NAUKARI_API_KEY", "test-api-key")
     app = create_api_app()
     client = TestClient(app)
+    headers = {"X-Api-Key": "test-api-key"}
     assert client.get("/health").json()["ok"] is True
-    tools = client.get("/tools").json()["tools"]
+    tools = client.get("/tools", headers=headers).json()["tools"]
     assert len(tools) >= 10
-    r = client.post("/v1/tools/apply_job", json={"job_key": "greenhouse:1"})
+    r = client.post("/v1/tools/apply_job", headers=headers, json={"job_key": "greenhouse:1"})
     assert r.status_code == 200
     assert r.json()["dry_run"] is True
+    # Unauthenticated tool call must fail closed
+    denied = client.get("/tools")
+    assert denied.status_code == 401
 
 
 def test_webhook_hmac_roundtrip(monkeypatch):
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
+    monkeypatch.setenv("NAUKARI_API_KEY", "test-api-key")
     monkeypatch.setenv("NAUKARI_WEBHOOK_SECRET", "test-secret")
     app = create_api_app()
     client = TestClient(app)
+    headers = {"X-Api-Key": "test-api-key"}
     sub = client.post(
         "/v1/webhooks/subscribe",
+        headers=headers,
         json={"url": "https://example.invalid/hook", "events": ["job.found"]},
     )
     assert sub.json()["ok"] is True
     payload = {"event": "job.found", "job_key": "ashby:1"}
-    emitted = client.post("/v1/webhooks/emit", json=payload).json()
+    emitted = client.post("/v1/webhooks/emit", headers=headers, json=payload).json()
     assert emitted["signature"]
     assert emitted["deliveries"]
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")

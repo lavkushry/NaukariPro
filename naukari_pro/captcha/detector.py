@@ -16,9 +16,13 @@ class CaptchaDetection:
     interactive: bool
     behavioral: bool
     vendor_mappable: bool
+    raw_html: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        # Keep ledger payloads small — drop raw HTML from serialized form.
+        d.pop("raw_html", None)
+        return d
 
 
 _SITEKEY_RE = re.compile(
@@ -56,6 +60,7 @@ def detect_captcha(page_html: str, *, page_url: str = "") -> Optional[CaptchaDet
             interactive=False,
             behavioral=False,
             vendor_mappable=True,
+            raw_html=html,
         )
 
     checks = [
@@ -133,6 +138,7 @@ def detect_captcha(page_html: str, *, page_url: str = "") -> Optional[CaptchaDet
                 interactive=interactive,
                 behavioral=behavioral,
                 vendor_mappable=vendor_mappable,
+                raw_html=html,
             )
     if "captcha" in t:
         return CaptchaDetection(
@@ -143,5 +149,6 @@ def detect_captcha(page_html: str, *, page_url: str = "") -> Optional[CaptchaDet
             interactive=True,
             behavioral=False,
             vendor_mappable=False,
+            raw_html=html,
         )
     return None

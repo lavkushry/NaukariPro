@@ -62,7 +62,9 @@ def verify_field(
     require_commit: bool = True,
 ) -> FieldVerifyResult:
     exp = _norm(expected)
-    layer1 = _norm(dom_value) == exp if exp else _norm(dom_value) == _norm(dom_value)
+    # Empty expected means the field must be blank — never a tautology that
+    # accepts attacker-controlled DOM (Phase-5 F1).
+    layer1 = _norm(dom_value) == exp
     layer2 = True if check_validity is None else bool(check_validity)
     aria = aria or {}
     # For checkboxes/radios, ARIA must reflect selection when expected truthy

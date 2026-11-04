@@ -28,9 +28,15 @@ class Mutant:
 MUTANTS = [
     Mutant(
         path=ROOT / "naukari_pro" / "hammer_safe.py",
-        needle="if host in blocked_hosts or host.endswith(\".local\") or host.startswith(\"10.\"):",
-        replacement="if False and (host in blocked_hosts or host.endswith(\".local\") or host.startswith(\"10.\")):  # MUTANT",
+        needle="if _is_blocked_ssrf_host(host):",
+        replacement="if False and _is_blocked_ssrf_host(host):  # MUTANT",
         name="ssrf_denylist_gutted",
+    ),
+    Mutant(
+        path=ROOT / "naukari_pro" / "governed_apply" / "fill_verify.py",
+        needle="layer1 = _norm(dom_value) == exp",
+        replacement="layer1 = True  # MUTANT: always pass DOM layer",
+        name="fill_layer1_always_true",
     ),
     Mutant(
         path=ROOT / "naukari_pro" / "hammer_safe.py",
@@ -52,6 +58,8 @@ FOCUS = [
     "tests/hammer/test_all_blows.py::test_hammer_blow[H1-09]",  # ssrf localhost
     "tests/hammer/test_all_blows.py::test_hammer_blow[H1-03]",  # 10mb
     "tests/hammer/test_all_blows.py::test_hammer_blow[H1-06]",  # yaml bomb
+    "tests/hammer/test_phase5_regressions.py::test_p5_f1_empty_expected_rejects_fabricated_dom",
+    "tests/hammer/test_phase5_regressions.py::test_p5_f3_loopback_variants_blocked",
 ]
 
 

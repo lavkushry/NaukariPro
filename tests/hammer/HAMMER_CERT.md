@@ -25,12 +25,12 @@ The application **may stop or degrade**. Under these 420 attacks it did **not**:
 |------|--------|
 | Phase 2 full combo matrix | Partial (chaos pairs only) |
 | Phase 3 15‑minute / overnight chaos | Smoke only (6–30 s CI) |
-| Phase 4 safety mutants (`scripts/mutation_hammer.py`) | **0 surviving** (SSRF / size / YAML-alias trio) |
-| Phase 5 fresh-agent exam — 0 new criticals | **Pending** (manual new session) |
+| Phase 4 safety mutants (`scripts/mutation_hammer.py`) | **0 surviving** |
+| Phase 5 fresh-agent exam | First pass: 5 criticals → fixed; second pass ([re-exam](9fec4715-16f0-4a81-b85e-c869d38bf2cb)): **0 new criticals** |
 
-Until Phase 5 is green, do **not** market “unbreakable in every scenario.” The honest claim today:
+Honest claim:
 
-> **Phase-1 + Phase-4-smoke break-proof:** every ledgered hammer blow fails closed or survives; critical `hammer_safe` mutants are killed; future breaks must be loud, ledgered, and harmless.
+> Every documented hammer blow fails closed or survives; Phase-5 criticals were fixed with regressions; safety mutants are killed; the certificate does **not** claim live-site or recruiter judgment immunity.
 
 ## Reproduce
 

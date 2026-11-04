@@ -61,7 +61,17 @@ DIY safety mutants on `hammer_safe.py` (SSRF gate, size cap, YAML alias cap). Fu
 
 ## Phase 5 — Independent examiner
 
-**Status:** not run (requires fresh agent session). Certificate below does **not** claim Phase-5 zero-criticals.
+First exam ([Phase-5 hammer examiner](abdfc2f3-f2f8-4114-b84d-85b54017c0eb)): **5 criticals** → Phase-1 fix loop.
+
+| ID | Fix |
+|----|-----|
+| F1 empty-expected DOM bypass | `fill_verify.py` layer1 always `dom == expected` |
+| F2 `1` in `10` number substring | exact `NUMBER_RE` token set match |
+| F3 127/8 SSRF gaps | `_is_blocked_ssrf_host` via `ipaddress` + decimal forms |
+| F4 empty captcha passthrough | require non-empty token in HTML |
+| F5 open API without key | refuse unless `NAUKARI_API_KEY` or `NAUKARI_API_DEV_OPEN=1`; redact webhook payloads |
+
+Regressions: `tests/hammer/test_phase5_regressions.py` (5 tests). Findings: `PHASE5_EXAM_FINDINGS.md`.
 
 ## Anti-laws checklist
 
