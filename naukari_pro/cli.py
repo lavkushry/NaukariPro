@@ -280,6 +280,17 @@ def handle_portal_apply(url=None, company="Company", role="Azure Data Engineer",
 
     return filler.fill(url, company=company, role=role, headless=headless, dry_run=dry_run, raw_jd=jd)
 
+def handle_external_batch(limit=25, headless=True, dry_run=False, ats=None, remote_first=True, roles=None, locations=None):
+    from naukari_pro.modules.career_portals import ExternalPortalBatchRunner
+    ats_list = [a.strip() for a in ats.split(",")] if ats else None
+    role_list = [r.strip() for r in roles.split(",")] if roles else None
+    loc_list = [l.strip() for l in locations.split(",")] if locations else None
+    runner = ExternalPortalBatchRunner(headless=headless, dry_run=dry_run, limit=limit)
+    print(f"\n[*] Launching External ATS Portal Batch Runner (Limit: {limit}, Remote First: {remote_first}, Headless: {headless}, Dry Run: {dry_run})...")
+    stats = runner.run_batch(ats_types=ats_list, roles=role_list, locations=loc_list)
+    print(f"\n[✓] Batch Completed: Total Evaluated={stats['total_evaluated']}, Submitted={stats['submitted']}, Skipped={stats['skipped']}")
+    return stats
+
 def handle_multi_search(dry_run=False):
     engine = UniversalJobSearchEngine()
     return engine.run_multi_search(dry_run=dry_run)
@@ -1487,6 +1498,16 @@ def main():
     portal_parser.add_argument("--role", default="Azure Data Engineer", help="Role title")
     portal_parser.add_argument("--jd", default="", help="Target job description or keywords")
     portal_parser.add_argument("--batch", action="store_true", default=False, help="Batch process eligible external redirects from tracker")
+    portal_parser.add_argument("--external-batch", "--live-batch", dest="external_batch", action="store_true", default=False, help="Run live multi-ATS external batch runner")
+    portal_parser.add_argument("--ats", default=None, help="Comma-separated target ATS list (e.g. greenhouse,ashby,lever,workday)")
+    portal_parser.add_argument("--remote-first", action="store_true", default=True, help="Prioritize Remote vacancies first (default: True)")
+
+    ext_batch_parser = subparsers.add_parser("external-batch", help="Autonomous Batch Execution for External ATS Portals (Greenhouse, Ashby, Lever, Workday)", parents=[common_parser])
+    ext_batch_parser.add_argument("--remote-first", action="store_true", default=True, help="Prioritize Remote vacancies first (default: True)")
+    ext_batch_parser.add_argument("--ats", default=None, help="Comma-separated target ATS list (e.g. greenhouse,ashby,lever,workday)")
+    ext_batch_parser.add_argument("--role", "--roles", dest="role", default=None, help="Filter by role(s), comma-separated")
+    ext_batch_parser.add_argument("--location", "--locations", dest="location", default=None, help="Filter by location(s), comma-separated")
+    ext_batch_parser.set_defaults(limit=25)
 
     sched_parser = subparsers.add_parser("agy-schedule", help="Manage Linux AGY Autonomous Scheduler (systemd timer + agy CLI)", parents=[common_parser])
     sched_parser.add_argument("action", nargs="?", default="status", choices=["install", "run", "status", "logs"], help="Action to perform: install | run | status | logs")
@@ -1682,15 +1703,36 @@ def main():
     elif args.command == "daily":
         handle_daily_cycle(headless=args.headless, dry_run=args.dry_run, force=getattr(args, "force", False), limit=getattr(args, "limit", 20))
     elif args.command == "portal-apply":
-        handle_portal_apply(
-            url=args.url,
-            company=args.company,
-            role=args.role,
-            jd=getattr(args, "jd", ""),
+        if getattr(args, "external_batch", False):
+            handle_external_batch(
+                limit=getattr(args, "limit", 25),
+                headless=args.headless,
+                dry_run=args.dry_run,
+                ats=getattr(args, "ats", None),
+                remote_first=getattr(args, "remote_first", True),
+                roles=getattr(args, "role", None),
+                locations=getattr(args, "location", None)
+            )
+        else:
+            handle_portal_apply(
+                url=args.url,
+                company=args.company,
+                role=args.role,
+                jd=getattr(args, "jd", ""),
+                headless=args.headless,
+                dry_run=args.dry_run,
+                batch=getattr(args, "batch", False),
+                limit=getattr(args, "limit", 10)
+            )
+    elif args.command == "external-batch":
+        handle_external_batch(
+            limit=getattr(args, "limit", 25),
             headless=args.headless,
             dry_run=args.dry_run,
-            batch=getattr(args, "batch", False),
-            limit=getattr(args, "limit", 10)
+            ats=getattr(args, "ats", None),
+            remote_first=getattr(args, "remote_first", True),
+            roles=getattr(args, "role", None),
+            locations=getattr(args, "location", None)
         )
     elif args.command == "auth":
         handle_auth()
