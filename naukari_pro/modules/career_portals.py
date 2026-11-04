@@ -4224,11 +4224,9 @@ class ExternalPortalBatchRunner:
 
         if vacancies is not None:
             feed = list(vacancies)
-        elif not active_dry_run:
+        else:
             live_feed = fetch_live_ats_vacancies(limit=max(active_limit * 10, 400), ats_types=ats_types)
             feed = live_feed if live_feed else list(self.curated_vacancies)
-        else:
-            feed = list(self.curated_vacancies)
 
         # Filter by ats_types if explicitly specified
         if ats_types:
