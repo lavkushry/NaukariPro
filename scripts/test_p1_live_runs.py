@@ -75,13 +75,13 @@ JOBS_TO_TEST = [
     }
 ]
 
-def run_live_tests(db_path: str = "applied_jobs.db") -> List[Dict[str, Any]]:
+def run_live_tests(db_path: str = "/tmp/test_p1_live.db") -> List[Dict[str, Any]]:
     print("=" * 80)
     print("  🚀 NAUKARIPRO: P1-4 PROVE IT LIVE — ATS PORTAL SUBMISSION SUITE")
     print("=" * 80)
 
-    # Use a clean test run timestamp so dedup doesn't skip our live verification
-    filler = CareerPortalFiller()
+    # Use isolated test DB so prior runs don't prematurely dedup-skip the live probe
+    filler = CareerPortalFiller(db_path=db_path)
     # Bypass dedup specifically for this verification run by checking custom DB or allowing re-evaluation
     results = []
 
