@@ -3,9 +3,9 @@
   "tenants": {
     "workday:example": {
       "tenant_key": "workday:example",
-      "email": "lav84095@gmail.com",
+      "email": "you@example.com",
       "password": "REPLACE_WITH_GENERATED_OR_REAL",
-      "created_at": "2026-11-03 00:00:00",
+      "created_at": null,
       "last_login_at": null,
       "verified": false,
       "reset_count_total": 0,

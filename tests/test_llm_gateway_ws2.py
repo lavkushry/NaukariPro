@@ -76,7 +76,12 @@ def test_schema_validator_rejects_extra_and_missing():
 
 
 def test_spend_ledger_cap(tmp_path):
-    ledger = SpendLedger(path=tmp_path / "ledger.jsonl", monthly_cap_usd=0.001, alert_at_usd=0.0005)
+    ledger = SpendLedger(
+        path=tmp_path / "ledger.jsonl",
+        monthly_cap_usd=0.001,
+        alert_at_usd=0.0005,
+        enable_sqlite=False,
+    )
     from naukari_pro.llm.ledger import SpendEntry
     from datetime import datetime, timezone
 
@@ -136,7 +141,7 @@ def test_gateway_replay_zero_live_calls(tmp_path):
     }
     cache = ResponseCache(cache_dir=tmp_path / "cache")
     cache.put(spec.prompt_version_key, input_hash, fixture)
-    ledger = SpendLedger(path=tmp_path / "ledger.jsonl", monthly_cap_usd=25.0)
+    ledger = SpendLedger(path=tmp_path / "ledger.jsonl", monthly_cap_usd=25.0, enable_sqlite=False)
 
     class BoomClient:
         def complete(self, *a, **k):
@@ -169,7 +174,7 @@ def test_gateway_replay_zero_live_calls(tmp_path):
 def test_gateway_replay_miss_raises(tmp_path):
     gw = LLMGateway(
         cache=ResponseCache(cache_dir=tmp_path / "empty"),
-        ledger=SpendLedger(path=tmp_path / "l.jsonl"),
+        ledger=SpendLedger(path=tmp_path / "l.jsonl", enable_sqlite=False),
         mode="replay",
     )
     with pytest.raises(FileNotFoundError):

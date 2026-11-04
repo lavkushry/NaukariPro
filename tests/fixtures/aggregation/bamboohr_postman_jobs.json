@@ -1,0 +1,22 @@
+{
+  "result": [
+    {
+      "id": "512",
+      "jobOpeningName": "Senior MLOps & Infrastructure Engineer",
+      "jobOpeningShareUrl": "https://postman.bamboohr.com/careers/512",
+      "location": {
+        "city": "Bengaluru",
+        "name": "Bengaluru, India"
+      },
+      "departmentLabel": "Cloud Operations",
+      "employmentStatusLabel": "Full-Time"
+    },
+    {
+      "id": "513",
+      "jobOpeningName": "DevOps Platform Engineer",
+      "jobOpeningShareUrl": "https://postman.bamboohr.com/careers/513",
+      "departmentLabel": "Site Reliability Engineering",
+      "employmentStatusLabel": "Full-Time"
+    }
+  ]
+}

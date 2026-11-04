@@ -62,18 +62,32 @@ class NormalizedJob:
     salary: Optional[str] = None
     experience_required: Optional[str] = None
     raw_metadata: Dict[str, Any] = field(default_factory=dict)
+    # v2 NormalizedJob extensions (jobRadar / master prompt §4.3)
+    apply_url: Optional[str] = None
+    description_hash: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    salary_currency: Optional[str] = None
+    salary_interval: Optional[str] = None
+    status: str = "active"  # active | removed | updated
 
     def __post_init__(self) -> None:
         self.url = normalize_job_url(self.url)
+        if self.apply_url:
+            self.apply_url = normalize_job_url(self.apply_url)
         now = utc_now_iso()
         self.first_seen_at = self.first_seen_at or now
         self.last_seen_at = self.last_seen_at or now
+        if not self.description_hash and self.description_full:
+            self.description_hash = content_hash_text(self.description_full)
         if not self.content_hash:
             self.content_hash = content_hash_text(
                 self.title, self.company, self.description_full, self.url
             )
         if self.departments is None:
             self.departments = []
+        if not self.is_active and self.status == "active":
+            self.status = "removed"
 
     @property
     def ats_job_key(self) -> str:

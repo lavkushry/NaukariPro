@@ -65,6 +65,17 @@ class TrackingStore:
                 CREATE INDEX IF NOT EXISTS idx_app_ats ON applications(ats);
                 """
             )
+            # Day-1 north-star segmentation columns (idempotent)
+            cols = {
+                r[1]
+                for r in conn.execute("PRAGMA table_info(applications)").fetchall()
+            }
+            if "resume_version" not in cols:
+                conn.execute("ALTER TABLE applications ADD COLUMN resume_version TEXT")
+            if "answer_template" not in cols:
+                conn.execute("ALTER TABLE applications ADD COLUMN answer_template TEXT")
+            if "board_slug" not in cols:
+                conn.execute("ALTER TABLE applications ADD COLUMN board_slug TEXT")
 
     def upsert_application(self, job: Dict[str, Any], *, status: str = ApplicationStatus.SAVED.value) -> int:
         now = _now()
@@ -192,4 +203,78 @@ class TrackingStore:
         return {
             (r["ats"] or "unknown"): (float(r["rej"]) / float(r["total"]) if r["total"] else 0.0)
             for r in rows
+        }
+
+    def screen_pass_rate(self) -> Dict[str, Any]:
+        """
+        North-star: recruiter screens ÷ submitted applications.
+        Segmented by board (ats), resume_version, answer_template.
+        screening+ statuses count as a screen pass.
+        """
+        # Align with ApplicationStatus enum values
+        screen_statuses = ("screening", "interview", "offer")
+        submitted_statuses = ("applied", "screening", "interview", "offer", "rejected")
+        with self._connect() as conn:
+            submitted = conn.execute(
+                f"""
+                SELECT COUNT(*) c FROM applications
+                WHERE status IN ({",".join("?" for _ in submitted_statuses)})
+                """,
+                submitted_statuses,
+            ).fetchone()["c"]
+            screened = conn.execute(
+                f"""
+                SELECT COUNT(*) c FROM applications
+                WHERE status IN ({",".join("?" for _ in screen_statuses)})
+                """,
+                screen_statuses,
+            ).fetchone()["c"]
+            by_ats = conn.execute(
+                """
+                SELECT COALESCE(ats,'unknown') AS dim,
+                       SUM(CASE WHEN status IN ('screening','interview','offer') THEN 1 ELSE 0 END) AS screens,
+                       SUM(CASE WHEN status IN ('applied','screening','interview','offer','rejected') THEN 1 ELSE 0 END) AS submitted
+                FROM applications
+                GROUP BY dim
+                """
+            ).fetchall()
+            by_resume = conn.execute(
+                """
+                SELECT COALESCE(resume_version,'default') AS dim,
+                       SUM(CASE WHEN status IN ('screening','interview','offer') THEN 1 ELSE 0 END) AS screens,
+                       SUM(CASE WHEN status IN ('applied','screening','interview','offer','rejected') THEN 1 ELSE 0 END) AS submitted
+                FROM applications
+                GROUP BY dim
+                """
+            ).fetchall()
+            by_template = conn.execute(
+                """
+                SELECT COALESCE(answer_template,'default') AS dim,
+                       SUM(CASE WHEN status IN ('screening','interview','offer') THEN 1 ELSE 0 END) AS screens,
+                       SUM(CASE WHEN status IN ('applied','screening','interview','offer','rejected') THEN 1 ELSE 0 END) AS submitted
+                FROM applications
+                GROUP BY dim
+                """
+            ).fetchall()
+
+        def _seg(rows):
+            out = {}
+            for r in rows:
+                sub = int(r["submitted"] or 0)
+                scr = int(r["screens"] or 0)
+                out[str(r["dim"])] = {
+                    "screens": scr,
+                    "submitted": sub,
+                    "rate": (scr / sub) if sub else None,
+                }
+            return out
+
+        overall = (float(screened) / float(submitted)) if submitted else None
+        return {
+            "screens": int(screened),
+            "submitted": int(submitted),
+            "rate": overall,
+            "by_board": _seg(by_ats),
+            "by_resume_version": _seg(by_resume),
+            "by_answer_template": _seg(by_template),
         }

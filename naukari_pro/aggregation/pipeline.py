@@ -74,7 +74,7 @@ class AggregationPipeline:
     def seed_sources(self, path: Optional[Path] = None) -> int:
         p = Path(path) if path else self.sources_path
         raw = json.loads(p.read_text(encoding="utf-8"))
-        count = 0
+        seen_ids = set()
         for row in raw:
             rec = SourceRecord(
                 company=row["company"],
@@ -93,8 +93,8 @@ class AggregationPipeline:
                     "active": rec.active,
                 }
             )
-            count += 1
-        return count
+            seen_ids.add(rec.source_id)
+        return len(seen_ids)
 
     def _lock_for(self, source_id: str) -> asyncio.Lock:
         if source_id not in self._locks:

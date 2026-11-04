@@ -34,15 +34,21 @@ venv.bak/
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
 *.key
 *.pem
 *.tmp
+*.p12
+*.pfx
 portal_accounts.json
 portal_accounts.tmp
 cookies_seed.json
 *cookie*.json
+*session*.json
 naukri_system/cookies_seed.json
 naukri_system/browser_session/
+naukri_system/config.local.json
 linkedin_system/session_cookies.json
 linkedin_system/cookies_seed.json
 linkedin_system/browser_session/
@@ -53,6 +59,15 @@ linkedin_applications_log.json
 skip_list_linkedin.json
 ~/.naukri_system_profile/
 .naukri_system_profile/
+# Aggregation / LLM local state
+naukari_pro/aggregation.db
+naukari_pro/.llm_cache/
+naukari_pro/governed_apply.db
+naukari_pro/tracking.db
+naukari_pro/notifications.db
+applied_jobs.db
+*.sqlite
+*.sqlite3
 
 # Operating System Files
 .DS_Store

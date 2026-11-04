@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 
 # Host patterns that imply ATS type + board id extraction
+# Host-local capture groups — never use leading ([^.]+) against full URLs (would eat "https://slug").
 ATS_HOST_PATTERNS = [
     (r"boards(?:-api)?\.greenhouse\.io/([^/?#]+)", "greenhouse", 1),
     (r"job-boards\.greenhouse\.io/([^/?#]+)", "greenhouse", 1),
@@ -25,10 +26,15 @@ ATS_HOST_PATTERNS = [
     (r"api\.ashbyhq\.com/posting-api/job-board/([^/?#]+)", "ashby", 1),
     (r"jobs\.lever\.co/([^/?#]+)", "lever", 1),
     (r"api\.lever\.co/v0/postings/([^/?#]+)", "lever", 1),
-    (r"([^.]+)\.bamboohr\.com", "bamboohr", 1),
-    (r"([^.]+)\.pinpointhq\.com", "pinpoint", 1),
-    (r"([^.]+)\.recruitee\.com", "recruitee", 1),
+    (r"(?:https?://)?([a-z0-9-]+)\.bamboohr\.com", "bamboohr", 1),
+    (r"(?:https?://)?([a-z0-9-]+)\.pinpointhq\.com", "pinpoint", 1),
+    (r"(?:https?://)?([a-z0-9-]+)\.recruitee\.com", "recruitee", 1),
     (r"apply\.workable\.com/([^/?#]+)", "workable", 1),
+    (r"jobs\.smartrecruiters\.com/([^/?#]+)", "smartrecruiters", 1),
+    (r"(?:https?://)?([a-z0-9-]+)\.myworkdayjobs\.com", "workday", 1),
+    (r"wd\d+\.myworkdayjobs\.com/[^/]+/([^/?#]+)", "workday", 1),
+    (r"(?:https?://)?([a-z0-9-]+)\.keka\.com", "keka", 1),
+    (r"(?:https?://)?([a-z0-9-]+)\.teamtailor\.com", "teamtailor", 1),
 ]
 
 

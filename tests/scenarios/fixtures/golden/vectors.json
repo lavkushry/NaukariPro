@@ -1,0 +1,32 @@
+{
+  "url_pairs": [
+    [
+      "https://Boards.Greenhouse.io/Acme/jobs/1/?utm_source=x&gclid=abc",
+      "https://boards.greenhouse.io/Acme/jobs/1"
+    ],
+    [
+      "http://boards.ashbyhq.com/x/y/",
+      "http://boards.ashbyhq.com/x/y"
+    ]
+  ],
+  "decay_vectors": [
+    {
+      "weight": 1.0,
+      "strength": 1.0,
+      "age_days": 0,
+      "expected": 1.0
+    },
+    {
+      "weight": 1.0,
+      "strength": 1.0,
+      "age_days": 45,
+      "expected": 0.5
+    },
+    {
+      "weight": 2.0,
+      "strength": 0.5,
+      "age_days": 90,
+      "expected": 0.25
+    }
+  ]
+}

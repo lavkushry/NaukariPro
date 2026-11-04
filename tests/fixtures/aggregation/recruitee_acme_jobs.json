@@ -1,0 +1,27 @@
+{
+  "offers": [
+    {
+      "id": 847291,
+      "title": "Lead MLOps Engineer",
+      "careers_url": "https://acme-ai.recruitee.com/o/lead-mlops-engineer",
+      "location": "Amsterdam, North Holland, Netherlands",
+      "remote": true,
+      "department": "Platform Engineering",
+      "description": "<h3>The Role</h3><p>Design and manage Kubernetes-based machine learning pipelines with MLflow, Ray, and Triton.</p>",
+      "requirements": "<ul><li>5+ years Linux/Kubernetes experience</li><li>Strong Python and Terraform</li></ul>",
+      "employment_type_code": "full_time",
+      "published_at": "2026-10-14T11:00:00Z"
+    },
+    {
+      "id": 847292,
+      "title": "DevOps Engineer",
+      "careers_url": "https://acme-ai.recruitee.com/o/devops-engineer",
+      "location": "Berlin, Germany",
+      "remote": false,
+      "department": "Infrastructure",
+      "description": "<p>Maintain CI/CD pipelines with GitHub Actions and ArgoCD.</p>",
+      "employment_type_code": "full_time",
+      "created_at": "2026-10-15T09:00:00Z"
+    }
+  ]
+}

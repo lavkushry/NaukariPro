@@ -1,0 +1,21 @@
+{
+  "total": 2,
+  "jobPostings": [
+    {
+      "title": "Senior AI Infrastructure Engineer",
+      "externalPath": "/job/Santa-Clara-CA/Senior-AI-Infrastructure-Engineer_JR1982730",
+      "bulletFields": ["JR1982730"],
+      "locationsText": "Santa Clara, CA, USA",
+      "postedOn": "Posted 5 Days Ago",
+      "jobDescription": "Build high-performance computing clusters with NVIDIA DGX SuperPOD, Slurm, and Kubernetes. Deploy Triton Inference Server for multi-GPU low-latency inference."
+    },
+    {
+      "title": "MLOps Systems Architect",
+      "externalPath": "/job/Remote-US/MLOps-Systems-Architect_JR1985421",
+      "bulletFields": ["JR1985421"],
+      "locationsText": "Remote, USA",
+      "postedOn": "Posted 2 Days Ago",
+      "jobDescription": null
+    }
+  ]
+}

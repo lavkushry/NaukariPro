@@ -1,0 +1,21 @@
+{
+  "jobs": [
+    {
+      "id": "2026-10492",
+      "title": "Lead Cloud & MLOps Infrastructure Engineer",
+      "url": "https://careers-bloomberg.icims.com/jobs/2026-10492/lead-cloud-mlops-infrastructure-engineer/job",
+      "location": {
+        "label": "New York, NY",
+        "name": "New York City"
+      },
+      "updatedDate": "2026-10-18T14:00:00Z"
+    },
+    {
+      "jobId": "2026-10493",
+      "jobTitle": "DevOps Infrastructure Engineer",
+      "overviewUrl": "https://careers-bloomberg.icims.com/jobs/2026-10493/devops-infrastructure-engineer/job",
+      "jobLocation": "Princeton, NJ",
+      "postedDate": "2026-10-19T09:30:00Z"
+    }
+  ]
+}

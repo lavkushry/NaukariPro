@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": "1849201",
+      "type": "jobs",
+      "attributes": {
+        "title": "Principal MLOps Engineer",
+        "url": "https://careers.spotify-partner.com/jobs/1849201-principal-mlops-engineer",
+        "location": "Stockholm, Sweden",
+        "remote-status": "fully",
+        "body": "<div>Lead our AI platform team. Automate large-scale model training and vLLM inference gateways.</div>",
+        "created-at": "2026-10-11T13:20:00Z",
+        "start-date": "2026-11-01"
+      }
+    },
+    {
+      "id": "1849202",
+      "type": "jobs",
+      "attributes": {
+        "title": "Cloud Infrastructure Architect",
+        "careers-url": "https://careers.spotify-partner.com/jobs/1849202-cloud-infrastructure-architect",
+        "location": {
+          "name": "London, UK"
+        },
+        "remote-status": "hybrid",
+        "description": "<p>Design resilient multi-cloud architectures across GCP and AWS.</p>",
+        "created-at": "2026-10-12T15:45:00Z"
+      }
+    }
+  ]
+}

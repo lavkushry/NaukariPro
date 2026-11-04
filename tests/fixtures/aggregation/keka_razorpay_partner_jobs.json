@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "id": "e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b",
+      "title": "Senior DevOps & Cloud Engineer",
+      "url": "https://razorpay-partner.keka.com/careers/jobdetails/e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b",
+      "location": {
+        "name": "Bengaluru, Karnataka",
+        "city": "Bengaluru"
+      },
+      "description": "<p>Manage AWS EKS Kubernetes clusters, Helm charts, and Terraform IAC modules.</p>",
+      "postedOn": "2026-10-17T08:00:00Z"
+    },
+    {
+      "jobId": "f5a6b7c8-9d0e-1f2a-3b4c-5d6e7f8a9b0c",
+      "jobTitle": "Platform Security & SRE Engineer",
+      "jobLocation": "Mumbai, India",
+      "jobDescription": "<p>Implement zero-trust security policies, Istio service mesh, and Vault secret management.</p>",
+      "createdOn": "2026-10-18T10:00:00Z"
+    }
+  ]
+}

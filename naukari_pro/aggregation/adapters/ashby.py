@@ -19,12 +19,18 @@ class AshbyAdapter(BaseATSAdapter):
         board = source.board_identifier.strip()
         if not board:
             return FetchResult(error="missing board_identifier")
-        url = ASHBY_JOB_BOARD.format(board=board)
+        base = ASHBY_JOB_BOARD.format(board=board)
+        url = base + ("&" if "?" in base else "?") + "includeCompensation=true"
         code, data = await http_json(url, timeout=self.timeout)
         if code == 404:
             return FetchResult(status_code=404, board_missing=True, error="board not found")
         if code != 200:
-            return FetchResult(status_code=code, error=f"ashby http {code}")
+            # Fallback without compensation query param
+            code, data = await http_json(base, timeout=self.timeout)
+            if code == 404:
+                return FetchResult(status_code=404, board_missing=True, error="board not found")
+            if code != 200:
+                return FetchResult(status_code=code, error=f"ashby http {code}")
 
         jobs_raw: List[Dict[str, Any]] = []
         if isinstance(data, dict):
@@ -34,17 +40,22 @@ class AshbyAdapter(BaseATSAdapter):
 
         out = []
         for j in jobs_raw:
+            # Ashby: skip explicitly unlisted postings
+            if j.get("isListed") is False:
+                continue
             jid = str(j.get("id") or j.get("jobId") or j.get("jobPostingId") or "")
             if not jid:
                 continue
             title = j.get("title") or j.get("jobTitle") or ""
-            abs_url = j.get("jobUrl") or j.get("applyUrl") or j.get("url") or ""
+            apply_url = j.get("applyUrl") or None
+            abs_url = j.get("jobUrl") or apply_url or j.get("url") or ""
             if not abs_url and source.domain:
                 abs_url = f"https://jobs.ashbyhq.com/{board}/{jid}"
             loc = j.get("location")
             if isinstance(loc, dict):
                 loc = loc.get("name") or loc.get("locationName")
-            desc = j.get("descriptionHtml") or j.get("descriptionPlain") or j.get("description")
+            # Prefer plain text for ATS / grounding pipelines
+            desc = j.get("descriptionPlain") or j.get("descriptionHtml") or j.get("description")
             departments = []
             dept = j.get("department") or j.get("team")
             if isinstance(dept, str):
@@ -54,27 +65,50 @@ class AshbyAdapter(BaseATSAdapter):
             remote = j.get("isRemote") if "isRemote" in j else None
             # Compensation only if Ashby returns it — never invent
             salary = None
+            salary_min = salary_max = salary_currency = salary_interval = None
             comp = j.get("compensation") or j.get("compensationTierSummary")
             if isinstance(comp, str) and comp.strip():
                 salary = comp.strip()
-            out.append(
-                self.normalize_common(
-                    external_job_id=jid,
-                    source=source,
-                    company=source.company,
-                    title=title,
-                    url=abs_url,
-                    location=loc if isinstance(loc, str) else None,
-                    remote=remote if isinstance(remote, bool) else None,
-                    description_full=desc if desc else None,
-                    departments=departments,
-                    published_at=j.get("publishedAt") or j.get("updatedAt"),
-                    employment_type=j.get("employmentType"),
-                    salary=salary,
-                    experience_required=None,
-                    raw={"ashby_id": jid},
-                )
+            comps = j.get("compensationTierSummary") or j.get("summaryComponents")
+            if isinstance(comps, list) and comps:
+                # Best-effort parse of Ashby summary components when present
+                for c in comps:
+                    if not isinstance(c, dict):
+                        continue
+                    if c.get("minValue") is not None and salary_min is None:
+                        try:
+                            salary_min = float(c["minValue"])
+                        except (TypeError, ValueError):
+                            pass
+                    if c.get("maxValue") is not None and salary_max is None:
+                        try:
+                            salary_max = float(c["maxValue"])
+                        except (TypeError, ValueError):
+                            pass
+                    salary_currency = salary_currency or c.get("currencyCode")
+                    salary_interval = salary_interval or c.get("interval") or c.get("period")
+            job = self.normalize_common(
+                external_job_id=jid,
+                source=source,
+                company=source.company,
+                title=title,
+                url=abs_url,
+                location=loc if isinstance(loc, str) else None,
+                remote=remote if isinstance(remote, bool) else None,
+                description_full=desc if desc else None,
+                departments=departments,
+                published_at=j.get("publishedAt") or j.get("updatedAt"),
+                employment_type=j.get("employmentType"),
+                salary=salary,
+                experience_required=None,
+                raw={"ashby_id": jid},
             )
+            job.apply_url = apply_url
+            job.salary_min = salary_min
+            job.salary_max = salary_max
+            job.salary_currency = salary_currency
+            job.salary_interval = salary_interval
+            out.append(job)
         return FetchResult(jobs=out, status_code=200)
 
     async def probe_closed(self, board: str, job_id: str) -> bool:

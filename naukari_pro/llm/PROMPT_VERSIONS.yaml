@@ -18,11 +18,11 @@ prompts:
     purpose: "Hiring-fit judge: evidence-gated coverage + weighted fit_score; downgrade when unsure"
 
   P3_resume_tailor:
-    version: "1.0.0"
+    version: "1.1.0"
     file: P3_resume_tailor.md
     schema: prompts/schemas/P3_resume_tailor.json
     temperature: 0
-    purpose: "Truth-preserving resume tailoring"
+    purpose: "Truth-preserving resume tailor with have/support/gap coverage + experience reorder"
 
   P4_application_answers:
     version: "1.1.0"
@@ -32,11 +32,11 @@ prompts:
     purpose: "Screening answers from profile only; ASK_USER when ungrounded or legal"
 
   P5_cover_letter:
-    version: "1.0.0"
+    version: "1.1.0"
     file: P5_cover_letter.md
     schema: prompts/schemas/P5_cover_letter.json
     temperature: 0.2
-    purpose: "Cover letter from facts only"
+    purpose: "Cover letter from facts only; auditable claims_used + unsupported_claims"
 
 defaults:
   monthly_cap_usd: 25.0

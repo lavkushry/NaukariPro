@@ -42,15 +42,27 @@ def load_config():
     search_settings = cfg.setdefault("search_settings", {})
     common_answers = cfg.setdefault("answers_to_common_questions", {})
 
-    # Overlay environment variables from .env if present
+    # Overlay identity from .env — never hardcode personal data in source
+    if os.getenv("CANDIDATE_NAME"):
+        candidate["name"] = os.getenv("CANDIDATE_NAME")
     if os.getenv("CANDIDATE_EMAIL"):
         candidate["email"] = os.getenv("CANDIDATE_EMAIL")
-    elif "email" not in candidate:
-        candidate["email"] = "lav84095@gmail.com"
+    elif not candidate.get("email"):
+        candidate["email"] = os.getenv("NAUKRI_EMAIL") or ""
+    if os.getenv("CANDIDATE_PHONE"):
+        candidate["phone"] = os.getenv("CANDIDATE_PHONE")
+    if os.getenv("CANDIDATE_LINKEDIN"):
+        candidate["linkedin"] = os.getenv("CANDIDATE_LINKEDIN")
+    if os.getenv("CANDIDATE_GITHUB"):
+        candidate["github"] = os.getenv("CANDIDATE_GITHUB")
+    if os.getenv("CANDIDATE_LOCATION"):
+        candidate["primary_location"] = os.getenv("CANDIDATE_LOCATION")
 
     if os.getenv("NAUKRI_EMAIL"):
         candidate["applicant_email"] = os.getenv("NAUKRI_EMAIL")
         candidate["naukri_email"] = os.getenv("NAUKRI_EMAIL")
+        if not candidate.get("email"):
+            candidate["email"] = os.getenv("NAUKRI_EMAIL")
     if os.getenv("TOTAL_EXPERIENCE"):
         try:
             candidate["total_experience_years"] = float(os.getenv("TOTAL_EXPERIENCE"))

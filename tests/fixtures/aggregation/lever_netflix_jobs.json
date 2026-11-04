@@ -1,0 +1,37 @@
+[
+  {
+    "id": "4b5d6e7f-8a9b-0c1d-2e3f-4a5b6c7d8e9f",
+    "text": "Senior ML Platform Engineer",
+    "hostedUrl": "https://jobs.lever.co/netflix/4b5d6e7f-8a9b-0c1d-2e3f-4a5b6c7d8e9f",
+    "applyUrl": "https://jobs.lever.co/netflix/4b5d6e7f-8a9b-0c1d-2e3f-4a5b6c7d8e9f/apply",
+    "categories": {
+      "location": "Los Gatos, CA",
+      "team": "Machine Learning Platform",
+      "commitment": "Full time"
+    },
+    "workplaceType": "remote",
+    "descriptionPlain": "We are seeking a Senior ML Platform Engineer to build distributed training systems.",
+    "description": "<p>We are seeking a Senior ML Platform Engineer to build distributed training systems.</p>",
+    "lists": [
+      {
+        "content": "Architect GPU clusters on AWS EKS and Kubernetes with vLLM and Ray."
+      }
+    ],
+    "createdAt": 1729000000000
+  },
+  {
+    "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "text": "Staff SRE / DevOps Engineer",
+    "hostedUrl": "https://jobs.lever.co/netflix/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "applyUrl": "https://jobs.lever.co/netflix/1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d/apply",
+    "categories": {
+      "location": "Remote, US",
+      "team": "Core Infrastructure",
+      "commitment": "Full time"
+    },
+    "workplaceType": "onsite",
+    "descriptionPlain": "Operate high-scale infrastructure and Terraform multi-region modules.",
+    "description": "<p>Operate high-scale infrastructure and Terraform multi-region modules.</p>",
+    "createdAt": 1729100000000
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "name": "Lavkush Kumar",
+  "email": "candidate@example.com",
+  "phone": "+91-9876543210",
+  "resume_text": "DevOps Engineer with Kubernetes Docker Terraform AWS. Reduced deployment time from 45 minutes to 12 minutes. AWS Cloud Practitioner. Notice period 30 days. Current CTC 18 LPA. Expected CTC 28 LPA.",
+  "certificates": [
+    "AWS Cloud Practitioner"
+  ],
+  "numbers": [
+    "45",
+    "12",
+    "30",
+    "18",
+    "28"
+  ],
+  "project_bullets": [
+    "Containerized 8 microservices on EKS with Helm.",
+    "Instrumented Prometheus Grafana SLOs at 99.5 percent uptime."
+  ]
+}

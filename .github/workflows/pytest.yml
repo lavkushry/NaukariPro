@@ -1,0 +1,48 @@
+name: pytest
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Offline unit tests (no live network required)
+        env:
+          NAUKARI_LLM_MODE: replay
+          CANDIDATE_NAME: CI Candidate
+          CANDIDATE_EMAIL: ci@example.com
+          CANDIDATE_PHONE: "+91-0000000000"
+        run: |
+          python -m pytest \
+            tests/test_aggregation_ws1.py \
+            tests/test_llm_gateway_ws2.py \
+            tests/test_matching_ws3.py \
+            tests/test_extract_p1.py \
+            tests/test_fit_judge_p2.py \
+            tests/test_resume_gen_ws4.py \
+            tests/test_governed_apply_ws5.py \
+            tests/test_tracking_ws6.py \
+            tests/test_screening_answers_p4.py \
+            -q --tb=line

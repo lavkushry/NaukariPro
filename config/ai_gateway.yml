@@ -1,0 +1,99 @@
+# Per-task model routing — change providers via env/config only (zero app-code changes).
+default_provider: groq
+paused_budget: false
+daily_cap_usd: 5.0
+monthly_cap_usd: 25.0
+
+providers:
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: AI_PROVIDER_GROQ_API_KEY
+    # fallback also accepts GROQ_API_KEY
+    default_model: llama-3.3-70b-versatile
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key_env: AI_PROVIDER_OPENAI_API_KEY
+    default_model: gpt-4o-mini
+  gemini:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: AI_PROVIDER_GEMINI_API_KEY
+    default_model: gemini-2.0-flash
+  anthropic:
+    base_url: https://api.anthropic.com/v1
+    api_key_env: AI_PROVIDER_ANTHROPIC_API_KEY
+    default_model: claude-sonnet-4-20250514
+    style: anthropic
+  xai:
+    base_url: https://api.x.ai/v1
+    api_key_env: AI_PROVIDER_XAI_API_KEY
+    default_model: grok-2-latest
+  deepseek:
+    base_url: https://api.deepseek.com/v1
+    api_key_env: AI_PROVIDER_DEEPSEEK_API_KEY
+    default_model: deepseek-chat
+  mistral:
+    base_url: https://api.mistral.ai/v1
+    api_key_env: AI_PROVIDER_MISTRAL_API_KEY
+    default_model: mistral-small-latest
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: AI_PROVIDER_OPENROUTER_API_KEY
+    default_model: openai/gpt-4o-mini
+  ollama:
+    base_url: http://127.0.0.1:11434/v1
+    api_key_env: AI_PROVIDER_OLLAMA_API_KEY
+    default_model: llama3.2
+  compat:
+    base_url_env: AI_PROVIDER_COMPAT_BASE_URL
+    api_key_env: AI_PROVIDER_COMPAT_API_KEY
+    default_model_env: AI_PROVIDER_COMPAT_MODEL
+
+tasks:
+  jd_extract:
+    provider: groq
+    model: llama-3.1-8b-instant
+    fallbacks: [gemini, openai]
+    timeout_s: 45
+    max_cost_usd: 0.02
+    prompt_id: P1_jd_structure
+  match_score:
+    provider: groq
+    model: llama-3.3-70b-versatile
+    fallbacks: [gemini, openai]
+    timeout_s: 60
+    max_cost_usd: 0.05
+    prompt_id: P2_fit_score
+  resume_tailor:
+    provider: openai
+    model: gpt-4o-mini
+    fallbacks: [anthropic, groq, gemini]
+    timeout_s: 90
+    max_cost_usd: 0.15
+    prompt_id: P3_resume_tailor
+  cover_letter:
+    provider: openai
+    model: gpt-4o-mini
+    fallbacks: [anthropic, groq]
+    timeout_s: 90
+    max_cost_usd: 0.10
+    prompt_id: P5_cover_letter
+  answer_draft:
+    provider: groq
+    model: llama-3.3-70b-versatile
+    fallbacks: [gemini, openai]
+    timeout_s: 60
+    max_cost_usd: 0.05
+    prompt_id: P4_application_answers
+  answer_vet:
+    provider: groq
+    model: llama-3.1-8b-instant
+    fallbacks: [gemini]
+    timeout_s: 30
+    max_cost_usd: 0.02
+    prompt_id: P4_application_answers
+  market_scan:
+    provider: groq
+    model: llama-3.1-8b-instant
+    fallbacks: [ollama, gemini]
+    timeout_s: 45
+    max_cost_usd: 0.02

@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "id": 93821,
+      "key": "pin_93821",
+      "title": "Staff AI Platform Engineer",
+      "url": "https://rebellion-defense.pinpointhq.com/postings/93821",
+      "location": {
+        "name": "Washington, DC"
+      },
+      "description": "<div>Deploy mission-critical LLM inference pipelines using Kubernetes, TensorRT-LLM, and vLLM.</div>",
+      "key_responsibilities": "<p>Maintain 99.99% availability of inference endpoints.</p>",
+      "created_at": "2026-10-08T16:00:00Z"
+    },
+    {
+      "id": 93822,
+      "title": "DevOps / Reliability Engineer",
+      "careers_url": "https://rebellion-defense.pinpointhq.com/postings/93822",
+      "workplace_type": "Remote, US",
+      "description": "<p>Manage multi-cluster Kubernetes infrastructure and Prometheus/Grafana monitoring stacks.</p>",
+      "published_at": "2026-10-09T10:30:00Z"
+    }
+  ]
+}

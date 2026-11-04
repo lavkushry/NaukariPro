@@ -1,0 +1,33 @@
+{
+  "jobs": [
+    {
+      "id": "e3a84b12-9876-4abc-8def-123456789abc",
+      "title": "Senior MLOps / Platform Engineer",
+      "jobUrl": "https://jobs.ashbyhq.com/anthropic/e3a84b12-9876-4abc-8def-123456789abc",
+      "location": "San Francisco, CA",
+      "department": "Infrastructure & Platform",
+      "isRemote": true,
+      "descriptionHtml": "<h2>About the Role</h2><p>Scale Kubernetes clusters and vLLM inference gateways for large foundation model training and high-throughput production serving.</p><h3>Key Responsibilities</h3><ul><li>Manage multi-tenant Kubernetes clusters on AWS EKS and GCP GKE.</li><li>Build model serving infrastructure using vLLM, Triton, and Ray Serve.</li><li>Implement CI/CD automation with ArgoCD and GitHub Actions.</li><li>Configure Prometheus and Grafana alerting for model latency SLOs.</li></ul>",
+      "compensation": "$180,000 - $240,000 USD",
+      "employmentType": "FullTime",
+      "publishedAt": "2026-10-15T18:00:00.000Z"
+    },
+    {
+      "jobId": "f7b12c34-5678-4def-9abc-987654321def",
+      "jobTitle": "Data Infrastructure Engineer",
+      "applyUrl": "https://jobs.ashbyhq.com/anthropic/f7b12c34-5678-4def-9abc-987654321def/apply",
+      "location": {
+        "name": "New York, NY",
+        "locationName": "New York, NY"
+      },
+      "team": {
+        "name": "Data Engineering"
+      },
+      "isRemote": false,
+      "descriptionPlain": "Build streaming pipelines with Kafka, Spark, and Delta Lake. Maintain zero-loss data replication across multi-region cloud storage.",
+      "compensationTierSummary": "$170,000 - $220,000 USD",
+      "employmentType": "FullTime",
+      "updatedAt": "2026-10-16T12:00:00.000Z"
+    }
+  ]
+}

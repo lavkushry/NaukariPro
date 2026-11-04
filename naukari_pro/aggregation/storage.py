@@ -102,8 +102,23 @@ class AggregationStore:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
 
-    def upsert_source(self, source: Dict[str, Any]) -> None:
+    def upsert_source(self, source: Any) -> None:
         now = utc_now_iso()
+        if hasattr(source, "__dataclass_fields__") or not isinstance(source, dict):
+            src_dict = {
+                "source_id": getattr(source, "source_id", f"{getattr(source, 'ats_type')}:{getattr(source, 'board_identifier')}"),
+                "company": getattr(source, "company", "Unknown"),
+                "ats_type": getattr(source, "ats_type", "unknown"),
+                "board_identifier": getattr(source, "board_identifier", ""),
+                "domain": getattr(source, "domain", None),
+                "active": getattr(source, "active", True),
+                "last_checked_at": getattr(source, "last_checked_at", None),
+                "consecutive_empty": getattr(source, "consecutive_empty", 0),
+                "backoff_until": getattr(source, "backoff_until", None),
+            }
+        else:
+            src_dict = source
+
         with self._connect() as conn:
             conn.execute(
                 """
@@ -119,18 +134,23 @@ class AggregationStore:
                     active=excluded.active
                 """,
                 (
-                    source["source_id"],
-                    source["company"],
-                    source["ats_type"],
-                    source["board_identifier"],
-                    source.get("domain"),
-                    1 if source.get("active", True) else 0,
-                    source.get("last_checked_at"),
-                    int(source.get("consecutive_empty") or 0),
-                    source.get("backoff_until"),
+                    src_dict["source_id"],
+                    src_dict["company"],
+                    src_dict["ats_type"],
+                    src_dict["board_identifier"],
+                    src_dict.get("domain"),
+                    1 if src_dict.get("active", True) else 0,
+                    src_dict.get("last_checked_at"),
+                    int(src_dict.get("consecutive_empty") or 0),
+                    src_dict.get("backoff_until"),
                     now,
                 ),
             )
+
+    def list_sources(self) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM sources ORDER BY company").fetchall()
+        return [dict(r) for r in rows]
 
     def list_active_sources(self, *, include_quiet_every_n: int = 3, cycle: int = 0) -> List[Dict[str, Any]]:
         now = utc_now_iso()
@@ -300,6 +320,19 @@ class AggregationStore:
                 (limit,),
             ).fetchall()
         return [self._row_to_job(r) for r in rows]
+
+    def get_job(self, ats_job_key: str) -> Optional[NormalizedJob]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE ats_job_key=?",
+                (ats_job_key,),
+            ).fetchone()
+            if row is None:
+                row = conn.execute(
+                    "SELECT * FROM jobs WHERE external_job_id=?",
+                    (ats_job_key,),
+                ).fetchone()
+        return self._row_to_job(row) if row else None
 
     def stats(self) -> Dict[str, int]:
         with self._connect() as conn:

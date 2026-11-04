@@ -236,23 +236,73 @@ def handle_match_eval(args: argparse.Namespace) -> int:
 def handle_llm_status(args: argparse.Namespace) -> int:
     from naukari_pro.llm.gateway import LLMGateway
     from naukari_pro.llm.registry import PromptRegistry
-    from naukari_pro.llm.client import OpenAICompatibleClient
 
     reg = PromptRegistry()
     gw = LLMGateway(registry=reg, mode=getattr(args, "mode", None))
-    client = OpenAICompatibleClient()
+    st = gw.status()
     print(BANNER)
-    print("=== WS2 LLM Gateway Status ===")
-    print(f"Mode           : {gw.mode}")
-    print(f"Registered     : {', '.join(reg.list_ids())}")
-    print(f"Available chain: {', '.join(e.model_key for e in client.available_chain()) or '(none — set API keys)'}")
-    summary = gw.ledger.summary()
-    print(f"Month spend    : ${summary['spent_usd']:.6f} / ${summary['cap_usd']:.2f}")
-    print(f"Alert at       : ${summary['alert_at_usd']:.2f}")
-    print(f"Ledger         : {summary['ledger_path']}")
+    print("=== AI Gateway Status (M1) ===")
+    print(f"Mode              : {st['mode']}")
+    print(f"Default provider  : {st['default_provider']}")
+    print(f"Available         : {', '.join(st['available_providers']) or '(none — set AI_PROVIDER_*_API_KEY)'}")
+    print(f"Registered prompts: {', '.join(st['prompts'])}")
+    print(f"Routed tasks      : {', '.join(st['tasks'])}")
+    summary = st["ledger"]
+    print(f"Month spend       : ${summary['spent_usd']:.6f} / ${summary['cap_usd']:.2f}")
+    print(f"Day spend         : ${summary.get('day_spent_usd', 0):.6f} / ${summary.get('daily_cap_usd', 0):.2f}")
+    print(f"paused_budget     : {summary.get('paused_budget')}")
+    print(f"deterministic_only: {summary.get('deterministic_only')}")
+    print(f"Ledger            : {summary['ledger_path']}")
     if summary.get("alerts"):
         for a in summary["alerts"]:
             print(f"ALERT: {a}")
+    return 0
+
+
+def handle_mcp(args: argparse.Namespace) -> int:
+    from naukari_pro.mcp.server import main as mcp_main
+
+    if getattr(args, "http", False):
+        port = int(getattr(args, "port", 7432) or 7432)
+        return mcp_main(["http", str(port)])
+    if getattr(args, "list_tools", False):
+        from naukari_pro.mcp.server import list_tools
+        import json as _json
+
+        print(_json.dumps(list_tools(), indent=2))
+        return 0
+    return mcp_main([])
+
+
+def handle_api_serve(args: argparse.Namespace) -> int:
+    """Serve OpenAPI REST mirror of MCP tools."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("uvicorn required: pip install uvicorn fastapi")
+        return 1
+    from naukari_pro.api.app import create_api_app
+
+    host = getattr(args, "host", "127.0.0.1") or "127.0.0.1"
+    port = int(getattr(args, "port", 8000) or 8000)
+    app = create_api_app()
+    print(BANNER)
+    print(f"NaukariPro OpenAPI on http://{host}:{port}  (docs at /docs)")
+    uvicorn.run(app, host=host, port=port)
+    return 0
+
+
+def handle_boards_import(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    from naukari_pro.aggregation.boards_registry import import_boards_csv
+    from naukari_pro.aggregation.storage import AggregationStore
+
+    db_path = Path(args.db) if getattr(args, "db", None) else None
+    csv_path = Path(args.csv) if getattr(args, "csv", None) else None
+    store = AggregationStore(db_path=db_path) if db_path else AggregationStore()
+    n = import_boards_csv(csv_path, store=store)
+    print(BANNER)
+    print(f"Imported {n} boards into {store.db_path}")
     return 0
 
 
@@ -1808,12 +1858,37 @@ def main():
     ingest_parser.add_argument("--no-seed", action="store_true", help="Skip reseeding sources.json")
     ingest_parser.add_argument("--db", type=str, default=None, help="Optional aggregation SQLite path")
 
+    boards_parser = subparsers.add_parser(
+        "boards-import",
+        help="M2: import config/boards.csv registry into aggregation sources",
+        parents=[common_parser],
+    )
+    boards_parser.add_argument("--csv", type=str, default=None, help="Path to boards.csv")
+    boards_parser.add_argument("--db", type=str, default=None, help="Optional aggregation SQLite path")
+
     llm_parser = subparsers.add_parser(
         "llm-status",
-        help="WS2: show LLM prompt registry, spend ledger, and cache mode",
+        help="M1/WS2: show AI gateway providers, task routes, spend ledger, and cache mode",
         parents=[common_parser],
     )
     llm_parser.add_argument("--mode", type=str, default=None, help="Override NAUKARI_LLM_MODE")
+
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="M1: run NaukariPro MCP server (stdio) or localhost HTTP bridge",
+        parents=[common_parser],
+    )
+    mcp_parser.add_argument("--http", action="store_true", help="Serve HTTP on 127.0.0.1 (default port 7432)")
+    mcp_parser.add_argument("--port", type=int, default=7432, help="HTTP port when --http is set")
+    mcp_parser.add_argument("--list-tools", action="store_true", help="Print tool schemas and exit")
+
+    api_parser = subparsers.add_parser(
+        "api-serve",
+        help="M1: OpenAPI REST mirror of MCP tools (FastAPI /docs)",
+        parents=[common_parser],
+    )
+    api_parser.add_argument("--host", type=str, default="127.0.0.1")
+    api_parser.add_argument("--port", type=int, default=8000)
 
     match_parser = subparsers.add_parser(
         "match-eval",
@@ -1999,8 +2074,14 @@ def main():
         )
     elif args.command == "ingest-jobs":
         sys.exit(handle_ingest_jobs(args))
+    elif args.command == "boards-import":
+        sys.exit(handle_boards_import(args))
     elif args.command == "llm-status":
         sys.exit(handle_llm_status(args))
+    elif args.command == "mcp":
+        sys.exit(handle_mcp(args))
+    elif args.command == "api-serve":
+        sys.exit(handle_api_serve(args))
     elif args.command == "match-eval":
         sys.exit(handle_match_eval(args))
     elif args.command == "resume-gen":

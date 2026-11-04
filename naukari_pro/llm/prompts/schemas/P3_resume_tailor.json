@@ -1,10 +1,51 @@
 {
   "type": "object",
-  "required": ["tailored_sections", "gaps_reported", "keywords_mirrored"],
+  "required": [
+    "tailored_sections",
+    "gaps_reported",
+    "keywords_mirrored",
+    "keyword_coverage"
+  ],
   "additionalProperties": false,
   "properties": {
-    "tailored_sections": {"type": "array", "items": {"type": "object"}},
+    "summary": {"type": "string"},
+    "tailored_sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "content"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {"type": "string"},
+          "content": {}
+        }
+      }
+    },
+    "experience": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "company": {"type": "string"},
+          "title": {"type": "string"},
+          "bullets": {"type": "array", "items": {"type": "string"}},
+          "relevance": {"type": "number"}
+        }
+      }
+    },
+    "skills_ordered": {"type": "array", "items": {"type": "string"}},
     "gaps_reported": {"type": "array", "items": {"type": "string"}},
-    "keywords_mirrored": {"type": "array", "items": {"type": "string"}}
+    "keywords_mirrored": {"type": "array", "items": {"type": "string"}},
+    "keyword_coverage": {
+      "type": "object",
+      "required": ["have", "support", "gap"],
+      "additionalProperties": false,
+      "properties": {
+        "have": {"type": "array", "items": {"type": "string"}},
+        "support": {"type": "array", "items": {"type": "string"}},
+        "gap": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "scorer": {"type": "string"}
   }
 }

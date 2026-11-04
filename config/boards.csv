@@ -1,0 +1,7 @@
+company_slug,board_slug,board_url,monitor_type,monitor_config,scraper_type
+gitlab,gitlab,https://boards.greenhouse.io/gitlab,json_api,"{""content"":true}",greenhouse
+stripe,stripe,https://boards.greenhouse.io/stripe,json_api,"{}",greenhouse
+notion,notion,https://jobs.ashbyhq.com/notion,json_api,"{""includeCompensation"":true}",ashby
+ramp,ramp,https://jobs.ashbyhq.com/ramp,json_api,"{""includeCompensation"":true}",ashby
+netflix,netflix,https://jobs.lever.co/netflix,json_api,"{""mode"":""json""}",lever
+shopify,shopify,https://jobs.lever.co/shopify,json_api,"{}",lever

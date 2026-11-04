@@ -1,0 +1,20 @@
+{
+  "version": "0.1.0",
+  "description": "India ATS form corpus (PII-redacted). Expand with captured Naukri/Instahyre/Workday-India fixtures.",
+  "scenarios": [
+    {
+      "id": "greenhouse_india_basic",
+      "ats": "greenhouse",
+      "html_fixture": "greenhouse_india_basic.html",
+      "expected_fields": ["first_name", "last_name", "email", "phone", "resume", "linkedin"],
+      "india_presets": ["notice_period", "current_ctc", "expected_ctc", "willing_to_relocate"]
+    },
+    {
+      "id": "workday_india_notice",
+      "ats": "workday",
+      "html_fixture": "workday_india_notice.html",
+      "expected_fields": ["legal_name", "email", "phone", "notice_period", "current_ctc"],
+      "absolute_blockers": ["aadhaar", "pan", "government_id"]
+    }
+  ]
+}

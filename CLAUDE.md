@@ -49,7 +49,15 @@ Before delivering a resume or resume-source change, confirm:
 - Do not publish, submit, upload, or send resume materials without direct user authorization.
 - Report blockers and unverifiable claims clearly instead of guessing.
 
+## NaukariPro v2 agent surface
+
+When working on the `naukari_pro/` package (not resume markdown), follow the run contract in [`playbooks/AGENTS.md`](playbooks/AGENTS.md). Runtime maps: [`playbooks/GROKBOT.md`](playbooks/GROKBOT.md), [`playbooks/MUSE.md`](playbooks/MUSE.md), [`playbooks/ANTIGRAVITY.md`](playbooks/ANTIGRAVITY.md). MCP: `python -m naukari_pro.mcp.server`. Resume content rules in root `AGENTS.md` still govern candidate facts.
+
 ## Changelog
+
+### November 5, 2026
+
+- Linked NaukariPro v2 MCP/playbook surface for Claude Code (M1).
 
 ### August 23, 2026
 

@@ -1,0 +1,41 @@
+{
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 2,
+  "content": [
+    {
+      "id": "743999981234567",
+      "name": "Staff MLOps Engineer",
+      "uuid": "8b9a1234-cdef-4123-8abc-9876543210ab",
+      "releasedDate": "2026-10-10T14:30:00.000Z",
+      "location": {
+        "city": "San Jose",
+        "region": "CA",
+        "country": "us"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "ref": {
+        "jobAd": "https://jobs.smartrecruiters.com/Adobe/743999981234567-staff-mlops-engineer"
+      }
+    },
+    {
+      "id": "743999981234568",
+      "name": "Cloud Platform Architect",
+      "uuid": "9c0b2345-defa-4234-9bcd-0987654321bc",
+      "releasedDate": "2026-10-12T09:15:00.000Z",
+      "location": {
+        "city": "Bengaluru",
+        "region": "Karnataka",
+        "country": "in"
+      },
+      "typeOfEmployment": {
+        "id": "contract",
+        "label": "Contract"
+      },
+      "applyUrl": "https://jobs.smartrecruiters.com/Adobe/743999981234568-cloud-platform-architect/apply"
+    }
+  ]
+}

@@ -33,12 +33,18 @@ def create_app(store: Optional[TrackingStore] = None):
             "by_ats": store.rejection_rate_by_ats(),
         }
 
+    @app.get("/api/screen-pass")
+    def api_screen_pass():
+        return store.screen_pass_rate()
+
     @app.get("/", response_class=HTMLResponse)
     def home():
         funnel = store.funnel_counts()
         feed = store.feed(limit=25)
         hist = store.rejection_histogram()
         by_ats = store.rejection_rate_by_ats()
+        spr = store.screen_pass_rate()
+        rate_lbl = f"{spr['rate']:.0%}" if spr.get("rate") is not None else "n/a"
         rows = "".join(
             f"<tr><td>{r.get('company') or ''}</td><td>{r.get('title') or ''}</td>"
             f"<td>{r.get('fit_score') or ''}</td><td>{r.get('status')}</td>"
@@ -55,6 +61,11 @@ def create_app(store: Optional[TrackingStore] = None):
         ats_cells = "".join(
             f"<li>{k}: {v:.0%}</li>" for k, v in by_ats.items()
         )
+        board_cells = "".join(
+            f"<li>{k}: {v['screens']}/{v['submitted']}"
+            f" ({(v['rate'] or 0):.0%})</li>"
+            for k, v in (spr.get("by_board") or {}).items()
+        )
         html = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>NaukariPro Tracking</title>
 <style>
@@ -70,12 +81,18 @@ th{{background:#eee}}
 .grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}}
 </style></head><body>
 <h1>NaukariPro Application Tracking</h1>
-<div class="funnel">{funnel_cells}</div>
+<div class="funnel">
+<div class="stat"><div class="n">{rate_lbl}</div><div class="l">screen-pass</div></div>
+<div class="stat"><div class="n">{spr.get('screens',0)}</div><div class="l">screens</div></div>
+<div class="stat"><div class="n">{spr.get('submitted',0)}</div><div class="l">submitted</div></div>
+{funnel_cells}
+</div>
 <table>
 <thead><tr><th>Company</th><th>Title</th><th>Fit</th><th>Status</th><th>ATS</th></tr></thead>
 <tbody>{rows or '<tr><td colspan=5>No applications yet</td></tr>'}</tbody>
 </table>
 <div class="grid">
+<section><h2>Screen-pass by board</h2><ul>{board_cells or '<li>No data</li>'}</ul></section>
 <section><h2>Time-to-rejection</h2><ul>{hist_cells or '<li>No data</li>'}</ul></section>
 <section><h2>Rejection rate by ATS</h2><ul>{ats_cells or '<li>No data</li>'}</ul></section>
 </div>
@@ -90,8 +107,10 @@ def render_dashboard_html(store: Optional[TrackingStore] = None) -> str:
     store = store or TrackingStore()
     funnel = store.funnel_counts()
     feed = store.feed(limit=10)
+    spr = store.screen_pass_rate()
     return (
         f"<html><body><h1>NaukariPro Tracking</h1>"
         f"<pre>funnel={funnel}</pre>"
+        f"<pre>screen_pass={spr}</pre>"
         f"<pre>feed_n={len(feed)}</pre></body></html>"
     )

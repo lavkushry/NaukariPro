@@ -1,10 +1,10 @@
 {
   "candidate": {
     "name": "Lavkush Kumar",
-    "email": "lav84095@gmail.com",
-    "applicant_email": "lav84095@gmail.com",
-    "naukri_email": "lav84095@gmail.com",
-    "phone": "+91-9122036484",
+    "email": "",
+    "applicant_email": "",
+    "naukri_email": "",
+    "phone": "",
     "current_company": "CGI India (PNC Bank GCC)",
     "current_designation": "Azure Data Engineer",
     "current_ctc_lakhs": 12,
@@ -23,8 +23,8 @@
       "Chennai"
     ],
     "target_title": "Azure Data Engineer",
-    "linkedin": "linkedin.com/in/lavkush-kumar",
-    "github": "github.com/lavkush-kumar",
+    "linkedin": "",
+    "github": "",
     "resume_path": "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
   },
   "search_settings": {
@@ -465,7 +465,7 @@
     "policy_algorithm": "LinUCB",
     "alpha": 0.2,
     "bandit": {
-      "epsilon_warmup": 0.30,
+      "epsilon_warmup": 0.3,
       "epsilon_greedy": 0.05,
       "warmup_decisions": 200
     },
@@ -575,19 +575,97 @@
       "PyTorch"
     ],
     "it_skills": [
-      {"skill": "Kubernetes", "version": "1.30+", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-      {"skill": "Docker", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-      {"skill": "Helm", "version": "v3", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-      {"skill": "Terraform", "version": "1.8+", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-      {"skill": "MLflow", "version": "2.14+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
-      {"skill": "vLLM", "version": "0.5+", "last_used": "2026", "exp_years": 1, "exp_months": 0},
-      {"skill": "Triton Inference Server", "version": "24.x", "last_used": "2026", "exp_years": 1, "exp_months": 0},
-      {"skill": "Prometheus & Grafana", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-      {"skill": "Apache Kafka", "version": "3.x", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-      {"skill": "Python", "version": "3.11+", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-      {"skill": "Linux & Bash", "version": "Ubuntu/RHEL", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-      {"skill": "CI/CD & GitHub Actions", "version": "Enterprise", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-      {"skill": "AWS (EKS, IAM, S3)", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 0}
+      {
+        "skill": "Kubernetes",
+        "version": "1.30+",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 6
+      },
+      {
+        "skill": "Docker",
+        "version": "Latest",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 6
+      },
+      {
+        "skill": "Helm",
+        "version": "v3",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 0
+      },
+      {
+        "skill": "Terraform",
+        "version": "1.8+",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 0
+      },
+      {
+        "skill": "MLflow",
+        "version": "2.14+",
+        "last_used": "2026",
+        "exp_years": 1,
+        "exp_months": 6
+      },
+      {
+        "skill": "vLLM",
+        "version": "0.5+",
+        "last_used": "2026",
+        "exp_years": 1,
+        "exp_months": 0
+      },
+      {
+        "skill": "Triton Inference Server",
+        "version": "24.x",
+        "last_used": "2026",
+        "exp_years": 1,
+        "exp_months": 0
+      },
+      {
+        "skill": "Prometheus & Grafana",
+        "version": "Latest",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 0
+      },
+      {
+        "skill": "Apache Kafka",
+        "version": "3.x",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 0
+      },
+      {
+        "skill": "Python",
+        "version": "3.11+",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 6
+      },
+      {
+        "skill": "Linux & Bash",
+        "version": "Ubuntu/RHEL",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 6
+      },
+      {
+        "skill": "CI/CD & GitHub Actions",
+        "version": "Enterprise",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 6
+      },
+      {
+        "skill": "AWS (EKS, IAM, S3)",
+        "version": "Latest",
+        "last_used": "2026",
+        "exp_years": 2,
+        "exp_months": 0
+      }
     ]
   }
 }
