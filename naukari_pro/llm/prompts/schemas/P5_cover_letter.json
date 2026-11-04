@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["cover_letter", "claims_used"],
+  "additionalProperties": false,
+  "properties": {
+    "cover_letter": {"type": "string"},
+    "claims_used": {"type": "array", "items": {"type": "string"}}
+  }
+}

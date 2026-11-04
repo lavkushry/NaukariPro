@@ -108,7 +108,11 @@ scroll_*.py
 /test_*.png
 /naukri_application_history.png
 logs/*.png
+logs/*.jsonl
 linkedin_system/*.png
 linkedin_system/*.html
 linkedin_system/*.json
 linkedin_applications_fallback.csv
+naukari_pro/*.db
+naukari_pro/llm_spend_ledger.jsonl
+output/

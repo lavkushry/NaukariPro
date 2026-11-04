@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": [
+    "role_summary",
+    "responsibilities",
+    "must_haves",
+    "nice_to_haves",
+    "ats_keywords",
+    "seniority",
+    "work_mode",
+    "salary_signals",
+    "min_years_experience"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "role_summary": {"type": "string", "maxLength": 400},
+    "responsibilities": {"type": "array", "items": {"type": "string"}},
+    "must_haves": {"type": "array", "items": {"type": "string"}},
+    "nice_to_haves": {"type": "array", "items": {"type": "string"}},
+    "ats_keywords": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 25
+    },
+    "seniority": {
+      "type": ["string", "null"],
+      "enum": [
+        "intern",
+        "entry",
+        "mid",
+        "senior",
+        "staff",
+        "lead",
+        "manager",
+        "director_plus",
+        null
+      ]
+    },
+    "work_mode": {
+      "type": "string",
+      "enum": ["onsite", "hybrid", "remote", "unknown"]
+    },
+    "salary_signals": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "min_years_experience": {
+      "type": ["number", "null"]
+    }
+  }
+}

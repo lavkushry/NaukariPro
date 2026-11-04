@@ -75,6 +75,30 @@ flowchart LR
 * **Session Persistence:** Retains long-lived session state and authentication tokens, eliminating repeated captcha prompts.
 * **Cross-Platform:** Runs natively on macOS (with optional AppleScript browser bridging) and headless on Linux cloud instances (Oracle Cloud, AWS, GCP, Azure).
 
+### Four-Pillar Evolution (WS1–WS6)
+
+```mermaid
+flowchart TD
+  AGG["WS1 Aggregation\nNormalizedJob + adapters + SimHash dedup"] --> MATCH["WS3 Hybrid Match\nStage A/B/C + golden eval"]
+  MATCH --> RES["WS4 Resume Gen\ntruth-preserving + score ≥85"]
+  RES --> GOV["WS5 Governed Apply\nHITL + filled≠applied"]
+  GOV --> TRACK["WS6 Tracking\ndashboard + digest + bandit"]
+  LLM["WS2 LLM Gateway\nversioned prompts + spend ledger"] -.-> MATCH
+  LLM -.-> RES
+  LLM -.-> GOV
+```
+
+| CLI | Workstream |
+|:---|:---|
+| `ingest-jobs` | WS1 board ingest (honest NULL metadata) |
+| `llm-status` | WS2 registry / spend / mode |
+| `match-eval` | WS3 golden benchmark (`reports/matching_benchmark.md`) |
+| `resume-gen` | WS4 tailored PDF + ATS gate |
+| `governed-apply` | WS5 dry-run field audit (zero submits by default) |
+| `track-dashboard` | WS6 funnel HTML / `--digest` / `--serve` |
+
+**Non-negotiables:** no fabricated job fields or resume claims; submissions only after ATS confirmation; AUTO_APPLY only when fit≥80 and must-have coverage≥70 with user `AUTO_SUBMIT`; captchas never solved silently.
+
 ---
 
 ## 🚀 Quick Start Guide

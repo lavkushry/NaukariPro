@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["answer", "reason", "grounding", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "answer": {"type": ["string", "null"]},
+    "reason": {"type": "string", "enum": ["ok", "ASK_USER"]},
+    "grounding": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}

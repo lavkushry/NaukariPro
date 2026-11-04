@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "id": 99901,
+      "title": "Lead Cloud Data Engineer",
+      "absolute_url": "https://job-boards.greenhouse.io/gitlab/jobs/99901",
+      "location": {"name": "Remote"},
+      "content": "<div>Build data platforms with Python and Kubernetes.</div>",
+      "updated_at": "2026-10-01T00:00:00Z",
+      "departments": [{"name": "Engineering"}]
+    },
+    {
+      "id": 99902,
+      "title": "Sales Representative",
+      "absolute_url": "https://job-boards.greenhouse.io/gitlab/jobs/99902",
+      "location": {"name": "Remote"},
+      "content": null
+    }
+  ]
+}

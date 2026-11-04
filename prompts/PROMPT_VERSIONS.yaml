@@ -1,0 +1,127 @@
+version: "1.0.0"
+prompts:
+  p1_extract_jd:
+    version: "1.0.0"
+    file: "prompts/p1_extract_jd.md"
+    description: "Stage B JD Structuring and precise recruitment-data extraction"
+    temperature: 0.0
+    input_variables:
+      - "JOB_DESCRIPTION"
+    output_schema:
+      type: "object"
+      required:
+        - "role_summary"
+        - "responsibilities"
+        - "must_haves"
+        - "nice_to_haves"
+        - "ats_keywords"
+        - "seniority"
+        - "work_mode"
+        - "salary_signals"
+        - "min_years_experience"
+      properties:
+        role_summary:
+          type: "string"
+        responsibilities:
+          type: "array"
+          items:
+            type: "string"
+        must_haves:
+          type: "array"
+          items:
+            type: "string"
+        nice_to_haves:
+          type: "array"
+          items:
+            type: "string"
+        ats_keywords:
+          type: "array"
+          items:
+            type: "string"
+        seniority:
+          type: "string"
+          enum: ["intern", "entry", "mid", "senior", "staff", "lead", "manager", "director_plus", "unknown"]
+        work_mode:
+          type: "string"
+          enum: ["onsite", "hybrid", "remote", "unknown"]
+        salary_signals:
+          type: "array"
+          items:
+            type: "string"
+        min_years_experience:
+          type: ["number", "null"]
+  p3_tailor_resume:
+    version: "1.0.0"
+    file: "prompts/p3_tailor_resume.md"
+    description: "Stage D Truth-preserving ATS resume tailoring from candidate master facts"
+    temperature: 0.0
+    input_variables:
+      - "PROFILE_JSON"
+      - "P1_OUTPUT_JSON"
+    output_schema:
+      type: "object"
+      required:
+        - "summary"
+        - "skills"
+        - "experience"
+        - "education"
+        - "certifications"
+        - "ats_keywords_covered"
+        - "gaps_reported"
+      properties:
+        summary:
+          type: "string"
+        skills:
+          type: "array"
+          items:
+            type: "object"
+            required: ["category", "items"]
+            properties:
+              category:
+                type: "string"
+              items:
+                type: "array"
+                items:
+                  type: "string"
+        experience:
+          type: "array"
+          items:
+            type: "object"
+            required: ["role", "company", "dates", "location", "bullets"]
+            properties:
+              role:
+                type: "string"
+              company:
+                type: "string"
+              dates:
+                type: "string"
+              location:
+                type: "string"
+              bullets:
+                type: "array"
+                items:
+                  type: "string"
+        education:
+          type: "array"
+          items:
+            type: "object"
+            required: ["degree", "institution", "dates"]
+            properties:
+              degree:
+                type: "string"
+              institution:
+                type: "string"
+              dates:
+                type: "string"
+        certifications:
+          type: "array"
+          items:
+            type: "string"
+        ats_keywords_covered:
+          type: "array"
+          items:
+            type: "string"
+        gaps_reported:
+          type: "array"
+          items:
+            type: "string"

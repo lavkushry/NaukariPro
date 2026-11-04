@@ -3836,64 +3836,65 @@ class CareerPortalFiller:
 # EXTERNAL ATS PORTAL MANAGER & BATCH RUNNER
 # ==============================================================================
 
+# Seed titles/URLs only — salary/exp/jd stay NULL until fetched from a live ATS API.
 CURATED_ATS_VACANCIES: List[Dict[str, Any]] = [
     {
         "company": "Microsoft GCC",
         "title": "Lead Azure Data Engineer",
-        "salary": "25 - 32 Lacs PA",
+        "salary": None,
         "url": "https://boards.greenhouse.io/microsoftgcc/jobs/401",
-        "jd": "Azure Databricks PySpark Delta Lake Medallion Architecture Kafka ADF SQL Terraform",
-        "exp": "2-5 Yrs",
+        "jd": None,
+        "exp": None,
         "location": "Bengaluru / Hyderabad",
         "ats": "Greenhouse"
     },
     {
         "company": "Walmart Global Tech",
         "title": "Azure Data Platform Engineer",
-        "salary": "22 - 28 Lacs PA",
+        "salary": None,
         "url": "https://walmart.wd5.myworkdayjobs.com/en-US/jobs/job/Azure-Data-Engineer_R-9901",
-        "jd": "Azure Databricks PySpark Delta Lake SQL Terraform ADLS Gen2 DataOps",
-        "exp": "2-5 Yrs",
+        "jd": None,
+        "exp": None,
         "location": "Bengaluru",
         "ats": "Workday"
     },
     {
         "company": "Uber Technologies",
         "title": "Data Engineer II - Real-Time Streaming",
-        "salary": "24 - 35 Lacs PA",
+        "salary": None,
         "url": "https://jobs.lever.co/uber/803",
-        "jd": "Apache Kafka PySpark Delta Lake Medallion Architecture Azure Databricks SQL",
-        "exp": "2-4 Yrs",
+        "jd": None,
+        "exp": None,
         "location": "Hyderabad",
         "ats": "Lever"
     },
     {
         "company": "Atlassian",
         "title": "Data Platform Engineer",
-        "salary": "24 - 30 Lacs PA",
+        "salary": None,
         "url": "https://boards.greenhouse.io/atlassian/jobs/502",
-        "jd": "Azure Data Factory Databricks PySpark Delta Lake Terraform Medallion Lakehouse",
-        "exp": "2-5 Yrs",
+        "jd": None,
+        "exp": None,
         "location": "Bengaluru / Remote",
         "ats": "Greenhouse"
     },
     {
         "company": "Databricks Partner GCC",
         "title": "Senior Azure Databricks Specialist",
-        "salary": "25 - 34 Lacs PA",
+        "salary": None,
         "url": "https://jobs.ashbyhq.com/databricks-partner/904",
-        "jd": "Azure Databricks PySpark Delta Lake Unity Catalog Medallion Architecture SQL",
-        "exp": "2-5 Yrs",
+        "jd": None,
+        "exp": None,
         "location": "Bengaluru / Pune",
         "ats": "Ashby"
     },
     {
         "company": "Swiggy Engineering",
         "title": "Frontend React Engineer",
-        "salary": "18 - 22 Lacs PA",
+        "salary": None,
         "url": "https://boards.greenhouse.io/swiggy/jobs/701",
-        "jd": "React Redux TypeScript Next.js Tailwind CSS HTML",
-        "exp": "2-4 Yrs",
+        "jd": None,
+        "exp": None,
         "location": "Bengaluru",
         "ats": "Greenhouse"
     }
@@ -3902,12 +3903,9 @@ CURATED_ATS_VACANCIES: List[Dict[str, Any]] = [
 
 def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """
-    Dynamically queries public multi-ATS job boards across:
-    1. Greenhouse: GitLab, Databricks, Stripe, Cloudflare, Canonical, Elastic, Grafana Labs, Figma
-    2. Ashby: Sentry, Linear, Ramp, PostHog, Supabase
-    3. Workday: NVIDIA External Career Site
-    4. Lever: Spotify
-    Prioritizes Remote vacancies first per candidate preference, followed by India tech hubs.
+    Dynamically queries public multi-ATS job boards.
+    Honest metadata only: exp/salary/jd are NULL unless the ATS response includes them.
+    Never invent JD text, experience bands, or salary ranges.
     """
     import requests
     by_ats: Dict[str, List[Dict[str, Any]]] = {
@@ -3920,7 +3918,7 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
 
     per_ats_limit = max(limit, 30)
 
-    # 1. Greenhouse
+    # 1. Greenhouse (content=true returns real HTML description when available)
     gh_boards = [
         ("GitLab", "gitlab"), ("Databricks", "databricks"), ("Stripe", "stripe"),
         ("Cloudflare", "cloudflare"), ("Canonical", "canonical"), ("Elastic", "elastic"),
@@ -3931,7 +3929,7 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
     per_gh_board = max(per_ats_limit, 80) if (ats_types and any("greenhouse" in a.lower() for a in ats_types)) else max(per_ats_limit // len(gh_boards), 40)
     for co_name, board_token in gh_boards:
         try:
-            url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs"
+            url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 jobs = r.json().get("jobs", [])
@@ -3942,16 +3940,17 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                     title = j.get("title", "")
                     if any(kw in title.lower() for kw in keywords):
                         loc_dict = j.get("location") or {}
-                        loc_name = loc_dict.get("name", "Remote") if isinstance(loc_dict, dict) else str(loc_dict)
+                        loc_name = loc_dict.get("name") if isinstance(loc_dict, dict) else (str(loc_dict) if loc_dict else None)
+                        content = j.get("content")
                         by_ats["Greenhouse"].append({
                             "company": co_name,
                             "title": title,
                             "url": j.get("absolute_url"),
                             "ats": "Greenhouse",
-                            "location": loc_name or "Remote",
-                            "exp": "2-5 Yrs",
-                            "salary": "25 - 35 Lacs PA",
-                            "jd": f"{title} at {co_name}. Core skills: Python, Cloud (Azure/AWS/GCP), CI/CD, Infrastructure, Kubernetes, Data pipelines."
+                            "location": loc_name,  # None if missing — do not default-invent
+                            "exp": None,
+                            "salary": None,
+                            "jd": content if content else None,
                         })
                         board_added += 1
         except Exception as e:
@@ -3975,21 +3974,24 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                         break
                     title = j.get("title", "")
                     if any(kw in title.lower() for kw in keywords):
+                        desc = j.get("descriptionHtml") or j.get("descriptionPlain") or j.get("description")
+                        comp = j.get("compensationTierSummary") or j.get("compensation")
+                        salary = comp.strip() if isinstance(comp, str) and comp.strip() else None
                         by_ats["Ashby"].append({
                             "company": co_name,
                             "title": title,
                             "url": j.get("jobUrl"),
                             "ats": "Ashby",
-                            "location": j.get("location", "Remote") or "Remote",
-                            "exp": "2-5 Yrs",
-                            "salary": "25 - 35 Lacs PA",
-                            "jd": f"{title} at {co_name}. Core skills: Python, Cloud (Azure/AWS/GCP), CI/CD, Infrastructure, Kubernetes, Data pipelines."
+                            "location": j.get("location") or None,
+                            "exp": None,
+                            "salary": salary,
+                            "jd": desc if desc else None,
                         })
                         board_added += 1
         except Exception as e:
             logger.debug("Notice querying Ashby %s: %s", board_token, e)
 
-    # 3. Workday (NVIDIA, Salesforce, Autodesk)
+    # 3. Workday (NVIDIA, Salesforce, Autodesk) — list API usually omits JD; leave NULL
     workday_tenants = [
         ("NVIDIA", "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs", "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"),
         ("Salesforce", "https://salesforce.wd12.myworkdayjobs.com/wday/cxs/salesforce/External_Career_Site/jobs", "https://salesforce.wd12.myworkdayjobs.com/en-US/External_Career_Site"),
@@ -4008,15 +4010,16 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                     title = j.get("title", "")
                     ext_path = j.get("externalPath", "")
                     if any(kw in title.lower() for kw in keywords):
+                        real_jd = j.get("jobDescription") or j.get("description") or None
                         by_ats["Workday"].append({
                             "company": co_name,
                             "title": title,
                             "url": f"{base_url}{ext_path}",
                             "ats": "Workday",
-                            "location": j.get("locationsText", "Bengaluru / Remote"),
-                            "exp": "2-5 Yrs",
-                            "salary": "28 - 42 Lacs PA",
-                            "jd": f"{title} at {co_name}. Core skills: Python, Cloud, Infrastructure, Kubernetes, HPC, Data pipelines."
+                            "location": j.get("locationsText") or None,
+                            "exp": None,
+                            "salary": None,
+                            "jd": real_jd,
                         })
                         board_added += 1
         except Exception as e:
@@ -4036,16 +4039,17 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                 if any(kw in title.lower() for kw in keywords):
                     wpt = (j.get("workplaceType") or "").strip()
                     loc_cat = (j.get("categories") or {}).get("location", "")
-                    loc_str = f"{loc_cat} ({wpt.capitalize()})" if wpt else (loc_cat or "Remote")
+                    loc_str = f"{loc_cat} ({wpt.capitalize()})" if wpt and loc_cat else (loc_cat or wpt or None)
+                    desc = j.get("descriptionPlain") or j.get("description") or None
                     by_ats["Lever"].append({
                         "company": "Spotify",
                         "title": title,
                         "url": j.get("hostedUrl"),
                         "ats": "Lever",
                         "location": loc_str,
-                        "exp": "2-5 Yrs",
-                        "salary": "25 - 35 Lacs PA",
-                        "jd": f"{title} at Spotify. Core skills: Python, Cloud, CI/CD, Infrastructure, Kubernetes, Data pipelines."
+                        "exp": None,
+                        "salary": None,
+                        "jd": desc,
                     })
                     board_added += 1
     except Exception as e:

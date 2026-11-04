@@ -1,0 +1,46 @@
+# Every runtime prompt must be registered here before use.
+# key: logical prompt id | version: semver | file: relative to naukari_pro/llm/prompts/
+# schema: optional JSON Schema file for strict output validation
+
+prompts:
+  P1_jd_structure:
+    version: "1.1.0"
+    file: P1_jd_structure.md
+    schema: prompts/schemas/P1_jd_structure.json
+    temperature: 0
+    purpose: "Precise truth-only JD structuring (must/nice gating, ATS keywords, salary arrays)"
+
+  P2_fit_score:
+    version: "1.1.0"
+    file: P2_fit_score.md
+    schema: prompts/schemas/P2_fit_score.json
+    temperature: 0
+    purpose: "Hiring-fit judge: evidence-gated coverage + weighted fit_score; downgrade when unsure"
+
+  P3_resume_tailor:
+    version: "1.0.0"
+    file: P3_resume_tailor.md
+    schema: prompts/schemas/P3_resume_tailor.json
+    temperature: 0
+    purpose: "Truth-preserving resume tailoring"
+
+  P4_application_answers:
+    version: "1.1.0"
+    file: P4_application_answers.md
+    schema: prompts/schemas/P4_application_answers.json
+    temperature: 0
+    purpose: "Screening answers from profile only; ASK_USER when ungrounded or legal"
+
+  P5_cover_letter:
+    version: "1.0.0"
+    file: P5_cover_letter.md
+    schema: prompts/schemas/P5_cover_letter.json
+    temperature: 0.2
+    purpose: "Cover letter from facts only"
+
+defaults:
+  monthly_cap_usd: 25.0
+  alert_at_usd: 20.0
+  cache_dir: ".llm_cache"
+  ledger_path: "llm_spend_ledger.jsonl"
+  record_replay_mode: "replay_preferred"  # record | replay | replay_preferred | live

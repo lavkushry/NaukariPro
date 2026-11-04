@@ -72,7 +72,8 @@ def test_fetch_live_ats_vacancies_schema():
             {
                 "title": "Lead Cloud Data Engineer",
                 "absolute_url": "https://job-boards.greenhouse.io/gitlab/jobs/99901",
-                "location": {"name": "Remote"}
+                "location": {"name": "Remote"},
+                "content": "<p>Real greenhouse JD</p>",
             },
             {
                 "title": "Sales Representative", # Should be filtered out by keywords
@@ -86,15 +87,21 @@ def test_fetch_live_ats_vacancies_schema():
     mock_resp.status_code = 200
     mock_resp.json.return_value = mock_gh_response
 
-    with patch("requests.get", return_value=mock_resp):
+    with patch("requests.get", return_value=mock_resp), patch(
+        "requests.post", return_value=mock_resp
+    ):
+        # POST used for Workday; return empty postings
+        mock_resp.json.return_value = mock_gh_response
         vacancies = fetch_live_ats_vacancies(limit=5)
         assert len(vacancies) >= 1
         v = vacancies[0]
         assert "Data Engineer" in v["title"]
         assert v["ats"] == "Greenhouse"
         assert v["url"] == "https://job-boards.greenhouse.io/gitlab/jobs/99901"
-        assert "exp" in v
-        assert "salary" in v
+        # Keys present but unfetched values must be NULL (honest metadata)
+        assert "exp" in v and v["exp"] is None
+        assert "salary" in v and v["salary"] is None
+        assert v["jd"] == "<p>Real greenhouse JD</p>"
 
 
 def test_hard_stop_2_expired_job_detection():

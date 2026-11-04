@@ -104,6 +104,191 @@ def handle_pro(limit=35, headless=False, dry_run=False, force=False, block=None,
     return engine.run_full_pipeline()
 
 
+def handle_track_dashboard(args: argparse.Namespace) -> int:
+    from naukari_pro.tracking.dashboard import render_dashboard_html, create_app
+    from naukari_pro.tracking.digest import build_weekly_digest
+    from naukari_pro.tracking.notifications import NotificationQueue
+
+    if getattr(args, "digest", False):
+        digest = build_weekly_digest()
+        print(digest["body"])
+        # Also enqueue digest notification (idempotent per week key)
+        week = __import__("datetime").date.today().strftime("%Y-W%W")
+        q = NotificationQueue()
+        q.enqueue(user_id="default", job_key=f"digest:{week}", channel="email", payload=digest["body"], delay_minutes=0)
+        q.enqueue(user_id="default", job_key=f"digest:{week}", channel="telegram", payload=digest["body"][:500], delay_minutes=0)
+        delivered = q.deliver_due()
+        print(f"\n[notify] delivered={delivered}")
+        return 0
+
+    if getattr(args, "serve", False):
+        try:
+            import uvicorn
+        except ImportError:
+            print("uvicorn not installed; showing HTML snapshot instead")
+            print(render_dashboard_html())
+            return 0
+        app = create_app()
+        print("Serving tracking dashboard on http://127.0.0.1:8765")
+        uvicorn.run(app, host="127.0.0.1", port=8765)
+        return 0
+
+    print(BANNER)
+    print(render_dashboard_html())
+    return 0
+
+
+def handle_governed_apply(args: argparse.Namespace) -> int:
+    from naukari_pro.config import load_config
+    from naukari_pro.governed_apply.pipeline import GovernedApplyPipeline
+
+    cfg = load_config()
+    cand = cfg.get("candidate") or {}
+    facts = {**(cfg.get("candidate_facts") or {}), **cand}
+    dry = True if args.dry_run or not getattr(args, "auto_submit", False) else False
+    # Default path is dry-run; --auto-submit still respects confirmation rules
+    if not getattr(args, "auto_submit", False):
+        dry = True
+    pipe = GovernedApplyPipeline(
+        facts,
+        dry_run=dry,
+        auto_submit=bool(getattr(args, "auto_submit", False)),
+    )
+    demo_fields = [
+        {"id": "full_name", "label": "Full Name", "type": "text", "required": True},
+        {"id": "email", "label": "Email", "type": "email", "required": True},
+        {"id": "phone", "label": "Phone", "type": "tel"},
+        {"id": "yoe", "label": "Years of experience", "type": "text"},
+        {"id": "work_auth", "label": "Are you authorized to work?", "type": "select"},
+    ]
+    result = pipe.run_job(
+        {
+            "url": args.url,
+            "company": "DemoCo",
+            "title": "Azure Data Engineer",
+            "fit_score": float(args.fit),
+            "coverage_pct": float(args.coverage),
+            "ats": "greenhouse",
+        },
+        dom_fields=demo_fields,
+        host="boards.greenhouse.io",
+        page_text="",
+        page_url=args.url,
+    )
+    print(BANNER)
+    print("=== WS5 Governed Apply ===")
+    print(f"Mode           : {'DRY-RUN' if dry else 'LIVE'}")
+    print(f"Status         : {result.status}")
+    print(f"Field audits   : {result.field_audits}")
+    print(f"Submitted      : {result.submitted}")
+    print(f"Ask user       : {result.ask_user}")
+    print(f"Submissions DB : {pipe.store.submission_count()}")
+    return 0
+
+
+def handle_resume_gen(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    from naukari_pro.config import load_config
+    from naukari_pro.resume_gen.pipeline import ResumeGenerationPipeline
+
+    cfg = load_config()
+    cand = cfg.get("candidate") or {}
+    facts = cfg.get("candidate_facts") or {}
+    # Merge experience from top-level config when present
+    if cfg.get("experience") and "experience" not in facts:
+        facts = {**facts, "experience": cfg.get("experience")}
+    kws = [k.strip() for k in str(getattr(args, "jd_keywords", "")).split(",") if k.strip()]
+    structured = {"must_haves": kws, "ats_keywords": kws, "nice_to_haves": []}
+    out = Path(args.out) if getattr(args, "out", None) else Path("output") / "tailored_resumes"
+    pipe = ResumeGenerationPipeline(facts, cand, output_dir=out, use_llm=False)
+    art = pipe.generate(structured, role=args.role, company=args.company)
+    print(BANNER)
+    print("=== WS4 Truth-Preserving Resume Gen ===")
+    print(f"PDF            : {art.pdf_path}")
+    print(f"DOCX           : {art.docx_path}")
+    print(f"Score          : {art.score.get('overall_score')} / 100 (gate={art.score.get('gate_threshold')})")
+    print(f"Dispatch       : {'ALLOWED' if art.dispatch_allowed else 'BLOCKED'}")
+    print(f"Gaps reported  : {art.gaps_reported}")
+    if art.fabrication_violations:
+        print(f"Violations     : {art.fabrication_violations}")
+    return 0 if art.dispatch_allowed else 2
+
+
+def handle_match_eval(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    from naukari_pro.matching.eval import run_eval, write_benchmark_report, auto_apply_allowed
+
+    metrics = run_eval(use_llm=bool(getattr(args, "use_llm", False)), expand_to=int(getattr(args, "expand", 100)))
+    report_path = Path(args.report) if getattr(args, "report", None) else None
+    out = write_benchmark_report(metrics, path=report_path)
+    print(BANNER)
+    print("=== WS3 Matching Golden Eval ===")
+    d = metrics.to_dict()
+    for k, v in d.items():
+        if k != "confusion":
+            print(f"  {k}: {v}")
+    allowed = auto_apply_allowed(metrics)
+    print(f"  AUTO_APPLY gate: {'PASS' if allowed else 'BLOCK'}")
+    print(f"  Report: {out}")
+    return 0 if allowed or not getattr(args, "use_llm", False) else 1
+
+
+def handle_llm_status(args: argparse.Namespace) -> int:
+    from naukari_pro.llm.gateway import LLMGateway
+    from naukari_pro.llm.registry import PromptRegistry
+    from naukari_pro.llm.client import OpenAICompatibleClient
+
+    reg = PromptRegistry()
+    gw = LLMGateway(registry=reg, mode=getattr(args, "mode", None))
+    client = OpenAICompatibleClient()
+    print(BANNER)
+    print("=== WS2 LLM Gateway Status ===")
+    print(f"Mode           : {gw.mode}")
+    print(f"Registered     : {', '.join(reg.list_ids())}")
+    print(f"Available chain: {', '.join(e.model_key for e in client.available_chain()) or '(none — set API keys)'}")
+    summary = gw.ledger.summary()
+    print(f"Month spend    : ${summary['spent_usd']:.6f} / ${summary['cap_usd']:.2f}")
+    print(f"Alert at       : ${summary['alert_at_usd']:.2f}")
+    print(f"Ledger         : {summary['ledger_path']}")
+    if summary.get("alerts"):
+        for a in summary["alerts"]:
+            print(f"ALERT: {a}")
+    return 0
+
+
+def handle_ingest_jobs(args: argparse.Namespace) -> int:
+    """WS1 aggregation: seed sources.json → fetch → content-hash upsert (no fabricated fields)."""
+    from pathlib import Path
+    from naukari_pro.aggregation.pipeline import run_ingest_cycle
+
+    db_path = Path(args.db) if getattr(args, "db", None) else None
+    result = run_ingest_cycle(
+        seed=not getattr(args, "no_seed", False),
+        limit_sources=getattr(args, "limit_sources", None),
+        db_path=db_path,
+    )
+    print(BANNER)
+    print("=== WS1 Job Aggregation Ingest ===")
+    print(f"Seeded sources : {result.get('seeded_sources')}")
+    print(f"Adapters       : {', '.join(result.get('adapters') or [])}")
+    store = result.get("store_stats") or {}
+    print(f"Active sources : {store.get('active_sources')}")
+    print(f"Active jobs    : {store.get('active_jobs')}")
+    ingest = result.get("ingest") or {}
+    for k in (
+        "sources_attempted", "sources_ok", "sources_failed", "sources_missing",
+        "inserted", "updated", "unchanged", "removed", "dedup_skipped", "age_filtered",
+    ):
+        print(f"  {k}: {ingest.get(k)}")
+    errors = ingest.get("errors") or []
+    if errors:
+        print("Sample errors:")
+        for e in errors[:10]:
+            print(f"  - {e}")
+    print(f"Finished at    : {result.get('finished_at')}")
+    return 0 if int(ingest.get("sources_failed") or 0) < int(ingest.get("sources_attempted") or 1) else 1
+
+
 def handle_mail_test():
     from naukari_pro.modules.mail_reader import mail_test
     result = mail_test()
@@ -1614,6 +1799,59 @@ def main():
     audit_parser.add_argument("--recent", type=int, default=5, help="Number of recent applications to show (default: 5)")
     audit_parser.add_argument("--platform", type=str, default=None, help="Filter by platform (e.g. linkedin, career_portal, naukri)")
 
+    ingest_parser = subparsers.add_parser(
+        "ingest-jobs",
+        help="WS1: seed ATS sources and run aggregation ingest (honest NormalizedJob fields)",
+        parents=[common_parser],
+    )
+    ingest_parser.add_argument("--limit-sources", type=int, default=None, help="Cap number of boards this cycle")
+    ingest_parser.add_argument("--no-seed", action="store_true", help="Skip reseeding sources.json")
+    ingest_parser.add_argument("--db", type=str, default=None, help="Optional aggregation SQLite path")
+
+    llm_parser = subparsers.add_parser(
+        "llm-status",
+        help="WS2: show LLM prompt registry, spend ledger, and cache mode",
+        parents=[common_parser],
+    )
+    llm_parser.add_argument("--mode", type=str, default=None, help="Override NAUKARI_LLM_MODE")
+
+    match_parser = subparsers.add_parser(
+        "match-eval",
+        help="WS3: run golden-set matching benchmark (recall/precision/cost)",
+        parents=[common_parser],
+    )
+    match_parser.add_argument("--use-llm", action="store_true", help="Use LLM Stage B/C (default: deterministic offline)")
+    match_parser.add_argument("--expand", type=int, default=100, help="Golden set size (default 100)")
+    match_parser.add_argument("--report", type=str, default=None, help="Write markdown report path")
+
+    rgen_parser = subparsers.add_parser(
+        "resume-gen",
+        help="WS4: truth-preserving tailored resume (PDF) with ATS score gate >=85",
+        parents=[common_parser],
+    )
+    rgen_parser.add_argument("--role", type=str, default="Azure Data Engineer")
+    rgen_parser.add_argument("--company", type=str, default="Target")
+    rgen_parser.add_argument("--out", type=str, default=None, help="Output directory")
+    rgen_parser.add_argument("--jd-keywords", type=str, default="Python,Azure,Databricks,SQL,Delta Lake")
+
+    gov_parser = subparsers.add_parser(
+        "governed-apply",
+        help="WS5: dry-run governed auto-apply (field audit, zero submissions by default)",
+        parents=[common_parser],
+    )
+    gov_parser.add_argument("--url", type=str, default="https://boards.greenhouse.io/example/jobs/1")
+    gov_parser.add_argument("--fit", type=float, default=85.0)
+    gov_parser.add_argument("--coverage", type=float, default=75.0)
+    gov_parser.add_argument("--auto-submit", action="store_true", help="Allow submit when thresholds met (still needs confirmation)")
+
+    track_parser = subparsers.add_parser(
+        "track-dashboard",
+        help="WS6: print tracking funnel HTML snapshot or run FastAPI server",
+        parents=[common_parser],
+    )
+    track_parser.add_argument("--serve", action="store_true", help="Run uvicorn on :8765")
+    track_parser.add_argument("--digest", action="store_true", help="Print weekly digest")
+
     args = parser.parse_args()
 
     if args.command == "intent-apply":
@@ -1759,6 +1997,18 @@ def main():
             recent=getattr(args, "recent", 5),
             platform=getattr(args, "platform", None)
         )
+    elif args.command == "ingest-jobs":
+        sys.exit(handle_ingest_jobs(args))
+    elif args.command == "llm-status":
+        sys.exit(handle_llm_status(args))
+    elif args.command == "match-eval":
+        sys.exit(handle_match_eval(args))
+    elif args.command == "resume-gen":
+        sys.exit(handle_resume_gen(args))
+    elif args.command == "governed-apply":
+        sys.exit(handle_governed_apply(args))
+    elif args.command == "track-dashboard":
+        sys.exit(handle_track_dashboard(args))
     else:
         interactive_loop()
 

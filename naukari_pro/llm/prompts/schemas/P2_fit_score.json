@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": [
+    "fit_score",
+    "must_have_coverage",
+    "coverage_detail",
+    "role_family_match",
+    "location_workmode_fit",
+    "seniority_fit",
+    "compensation_vs_floor",
+    "recommendation",
+    "flags",
+    "rationale"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "fit_score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "must_have_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "coverage_detail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["must_have", "evidence", "profile_fact"],
+        "additionalProperties": false,
+        "properties": {
+          "must_have": {"type": "string"},
+          "evidence": {"type": "string", "enum": ["direct", "transferable", "missing"]},
+          "profile_fact": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "role_family_match": {"type": "number", "minimum": 0, "maximum": 1},
+    "location_workmode_fit": {"type": "number", "minimum": 0, "maximum": 1},
+    "seniority_fit": {"type": "number", "minimum": 0, "maximum": 1},
+    "compensation_vs_floor": {"type": "number", "minimum": 0, "maximum": 1},
+    "recommendation": {"type": "string", "enum": ["AUTO_APPLY", "REVIEW", "SKIP"]},
+    "flags": {"type": "array", "items": {"type": "string"}},
+    "rationale": {"type": "string", "maxLength": 220}
+  }
+}
