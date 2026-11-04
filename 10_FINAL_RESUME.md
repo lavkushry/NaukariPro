@@ -1,5 +1,5 @@
 # LAVKUSH KUMAR
-**Hyderabad, India** | **+91-9122036484** | **lavkushry@gmail.com** | [**linkedin.com/in/lavkushry**](https://linkedin.com/in/lavkushry) | [**github.com/lavkushry**](https://github.com/lavkushry)
+**Hyderabad, India** | **+91-9122036484** | **lav84095@gmail.com** | [**linkedin.com/in/lavkush-kumar**](https://linkedin.com/in/lavkush-kumar) | [**github.com/lavkush-kumar**](https://github.com/lavkush-kumar)
 
 ---
 
@@ -47,11 +47,11 @@
 
 ### KEY PROJECTS
 
-#### [**AegisAgent — Zero-Trust AI Agent Security Gateway**](https://github.com/lavkushry/AegisAgent) | *Rust, Cedar Policy Engine, Kubernetes, Helm, Docker* | *2026*
+#### [**AegisAgent — Zero-Trust AI Agent Security Gateway**](https://github.com/lavkush-kumar/AegisAgent) | *Rust, Cedar Policy Engine, Kubernetes, Helm, Docker* | *2026*
 * **Architected** an open-source zero-trust security gateway for AI agents in Rust, integrating the Cedar Policy Engine to enforce ABAC over MCP tool invocations with **sub-75ms policy evaluation**.
 * **Engineered** production Kubernetes Helm charts (`aegis-gateway`), ServiceMonitors, and NetworkPolicies, containerizing agent cages with reproducible GitHub Actions CI/SAST pipelines ensuring **100%** scan coverage.
 
-#### [**Project Vulcan — Enterprise Automation Control Plane**](https://github.com/lavkushry/vulcan) | *Python, FastAPI, pgvector, Redis Redlock, MinIO S3, WebSockets* | *2025*
+#### [**Project Vulcan — Enterprise Automation Control Plane**](https://github.com/lavkush-kumar/vulcan) | *Python, FastAPI, pgvector, Redis Redlock, MinIO S3, WebSockets* | *2025*
 * **Architected** an infrastructure control plane in Python (FastAPI), implementing distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate runbook race conditions.
 * **Integrated** semantic incident retrieval using PostgreSQL with pgvector (HNSW indexing) and WebSocket live log streaming, cutting SRE incident diagnostics down to **under 2 minutes** per task.
 

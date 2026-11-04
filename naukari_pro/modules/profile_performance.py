@@ -840,7 +840,7 @@ class ProfilePerformanceEngine:
 
         return True
 
-    def generate_keyword_diff_report(self, live_search_terms=None, persona: str = "mlops"):
+    def generate_keyword_diff_report(self, live_search_terms=None, persona: str = "de"):
         """
         Calculates exact diff between:
         1. Recruiter search terms that found candidate (from Profile Performance)
@@ -1086,7 +1086,7 @@ def get_unified_speedometer(target_total: int = MONTHLY_SEARCH_BENCHMARK, target
     return Unified100KSpeedometer(target_total=target_total, target_days=target_days)
 
 
-def generate_keyword_diff_report(live_search_terms=None, persona: str = "mlops") -> Dict[str, Any]:
+def generate_keyword_diff_report(live_search_terms=None, persona: str = "de") -> Dict[str, Any]:
     """Module-level helper to generate keyword diff report for specified persona."""
     engine = ProfilePerformanceEngine()
     return engine.generate_keyword_diff_report(live_search_terms=live_search_terms, persona=persona)

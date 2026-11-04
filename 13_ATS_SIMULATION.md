@@ -18,7 +18,7 @@ The compiled document was analyzed using industry-standard entity extraction alg
 │  Candidate Name:       Lavkush Kumar                                [PASS]  │
 │  Location:             Bangalore, India                             [PASS]  │
 │  Phone:                +91-9122036484                               [PASS]  │
-│  Email:                lavkushry@gmail.com                          [PASS]  │
+│  Email:                lav84095@gmail.com                          [PASS]  │
 │  LinkedIn URL:         https://linkedin.com/in/lavkushry            [PASS]  │
 │  GitHub URL:           https://github.com/lavkushry                 [PASS]  │
 │  Total Experience:     2.5 Years                                    [PASS]  │
@@ -37,7 +37,7 @@ The compiled document was analyzed using industry-standard entity extraction alg
 ### A. Greenhouse (Sovren Engine)
 * **Header & Contact:**  
   - Name: `Lavkush Kumar` (Extracted correctly, 0 errors).  
-  - Contact: `+91-9122036484`, `lavkushry@gmail.com`, `Bangalore, India`.  
+  - Contact: `+91-9122036484`, `lav84095@gmail.com`, `Bangalore, India`.  
   - Social Profiles: Identified LinkedIn & GitHub vanity handles.
 * **Work Experience Blocks:**  
   - Company 1: `CGI India` | Title: `DevOps Engineer` | Dates: `Jun 2026 – Present`

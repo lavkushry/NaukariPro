@@ -150,7 +150,7 @@ Approximately **75% of resumes are rejected by ATS** before reaching a recruiter
 
 ```
 LAVKUSH KUMAR
-Bangalore, India | +91-9122036484 | lavkushry@gmail.com
+Bangalore, India | +91-9122036484 | lav84095@gmail.com
 linkedin.com/in/lavkushry | GitHub.com/lavkushry
 ```
 
@@ -715,7 +715,7 @@ Maintain 3–4 resume variants:
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │ LAVKUSH KUMAR                                                      │
-│ Bangalore, India | +91-9122036484 | lavkushry@gmail.com       │
+│ Bangalore, India | +91-9122036484 | lav84095@gmail.com       │
 │ linkedin.com/in/lavkushry | GitHub.com/lavkushry             │
 ├────────────────────────────────────────────────────────────────────┤
 │ PROFESSIONAL SUMMARY                                               │

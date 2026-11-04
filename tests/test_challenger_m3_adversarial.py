@@ -384,7 +384,7 @@ def test_all_8_ats_portal_types_structural_and_candidate_fidelity(expected_ats, 
     assert answers["first_name"] == "Lavkush"
     assert answers["last_name"] == "Kumar"
     assert answers["full_name"] == "Lavkush Kumar"
-    assert answers["email"] == "lavkushry@gmail.com"
+    assert answers["email"] == "lav84095@gmail.com"
     assert answers["phone"] == "+91-9122036484"
     assert answers["location"] == "Hyderabad"
     assert "linkedin.com/in/lavkushry" in answers["linkedin"]
@@ -408,7 +408,7 @@ def test_all_8_ats_portal_types_structural_and_candidate_fidelity(expected_ats, 
     assert isinstance(js_script, str)
     assert f"ats: '{expected_ats}'" in js_script
     assert "Lavkush" in js_script
-    assert "lavkushry@gmail.com" in js_script
+    assert "lav84095@gmail.com" in js_script
     assert "+91-9122036484" in js_script
 
     # 7. Serialization Integrity

@@ -269,6 +269,29 @@ def init_db(db_path: Optional[str] = None):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_created ON recruiter_outreach(created_at);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_company ON recruiter_outreach(company);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_outreach_lead_id ON recruiter_outreach(lead_id);")
+
+        # Application Step & Field Audit Ledger table (Detailed record of every step & field filled)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS application_step_field_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                company TEXT,
+                title TEXT,
+                step_number INTEGER DEFAULT 1,
+                step_name TEXT DEFAULT 'APPLICATION_FORM',
+                field_label TEXT NOT NULL,
+                field_name TEXT,
+                field_type TEXT,
+                field_value TEXT NOT NULL,
+                action_type TEXT DEFAULT 'FILLED',
+                recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_job_id ON application_step_field_audit(job_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_platform ON application_step_field_audit(platform);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_step ON application_step_field_audit(job_id, step_number);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_recorded_at ON application_step_field_audit(recorded_at);")
     conn.close()
 
 
@@ -310,7 +333,7 @@ def generate_job_id(title: str, company: str, job_url: Optional[str] = None) -> 
 
 COMPANY_CLEANUP_REGEX = re.compile(
     r"\b(co|company|inc|incorporated|llc|ltd|limited|pvt|private|corp|corporation|technologies|technology|tech|"
-    r"solutions|services|systems|consulting|global|group|india|software)\b|[^\w\s]",
+    r"solutions|services|systems|consulting|global|group|india|software|ab|gmbh|sa|bv|se|plc)\b|[^\w\s]",
     re.IGNORECASE
 )
 
@@ -341,6 +364,65 @@ def normalize_role_title(title: Optional[str]) -> str:
     t = ROLE_CLEANUP_REGEX.sub(" ", t)
     tokens = [tok for tok in t.split() if len(tok) > 1]
     return " ".join(tokens)
+
+
+def canonicalize_job_url(url: Optional[str]) -> str:
+    """Canonicalizes job URL by normalizing domain, stripping query parameters, fragments, trailing slashes, and /apply."""
+    if not url or not isinstance(url, str):
+        return ""
+    u = url.strip()
+    if u in ("N/A", "None", ""):
+        return ""
+    try:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(u)
+        netloc = parsed.netloc.lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        if "job-boards.greenhouse.io" in netloc:
+            netloc = netloc.replace("job-boards.greenhouse.io", "boards.greenhouse.io")
+        path = parsed.path.rstrip("/")
+        if path.endswith("/apply"):
+            path = path[:-6].rstrip("/")
+        return f"{netloc}{path}"
+    except Exception:
+        return u.lower().rstrip("/")
+
+
+def extract_job_token(url: Optional[str]) -> str:
+    """Extracts distinctive job token (Greenhouse ID, Ashby/Lever UUID, or Workday JR/req code)."""
+    if not url or not isinstance(url, str):
+        return ""
+    # 1. UUIDv4 (Lever / Ashby)
+    m_uuid = re.search(r"([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", url, re.I)
+    if m_uuid:
+        return m_uuid.group(1).lower()
+    # 2. Greenhouse job ID (6+ digits)
+    m_gh = re.search(r"(?:jobs/|gh_jid=)(\d{6,})", url)
+    if m_gh:
+        return m_gh.group(1)
+    # 3. Workday JR code
+    m_wd = re.search(r"(JR\d+(?:-\d+)?)", url, re.I)
+    if m_wd:
+        return m_wd.group(1).upper()
+    return ""
+
+
+QUALIFIER_CLEANUP_REGEX = re.compile(
+    r"\s*[-–—/|,\.]\s*(immediate joiner|remote|hybrid|wfh|urgent|multiple locations|contract|c2h|full time|part time|india|bengaluru|bangalore|hyderabad|pune|noida|mumbai|chennai|delhi).*$|"
+    r"\s*\(.*?(remote|hybrid|wfh|immediate|urgent|joiner|india|contract).*?\)",
+    re.IGNORECASE
+)
+
+
+def clean_title_for_dedup(title: Optional[str]) -> str:
+    """Cleans title by removing location/urgency trailing qualifiers, punctuation, brackets, and extra spaces for deduplication."""
+    if not title:
+        return ""
+    t = str(title).lower().strip()
+    t = QUALIFIER_CLEANUP_REGEX.sub(" ", t)
+    t = re.sub(r"[^\w\s]", " ", t)
+    return " ".join(t.split())
 
 
 def record_applied_job(
@@ -380,7 +462,9 @@ def record_applied_job(
         try:
             existing_row = conn.execute("SELECT job_id, status FROM applied_jobs WHERE job_id = ?", (final_id,)).fetchone()
             if existing_row:
-                if existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy"):
+                if existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy", "Form Auto-Filled", "Form Auto-Filled (Ready for Review)", "FAILED_FORM_ERROR") and status == "Submitted (Confirmed)":
+                    is_dup = False
+                elif existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy"):
                     is_dup = False
                 else:
                     is_dup = True
@@ -495,12 +579,192 @@ def record_applied_job(
                 policy_version,
                 int(is_backfill)
             ))
+        # Automatically persist field audit records if present in metadata
+        if meta and ("field_audit" in meta or "fields_filled" in meta or "answers" in meta):
+            audit_list = meta.get("field_audit") or meta.get("fields_filled") or meta.get("answers") or []
+            if isinstance(audit_list, list):
+                record_batch_field_audit(
+                    job_id=final_id,
+                    platform=platform,
+                    company=company,
+                    title=title,
+                    audit_entries=audit_list,
+                    db_path=db_path
+                )
+
         return True, final_id
     except Exception as e:
         print(f"  [DB ERROR] Failed to record applied job: {e}")
         return False, final_id
     finally:
         conn.close()
+
+
+def record_field_audit(
+    job_id: str,
+    platform: str,
+    company: str,
+    title: str,
+    step_number: int,
+    step_name: str,
+    field_label: str,
+    field_value: Any,
+    field_name: Optional[str] = None,
+    field_type: Optional[str] = None,
+    action_type: str = "FILLED",
+    db_path: Optional[str] = None,
+    jsonl_log: bool = True
+) -> bool:
+    """
+    Persists an exact audit record of a field interaction on an application step.
+    Writes to SQLite application_step_field_audit and appends to logs/filled_fields_audit.jsonl.
+    Zero human intervention required.
+    """
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    val_str = str(field_value) if field_value is not None else ""
+    try:
+        conn = get_db_connection(target_path)
+        with conn:
+            conn.execute("""
+                INSERT INTO application_step_field_audit (
+                    job_id, platform, company, title, step_number, step_name,
+                    field_label, field_name, field_type, field_value, action_type, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (
+                job_id, platform, company, title, int(step_number), str(step_name),
+                str(field_label), str(field_name or ""), str(field_type or "text"), val_str, action_type
+            ))
+        conn.close()
+    except Exception as e:
+        logger.debug("Notice recording field audit in DB: %s", e)
+
+    if jsonl_log:
+        try:
+            log_dir = os.path.join(BASE_DIR, "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            ledger_file = os.path.join(log_dir, "filled_fields_audit.jsonl")
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "job_id": job_id,
+                "platform": platform,
+                "company": company,
+                "title": title,
+                "step_number": int(step_number),
+                "step_name": step_name,
+                "field_label": str(field_label),
+                "field_name": field_name,
+                "field_type": field_type,
+                "field_value": val_str,
+                "action_type": action_type
+            }
+            with open(ledger_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as e_log:
+            logger.debug("Notice writing field audit jsonl: %s", e_log)
+
+    return True
+
+
+def record_batch_field_audit(
+    job_id: str,
+    platform: str,
+    company: str,
+    title: str,
+    audit_entries: List[Union[Dict[str, Any], str]],
+    db_path: Optional[str] = None
+) -> int:
+    """Records a batch of step and field interactions for an application."""
+    if not audit_entries:
+        return 0
+    count = 0
+    for idx, entry in enumerate(audit_entries, start=1):
+        if isinstance(entry, str):
+            record_field_audit(
+                job_id=job_id,
+                platform=platform,
+                company=company,
+                title=title,
+                step_number=1,
+                step_name="FORM_SUBMISSION",
+                field_label=entry,
+                field_value="Autofilled from Profile",
+                field_name=entry,
+                field_type="autofill",
+                action_type="FILLED",
+                db_path=db_path
+            )
+            count += 1
+            continue
+
+        s_num = entry.get("step") or entry.get("step_number") or 1
+        s_name = entry.get("step_name") or "APPLICATION_FORM"
+        f_lbl = entry.get("field") or entry.get("field_label") or entry.get("question") or "Field"
+        f_val = entry.get("value") or entry.get("field_value") or entry.get("answer") or ""
+        f_name = entry.get("name") or entry.get("field_name")
+        f_type = entry.get("type") or entry.get("field_type")
+        act_type = entry.get("action_type") or "FILLED"
+        record_field_audit(
+            job_id=job_id,
+            platform=platform,
+            company=company,
+            title=title,
+            step_number=int(s_num),
+            step_name=str(s_name),
+            field_label=str(f_lbl),
+            field_value=f_val,
+            field_name=f_name,
+            field_type=f_type,
+            action_type=act_type,
+            db_path=db_path
+        )
+        count += 1
+    return count
+
+
+def get_application_field_audit(job_id: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieves chronological step and field audit records for a specific job application."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    conn = get_db_connection(target_path)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT step_number, step_name, field_label, field_name, field_type, field_value, action_type, recorded_at
+        FROM application_step_field_audit
+        WHERE job_id = ?
+        ORDER BY step_number ASC, id ASC
+    """, (job_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_recent_field_audits(limit: int = 50, platform: Optional[str] = None, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieves recent step and field audit records across applications."""
+    target_path = db_path or DB_PATH
+    init_db(target_path)
+    conn = get_db_connection(target_path)
+    cur = conn.cursor()
+    if platform:
+        cur.execute("""
+            SELECT job_id, platform, company, title, step_number, step_name,
+                   field_label, field_name, field_type, field_value, action_type, recorded_at
+            FROM application_step_field_audit
+            WHERE platform LIKE ?
+            ORDER BY id DESC
+            LIMIT ?
+        """, (f"%{platform}%", int(limit)))
+    else:
+        cur.execute("""
+            SELECT job_id, platform, company, title, step_number, step_name,
+                   field_label, field_name, field_type, field_value, action_type, recorded_at
+            FROM application_step_field_audit
+            ORDER BY id DESC
+            LIMIT ?
+        """, (int(limit),))
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def update_application_evidence(
@@ -550,49 +814,84 @@ def is_job_already_applied(
     company: Optional[str] = None,
     job_url: Optional[str] = None,
     job_id: Optional[str] = None,
-    db_path: Optional[str] = None
+    db_path: Optional[str] = None,
+    include_pending: bool = False
 ) -> bool:
     """
     Multi-tier deduplication check across all channels:
     1. Direct job_id lookup.
-    2. Exact job_url lookup.
+    2. Exact job_url lookup, token matching (UUID / Greenhouse ID / Workday JR), and canonical URL comparison.
     3. Exact title and company lookup.
-    4. Normalized canonical role + company lookup.
+    4. Normalized canonical company + normalized/punctuation-stripped title lookup.
     """
     init_db(db_path)
     conn = get_db_connection(db_path)
+    UNAPPLIED_PLACEHOLDERS = {"External Redirect", "Not Available", "Targeted Vacancy"}
+    
+    def _is_applied_row(r_status: Optional[str]) -> bool:
+        if include_pending:
+            return True
+        return (r_status or "").strip() not in UNAPPLIED_PLACEHOLDERS
+
     try:
         # Tier 1: job_id
         target_id = job_id or (generate_job_id(title, company, job_url) if title and company else None)
         if target_id:
             row = conn.execute("SELECT id, status FROM applied_jobs WHERE job_id = ?", (target_id,)).fetchone()
-            if row:
+            if row and _is_applied_row(row["status"]):
                 return True
 
-        # Tier 2: job_url
+        # Tier 2: job_url (raw, token, and canonical)
         if job_url and str(job_url).strip() and job_url != "N/A":
-            row = conn.execute("SELECT id FROM applied_jobs WHERE job_url = ?", (str(job_url).strip(),)).fetchone()
-            if row:
+            raw_url = str(job_url).strip()
+            # 2a. Raw URL match
+            row = conn.execute("SELECT id, status FROM applied_jobs WHERE job_url = ?", (raw_url,)).fetchone()
+            if row and _is_applied_row(row["status"]):
                 return True
+
+            # 2b. Token match (Requisition / Posting ID)
+            tok = extract_job_token(raw_url)
+            if tok and len(tok) >= 5:
+                # Token must match within job_url
+                for r in conn.execute("SELECT id, status, job_url FROM applied_jobs WHERE job_url LIKE ?", (f"%{tok}%",)).fetchall():
+                    if _is_applied_row(r["status"]):
+                        return True
+
+            # 2c. Canonical URL match
+            canon_target = canonicalize_job_url(raw_url)
+            if canon_target:
+                for existing in conn.execute("SELECT job_url, status FROM applied_jobs WHERE job_url IS NOT NULL AND job_url != 'N/A'"):
+                    ex_url = existing[0]
+                    if ex_url and canonicalize_job_url(ex_url) == canon_target and _is_applied_row(existing[1]):
+                        return True
 
         # Tier 3: Title + Company
         if title and company:
-            # Exact match check
-            row = conn.execute("""
-                SELECT id FROM applied_jobs 
+            # 3a. Exact match check
+            for r in conn.execute("""
+                SELECT id, status FROM applied_jobs 
                 WHERE LOWER(TRIM(title)) = ? AND LOWER(TRIM(company)) = ?
-            """, (title.lower().strip(), company.lower().strip())).fetchone()
-            if row:
-                return True
+            """, (title.lower().strip(), company.lower().strip())).fetchall():
+                if _is_applied_row(r["status"]):
+                    return True
 
-            # Normalized company match with exact title match (prevents collapsing distinct role titles)
+            # 3b. Normalized company match with exact title match
             norm_comp = normalize_company_name(company)
             clean_title = title.lower().strip()
             if norm_comp:
-                for existing in conn.execute("SELECT title, company FROM applied_jobs"):
+                for existing in conn.execute("SELECT title, company, status FROM applied_jobs"):
                     ex_c = normalize_company_name(existing[1])
                     ex_t = str(existing[0] or "").lower().strip()
-                    if ex_c and ex_t and ex_c == norm_comp and ex_t == clean_title:
+                    if ex_c and ex_t and ex_c == norm_comp and ex_t == clean_title and _is_applied_row(existing[2]):
+                        return True
+
+            # 3c. Punctuation-stripped normalized title match (e.g. "Engineer, India" vs "Engineer - India")
+            clean_title_dedup = clean_title_for_dedup(title)
+            if norm_comp and clean_title_dedup:
+                for existing in conn.execute("SELECT title, company, status FROM applied_jobs"):
+                    ex_c = normalize_company_name(existing[1])
+                    ex_t_dedup = clean_title_for_dedup(existing[0])
+                    if ex_c and ex_t_dedup and ex_c == norm_comp and ex_t_dedup == clean_title_dedup and _is_applied_row(existing[2]):
                         return True
 
         return False

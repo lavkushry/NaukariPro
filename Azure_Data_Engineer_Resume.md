@@ -1,5 +1,5 @@
 # LAVKUSH KUMAR
-**Hyderabad, India** | **+91-9122036484** | **lavkushry@gmail.com** | [**linkedin.com/in/lavkushry**](https://linkedin.com/in/lavkushry) | [**github.com/lavkushry**](https://github.com/lavkushry)
+**Hyderabad, India** | **+91-9122036484** | **lav84095@gmail.com** | [**linkedin.com/in/lavkush-kumar**](https://linkedin.com/in/lavkush-kumar) | [**github.com/lavkush-kumar**](https://github.com/lavkush-kumar)
 
 ---
 
@@ -9,11 +9,11 @@ Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delt
 ---
 
 ### TECHNICAL SKILLS
-* **Cloud & Azure Data Services:** Azure Data Factory (ADF), Azure Databricks, ADLS Gen2, Azure Synapse Analytics, Microsoft Fabric, AWS (EKS, S3, IAM)
-* **Big Data & Lakehouse:** PySpark, Apache Spark (Spark SQL), Delta Lake (ACID, Time Travel, Liquid Clustering), Medallion Architecture (Bronze/Silver/Gold), ETL/ELT Pipelines
-* **Streaming & Databases:** Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, advanced SQL (window functions, CTEs), Star Schema Data Modeling
-* **DataOps, IaC & CI/CD:** Terraform (IaC), Docker, Kubernetes (kubeadm, EKS), Helm, Azure DevOps, GitLab CI, Jenkins, Great Expectations
-* **Observability & Governance:** Prometheus, Grafana, OpenTelemetry, ELK Stack (Logstash Grok), Unity Catalog RBAC, Linux/Bash, Python, Git
+* **Data Engineering & Lakehouse:** Azure Databricks, Apache Spark, PySpark, Spark SQL, Delta Lake, Medallion Architecture, ETL Pipelines, ELT Pipelines, Data Lakehouse, ADLS Gen2, Azure Synapse Analytics, Microsoft Fabric, Change Data Capture (CDC), Unity Catalog
+* **Data Modeling & Databases:** SQL, PostgreSQL, Snowflake, Data Modeling, Star Schema, Redis, MongoDB, Query Optimization, Cloud Data Management
+* **Streaming & Event Hubs:** Apache Kafka, Spark Structured Streaming, Event Streaming, Kafka Connect, Azure Event Hubs
+* **DataOps, IaC & CI/CD:** Terraform, Infrastructure as Code (IaC), Azure DevOps, CI/CD, Docker, Kubernetes, Helm, Git, GitHub Actions, GitLab CI, Linux, Bash, dbt
+* **Observability & Quality:** Great Expectations, Data Quality Gates, Prometheus, Grafana, OpenTelemetry, Data Pipelines Observability, Python (Programming Language)
 
 ---
 
@@ -44,7 +44,7 @@ Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delt
 
 ### KEY ENGINEERING PROJECTS
 
-#### [**Enterprise Medallion Lakehouse Platform on Azure**](https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project) | *Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2, SQL* | *2026*
+#### [**Enterprise Medallion Lakehouse Platform on Azure**](https://github.com/lavkush-kumar/Azure-Data-Engineering-Medallion-Lakehouse-Project) | *Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2, SQL* | *2026*
 * **Architected** an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest **1.5M+ events/day** into curated Bronze, Silver, and Gold layers across ADLS Gen2 with Unity Catalog governance.
 * **Optimized** distributed PySpark and Spark SQL batch transformations with schema validation and partition pruning, slashing ETL pipeline runtime **from 4.0h to 2.6h (35% reduction)** while ensuring ACID consistency.
 

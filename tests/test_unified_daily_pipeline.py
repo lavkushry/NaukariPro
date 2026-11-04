@@ -312,7 +312,7 @@ def test_candidate_profile_and_recruiter_privacy_alignment():
     assert "sql" in covered
 
     # Blueprint candidate identity check
-    assert "lavkushry@gmail.com" in bp["about"]
+    assert "lav84095@gmail.com" in bp["about"]
     assert "CGI India" in str(bp["experience"])
     assert "15 Days" in bp["headline"]
 

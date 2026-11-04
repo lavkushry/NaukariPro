@@ -1,7 +1,7 @@
 {
   "candidate": {
     "name": "Lavkush Kumar",
-    "email": "lavkushry@gmail.com",
+    "email": "lav84095@gmail.com",
     "applicant_email": "lav84095@gmail.com",
     "naukri_email": "lav84095@gmail.com",
     "phone": "+91-9122036484",
@@ -23,8 +23,8 @@
       "Chennai"
     ],
     "target_title": "Azure Data Engineer",
-    "linkedin": "linkedin.com/in/lavkushry",
-    "github": "github.com/lavkushry",
+    "linkedin": "linkedin.com/in/lavkush-kumar",
+    "github": "github.com/lavkush-kumar",
     "resume_path": "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
   },
   "search_settings": {
@@ -63,10 +63,11 @@
   },
   "profile_summary": "Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF within enterprise Medallion Lakehouses. Engineered scalable batch and real-time streaming architectures (Apache Kafka, ADLS Gen2, Unity Catalog) processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second latency. Automated DataOps CI/CD release cycles and infrastructure provisioning via Terraform, cutting ETL execution runtime by 35% and sustaining 99.95% cloud data platform availability.",
   "technical_competencies": {
-    "Data Platforms & Lakehouse": "Azure Databricks, PySpark (Spark SQL), Delta Lake (ACID, Time Travel, Liquid Clustering), Azure Data Factory (ADF), Azure Synapse Analytics, Microsoft Fabric, ADLS Gen2, Medallion Architecture (Bronze/Silver/Gold).",
-    "Streaming & Databases": "Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, advanced SQL (window functions, CTEs), Star Schema Data Modeling.",
-    "Cloud & DataOps": "Terraform (IaC), AWS (EKS, VPC, IAM), Docker, Helm, Jenkins CI/CD, GitLab CI, Linux/Bash, Git.",
-    "Observability & Governance": "Prometheus, Grafana, ELK Stack (Logstash Grok), Data Quality Gates, Unity Catalog concepts."
+    "Data Engineering & Lakehouse": "Azure Databricks, Apache Spark, PySpark, Spark SQL, Delta Lake, Medallion Architecture, ETL Pipelines, ELT Pipelines, Data Lakehouse, ADLS Gen2, Azure Synapse Analytics, Microsoft Fabric, Change Data Capture (CDC), Unity Catalog.",
+    "Data Modeling & Databases": "SQL, PostgreSQL, Snowflake, Data Modeling, Star Schema, Redis, MongoDB, Query Optimization, Cloud Data Management.",
+    "Streaming & Event Hubs": "Apache Kafka, Spark Structured Streaming, Event Streaming, Kafka Connect, Azure Event Hubs.",
+    "DataOps, IaC & CI/CD": "Terraform, Infrastructure as Code (IaC), Azure DevOps, CI/CD, Docker, Kubernetes, Helm, Git, GitHub Actions, GitLab CI, Linux, Bash, dbt.",
+    "Observability & Data Quality": "Great Expectations, Data Quality Gates, Prometheus, Grafana, OpenTelemetry, Data Pipelines Observability, Python (Programming Language)."
   },
   "default_keywords": [
     "Azure Data Factory (ADF)",
@@ -83,20 +84,41 @@
     "Azure Synapse Analytics",
     "Microsoft Fabric",
     "Terraform",
+    "Infrastructure as Code (IaC)",
     "ETL Pipelines",
     "ELT Pipelines",
     "Data Modeling",
-    "Star Schema Data Modeling",
+    "Star Schema",
     "DataOps",
     "CI/CD",
     "Docker",
     "Kubernetes",
+    "Helm",
+    "Git",
+    "GitHub Actions",
+    "GitLab CI",
+    "Linux",
+    "Bash",
     "Unity Catalog",
     "Schema Enforcement",
     "Change Data Capture (CDC)",
+    "Snowflake",
+    "Redis",
+    "MongoDB",
+    "Query Optimization",
+    "Spark Structured Streaming",
+    "Event Streaming",
+    "Kafka Connect",
+    "Azure Event Hubs",
     "dbt",
     "Great Expectations",
-    "Observability"
+    "Data Quality Gates",
+    "Prometheus",
+    "Grafana",
+    "OpenTelemetry",
+    "Data Pipelines Observability",
+    "Cloud Data Management",
+    "Python (Programming Language)"
   ],
   "experience": [
     {

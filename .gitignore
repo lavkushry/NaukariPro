@@ -36,7 +36,9 @@ venv.bak/
 .env.*.local
 *.key
 *.pem
+*.tmp
 portal_accounts.json
+portal_accounts.tmp
 cookies_seed.json
 *cookie*.json
 naukri_system/cookies_seed.json
@@ -99,10 +101,13 @@ scroll_*.py
 *.bak[0-9]*
 
 # Root test screenshots
+/*.png
+!evidence/*.png
 /*_evidence.png
 /*_external.png
 /test_*.png
 /naukri_application_history.png
+logs/*.png
 linkedin_system/*.png
 linkedin_system/*.html
 linkedin_system/*.json

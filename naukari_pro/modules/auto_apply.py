@@ -506,7 +506,7 @@ def solve_screening_text_question(question: str) -> str:
     if re.search(r"\b(contact|mobile|phone|cell|whatsapp)\b", q_lower):
         return _CANDIDATE.get("phone", "+91 9122036484")
     if any(k in q_lower for k in ("email", "mail id", "email id", "email address")):
-        return _CANDIDATE.get("email", "lavkushry@gmail.com")
+        return _CANDIDATE.get("email", "lav84095@gmail.com")
     if (
         any(k in q_lower for k in ("your name", "full name", "candidate name", "first name", "applicant name", "name of applicant", "name of candidate"))
         or re.search(r"\b(applicant|candidate|full|your)\s*name\b", q_lower)
@@ -515,10 +515,10 @@ def solve_screening_text_question(question: str) -> str:
     ):
         return _CANDIDATE.get("name", "Lavkush Kumar")
     if "linkedin" in q_lower:
-        li = _CANDIDATE.get("linkedin", "linkedin.com/in/lavkushry")
+        li = _CANDIDATE.get("linkedin", "linkedin.com/in/lavkush-kumar")
         return f"https://{li}" if not li.startswith("http") else li
     if any(k in q_lower for k in ("github", "portfolio", "git repo", "website", "personal site")):
-        gh = _CANDIDATE.get("github", "github.com/lavkushry")
+        gh = _CANDIDATE.get("github", "github.com/lavkush-kumar")
         return f"https://{gh}" if not gh.startswith("http") else gh
 
     # 3. Notice Period & Availability
@@ -1514,12 +1514,14 @@ class PlaywrightRunner:
         self.dry_run = dry_run
         self.proxy = proxy
         self.universal_apply = universal_apply
+        self.last_field_records = []
 
     async def handle_chatbot(self, page):
         """
         Handles the screening chatbot questions using native Playwright keyboard events.
         Returns True ONLY if an unequivocal submission confirmation or redirect is observed.
         """
+        self.last_field_records = []
         has_drawer = False
         for _ in range(12):
             await page.wait_for_timeout(450)
@@ -1541,6 +1543,16 @@ class PlaywrightRunner:
                 const isNewlyApplied = btnTxt === 'applied' || btnTxt.includes('application submitted') || btnTxt.includes('applied successfully');
                 return !!toast || isNewlyApplied || bodyTxt.includes('successfully applied');
             }""")
+            if is_confirmed:
+                self.last_field_records.append({
+                    "step": 1,
+                    "step_name": "ONE_CLICK_DIRECT",
+                    "field": "Naukri Profile Credentials",
+                    "name": "1-click",
+                    "type": "profile_autofill",
+                    "value": "1-Click Direct Application via Saved Profile",
+                    "action_type": "SUBMITTED"
+                })
             return is_confirmed
 
         print("  💬 Screening Chatbot detected — auto-answering questions...")
@@ -1576,18 +1588,51 @@ class PlaywrightRunner:
             # 1. Radio button solver with semantic affirmative matching and negative guards
             radio_res = await page.evaluate(SCREENING_RADIO_JS, q_lower)
             clicked_radio = bool(radio_res.get("handled")) if isinstance(radio_res, dict) else bool(radio_res)
+            if clicked_radio:
+                val = radio_res.get("chosenText") if isinstance(radio_res, dict) else "Selected"
+                self.last_field_records.append({
+                    "step": 1,
+                    "step_name": "SCREENING_CHATBOT",
+                    "field": status.get("qText") or "Screening Question (Radio)",
+                    "name": "radio",
+                    "type": "radio",
+                    "value": str(val),
+                    "action_type": "CHECKED"
+                })
 
             # 2. Dropdown solver (<select> and custom dropdowns)
             handled_dropdown = False
             if not clicked_radio:
                 dropdown_res = await page.evaluate(SCREENING_DROPDOWN_JS)
                 handled_dropdown = bool(dropdown_res.get("handled")) if isinstance(dropdown_res, dict) else bool(dropdown_res)
+                if handled_dropdown:
+                    val = dropdown_res.get("chosenText") if isinstance(dropdown_res, dict) else "Selected"
+                    self.last_field_records.append({
+                        "step": 1,
+                        "step_name": "SCREENING_CHATBOT",
+                        "field": status.get("qText") or "Screening Question (Dropdown)",
+                        "name": "dropdown",
+                        "type": dropdown_res.get("type", "dropdown") if isinstance(dropdown_res, dict) else "dropdown",
+                        "value": str(val),
+                        "action_type": "SELECTED"
+                    })
 
             # 3. Checkbox solver (multi-select checkboxes)
             handled_checkbox = False
             if not clicked_radio and not handled_dropdown:
                 checkbox_res = await page.evaluate(SCREENING_CHECKBOX_JS)
                 handled_checkbox = bool(checkbox_res.get("handled")) if isinstance(checkbox_res, dict) else bool(checkbox_res)
+                if handled_checkbox:
+                    cnt = checkbox_res.get("clickedCount", 1) if isinstance(checkbox_res, dict) else 1
+                    self.last_field_records.append({
+                        "step": 1,
+                        "step_name": "SCREENING_CHATBOT",
+                        "field": status.get("qText") or "Screening Question (Checkbox)",
+                        "name": "checkbox",
+                        "type": "checkbox",
+                        "value": f"{cnt} options checked",
+                        "action_type": "CHECKED"
+                    })
 
             # 4. Text input solver
             if not clicked_radio and not handled_dropdown and not handled_checkbox:
@@ -1599,6 +1644,15 @@ class PlaywrightRunner:
                         await page.keyboard.press("Control+A")
                         await page.keyboard.press("Backspace")
                         await page.keyboard.type(ans, delay=25)
+                        self.last_field_records.append({
+                            "step": 1,
+                            "step_name": "SCREENING_CHATBOT",
+                            "field": status.get("qText") or "Screening Question (Text)",
+                            "name": "text_input",
+                            "type": "text",
+                            "value": str(ans),
+                            "action_type": "FILLED"
+                        })
                 except Exception:
                     pass
 
@@ -1803,12 +1857,29 @@ class PlaywrightRunner:
                     evidence_path = None
 
                 status_val = "Submitted (Confirmed)" if evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024 else "Form Auto-Filled"
-                sync_dual_log(title=title, company=company, platform="naukri", status=status_val, match_score=match_score, job_url=job_url, evidence_path=evidence_path)
+                sync_dual_log(
+                    title=title,
+                    company=company,
+                    platform="naukri",
+                    status=status_val,
+                    match_score=match_score,
+                    job_url=job_url,
+                    evidence_path=evidence_path,
+                    field_audit=self.last_field_records
+                )
                 self.skip_list = add_to_skip(self.skip_list, title, company, "already-applied")
                 return True, "Applied via Playwright"
             else:
                 print(f"    ⚠️ Could not confirm application submission.")
-                sync_dual_log(title=title, company=company, platform="naukri", status="Form Auto-Filled", match_score=match_score, job_url=job_url)
+                sync_dual_log(
+                    title=title,
+                    company=company,
+                    platform="naukri",
+                    status="Form Auto-Filled",
+                    match_score=match_score,
+                    job_url=job_url,
+                    field_audit=self.last_field_records
+                )
                 self.skip_list = add_to_skip(self.skip_list, title, company, "unconfirmed")
                 return False, "Form Auto-Filled"
         except SecurityChallengeError:

@@ -55,7 +55,7 @@ def test_template_generator_initialization():
     assert gen.name == "Lavkush Kumar"
     assert "2.5 YOE" in gen.yoe
     assert gen.phone == "+91-9122036484"
-    assert gen.email == "lavkushry@gmail.com"
+    assert gen.email == "lav84095@gmail.com"
 
 
 @pytest.mark.parametrize("recruiter_name,company,stack", [
@@ -95,8 +95,8 @@ def test_direct_inmail_template_content():
     assert "2M+ events/day" in body
     assert "35%" in body
     assert "+91-9122036484" in body
-    assert "lavkushry@gmail.com" in body
-    assert "linkedin.com/in/lavkushry" in body
+    assert "lav84095@gmail.com" in body
+    assert ("linkedin.com/in/lavkushry" in body or "linkedin.com/in/lavkush-kumar" in body)
     assert "₹20–25 LPA" in body
 
 

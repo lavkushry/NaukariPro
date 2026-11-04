@@ -383,7 +383,7 @@ class TestAdversarialTextClassificationScenarios:
     def test_identity_and_organization_collision_safety(self):
         cand_name = _CANDIDATE.get("name", "Lavkush Kumar")
         cand_phone = _CANDIDATE.get("phone", "+91 9122036484")
-        cand_email = _CANDIDATE.get("email", "lavkushry@gmail.com")
+        cand_email = _CANDIDATE.get("email", "lav84095@gmail.com")
         cand_company = _CANDIDATE.get("current_company", "CGI India (PNC Bank GCC)")
 
         # Candidate identity

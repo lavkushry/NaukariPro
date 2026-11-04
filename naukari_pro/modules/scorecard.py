@@ -420,6 +420,8 @@ def sync_dual_log(
     evidence_path: Optional[str] = None,
     error_reason: Optional[str] = None,
     applicant_email: str = "lav84095@gmail.com",
+    raw_metadata: Optional[Dict[str, Any]] = None,
+    field_audit: Optional[List[Dict[str, Any]]] = None,
     db_path: Optional[str] = None,
     tracker_path: Optional[str] = None
 ) -> Tuple[bool, str]:
@@ -479,11 +481,14 @@ def sync_dual_log(
             final_status = "Form Auto-Filled (Ready for Review)"
             final_evidence = None
 
-    raw_meta = {}
+    raw_meta = dict(raw_metadata) if raw_metadata else {}
     if error_reason:
         raw_meta["error_reason"] = str(error_reason)
     if final_evidence:
         raw_meta["evidence_path"] = str(final_evidence)
+    if field_audit:
+        raw_meta["field_audit"] = field_audit
+        raw_meta["fields_count"] = len(field_audit)
 
     # 1. Record into SQLite DB
     from naukari_pro.modules.db import record_applied_job

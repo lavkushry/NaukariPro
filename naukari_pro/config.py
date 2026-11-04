@@ -46,7 +46,7 @@ def load_config():
     if os.getenv("CANDIDATE_EMAIL"):
         candidate["email"] = os.getenv("CANDIDATE_EMAIL")
     elif "email" not in candidate:
-        candidate["email"] = "lavkushry@gmail.com"
+        candidate["email"] = "lav84095@gmail.com"
 
     if os.getenv("NAUKRI_EMAIL"):
         candidate["applicant_email"] = os.getenv("NAUKRI_EMAIL")

@@ -209,7 +209,7 @@ def generate_monday_digest(
         f"# 📊 NaukariPro Learning Loop — Weekly Monday Digest",
         f"**Date:** {report_date}  ",
         f"**Candidate:** Lavkush Kumar (2.5 YOE Azure Data Engineer | CGI India, ex-HFCL)  ",
-        f"**Candidate Email:** `lavkushry@gmail.com` | **Applicant Login:** `lav84095@gmail.com`  ",
+        f"**Candidate Email:** `lav84095@gmail.com` | **Applicant Login:** `lav84095@gmail.com`  ",
         f"**Target Role:** Azure Data Engineer / Platform Engineer (₹25 LPA Target)  ",
         "",
         "---",

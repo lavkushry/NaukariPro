@@ -1632,7 +1632,7 @@ def test_screening_solver_text_numeric_questions():
     # Contact info
     assert solver.determine_text_answer("What is your mobile phone number?") == "9122036484"
     assert solver.determine_text_answer("Country phone code") == "+91"
-    assert solver.determine_text_answer("Email address") == "lavkushry@gmail.com"
+    assert solver.determine_text_answer("Email address") == "lav84095@gmail.com"
     
     # Notice period
     assert solver.determine_text_answer("What is your notice period (in days)?") == "15"
@@ -1753,7 +1753,7 @@ def test_screening_solver_contact_info_variations():
     assert solver.determine_text_answer("Please enter your mobile phone number:") == "9122036484"
     assert solver.determine_text_answer("What is your primary phone number?") == "9122036484"
     assert solver.determine_text_answer("Country phone code:") == "+91"
-    assert solver.determine_text_answer("Email address for notifications:") == "lavkushry@gmail.com"
+    assert solver.determine_text_answer("Email address for notifications:") == "lav84095@gmail.com"
     assert solver.determine_text_answer("First Name") == "Lavkush"
     assert solver.determine_text_answer("Last Name") == "Kumar"
     assert solver.determine_text_answer("Full Name") == "Lavkush Kumar"
@@ -2418,7 +2418,7 @@ def test_bot_solve_question_direct_helper():
     bot = LinkedInEasyApplyBot()
     
     # 1. Text input
-    assert bot.solve_question("Email address", input_type="text") == "lavkushry@gmail.com"
+    assert bot.solve_question("Email address", input_type="text") == "lav84095@gmail.com"
     # 2. Numeric input
     assert bot.solve_question("How many years of PySpark experience do you have?", input_type="number") == "2"
     # 3. Radio input

@@ -17,7 +17,7 @@ The LinkedIn Career & Easy Apply Engine is an enterprise-grade autonomous job ap
 
 3. **SOTA Multi-Step Easy Apply Bot (`naukari_pro/modules/linkedin_bot.py`)**:
    - Implements automated multi-step form filler using ArtDeco DOM selectors.
-   - Step 1: Contact info auto-fill (Phone `+91-9122036484`, Email `lavkushry@gmail.com`).
+   - Step 1: Contact info auto-fill (Phone `+91-9122036484`, Email `lav84095@gmail.com`).
    - Step 2: Resume attachment (uploads `Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf` or selects latest).
    - Step 3: Screening questionnaire solver (regex fuzzy matching: PySpark/Databricks/SQL/ADF/Python experience years, 15-day notice period, work authorization in India, willing to relocate/commute, English proficiency).
    - Step 4: Auto-uncheck "Follow company" checkbox on review step before submission.
@@ -46,7 +46,7 @@ The LinkedIn Career & Easy Apply Engine is an enterprise-grade autonomous job ap
 | 7 | Job Card Parsing & Deduplication | Parse search result job cards (ID, title, company, location, snippet) and track applied IDs | M2 | R2, Survey 1/2 |
 | 8 | Strict Match Scoring Gate (>=70%) | Score JD requirements against candidate facts with strict `>=70%` cutoff; skip low-match roles | M2 | R2, Survey 1/2 |
 | 9 | Easy Apply Modal Navigator | Detect in-app Easy Apply button, handle `div.jobs-easy-apply-modal`, track multi-step progression | M3 | R3, Survey 2 |
-| 10 | Contact Info Auto-Fill | Auto-populate Phone `+91-9122036484`, Country Code `India (+91)`, and Email `lavkushry@gmail.com` | M3 | R3, Survey 1/2 |
+| 10 | Contact Info Auto-Fill | Auto-populate Phone `+91-9122036484`, Country Code `India (+91)`, and Email `lav84095@gmail.com` | M3 | R3, Survey 1/2 |
 | 11 | Resume File Attachment | Auto-upload `Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf` or select existing resume card | M3 | R3, Survey 1/2 |
 | 12 | Screening Questionnaire Solver | Fuzzy regex solver for numeric experience, notice period (15 days), work authorization, commute, English | M3 | R3, Survey 1/2 |
 | 13 | Auto-Uncheck Follow Company | Locate and uncheck the "Follow company" checkbox on review step prior to submission | M3 | R3, Survey 2 |
@@ -154,6 +154,22 @@ class LinkedInApplyRunner:
 - `naukari_pro/modules/linkedin_search.py`: Search URL generator, geoIds, card parser, match scoring engine (>=70%).
 - `naukari_pro/modules/linkedin_bot.py`: Multi-step Easy Apply modal solver, contact info filler, resume uploader, questionnaire regex solver, follow company unchecker, submit & dismiss.
 - `naukari_pro/modules/linkedin_apply.py`: High-level runner facade orchestrating session, search, bot, tracker logging, and dry-run mode.
-- `naukari_pro/cli.py`: Subparsers for `linkedin-verify` and `linkedin-apply`.
+- `naukari_pro/cli.py`: Subparsers for `linkedin-verify`, `linkedin-apply`, and `audit-fields`.
 - `tests/test_linkedin_suite.py`: 100% offline regression test suite.
 - `agy_schedule_runner.sh`: Cloud runner script on remote VM.
+
+---
+
+## Unified Multi-Platform Expansion (External Career Portals & Audit Engine)
+In addition to LinkedIn and Naukri, the engine includes:
+1. **Multi-ATS Career Portals (`naukari_pro/modules/career_portals.py`)**:
+   - Greenhouse, Ashby, Lever, Workday autonomous adapters.
+   - Autonomous IMAP Gmail OTP verification for Greenhouse security codes (`fetch_greenhouse_security_code()`).
+   - S3 resume file attachment and combobox handling.
+   - Anti-bot defense and heuristics in `ScreeningSolver`.
+   - Batch runner with Remote-First prioritization.
+2. **Step & Field Audit Engine (`naukari_pro/modules/db.py`)**:
+   - SQLite table `application_step_field_audit` + streaming JSONL `logs/filled_fields_audit.jsonl`.
+   - Complete ledger accessible via CLI: `.venv/bin/python -m naukari_pro.cli audit-fields --platform <name> --recent <n>`.
+3. **Master Architecture & Inventory**:
+   - See [`SYSTEM_ARCHITECTURE_AND_INVENTORY.md`](file:///Users/lavkushkumar/Desktop/Resume/SYSTEM_ARCHITECTURE_AND_INVENTORY.md) for full data dictionaries, schema references, and execution guides.

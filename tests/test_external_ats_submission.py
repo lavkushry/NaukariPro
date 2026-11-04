@@ -36,14 +36,14 @@ def sample_profile():
         "firstName": "Lavkush",
         "lastName": "Kumar",
         "fullName": "Lavkush Kumar",
-        "email": "lavkushry@gmail.com",
+        "email": "lav84095@gmail.com",
         "phone": "+91-9122036484",
         "city": "Hyderabad",
         "currentCompany": "CGI India (PNC Bank GCC)",
         "currentTitle": "DevOps Engineer / Azure Data Engineer",
-        "linkedInUrl": "https://linkedin.com/in/lavkushry",
-        "githubUrl": "https://github.com/lavkushry",
-        "portfolioUrl": "https://github.com/lavkushry",
+        "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
+        "githubUrl": "https://github.com/lavkush-kumar",
+        "portfolioUrl": "https://github.com/lavkush-kumar",
         "experienceYears": "2.5",
         "noticePeriodDays": "15",
         "resumePath": "/tmp/dummy_resume.pdf"
@@ -148,7 +148,7 @@ class TestGreenhouseHandler:
         vals = [val for _, val in filled_selectors]
         assert "Lavkush" in vals
         assert "Kumar" in vals
-        assert "lavkushry@gmail.com" in vals
+        assert "lav84095@gmail.com" in vals
 
     def test_greenhouse_confirmation_url(self, sample_profile):
         handler = GreenhouseHandler(sample_profile)
@@ -218,7 +218,7 @@ class TestLeverHandler:
 
         assert res["ats"] == "Lever"
         assert "Lavkush Kumar" in filled_vals
-        assert "lavkushry@gmail.com" in filled_vals
+        assert "lav84095@gmail.com" in filled_vals
         assert "+91-9122036484" in filled_vals
 
     def test_lever_confirmation_url(self, sample_profile):
@@ -321,7 +321,8 @@ class TestLinuxPlaywrightRouting:
 
     def test_fill_in_chrome_routes_to_playwright_on_linux(self, sample_profile):
         filler = CareerPortalFiller()
-        with patch("sys.platform", "linux"):
+        with patch("sys.platform", "linux"), \
+             patch("naukari_pro.modules.db.is_job_already_applied", return_value=False):
             with patch.object(filler, "fill_in_playwright", return_value=(True, ["First Name"])) as mock_pw:
                 with patch("subprocess.run") as mock_sub:
                     success, filled = filler.fill_in_chrome("https://boards.greenhouse.io/test/1", "Comp", "Role")
@@ -360,3 +361,285 @@ class TestScreeningSolverGroundTruthFidelity:
         d5 = solver.evaluate_question("Have you ever been convicted of a criminal offense?")
         assert d5.answer == "No"
         assert d5.is_ambiguous is False
+
+
+class TestFieldStepAuditLedger:
+    """Verifies complete step-by-step and field-by-field audit trail recording with zero human intervention."""
+
+    def test_greenhouse_handler_records_fields_and_steps(self, tmp_path):
+        from naukari_pro.modules.career_portals import GreenhouseHandler
+        profile = {
+            "firstName": "Lavkush",
+            "lastName": "Kumar",
+            "email": "lav84095@gmail.com",
+            "phone": "+91-9122036484",
+            "city": "Hyderabad",
+            "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
+            "portfolioUrl": "https://github.com/lavkush-kumar"
+        }
+        handler = GreenhouseHandler(profile)
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_page.locator.return_value = mock_loc
+
+        res = handler.fill_form(mock_page)
+        assert res["ats"] == "Greenhouse"
+        assert len(res["field_records"]) >= 7
+
+        first_rec = res["field_records"][0]
+        assert first_rec["step"] == 1
+        assert first_rec["step_name"] == "BASIC_INFO"
+        assert first_rec["field"] == "First Name"
+        assert first_rec["value"] == "Lavkush"
+        assert first_rec["action_type"] == "FILLED"
+
+        # Verify email is strictly lav84095@gmail.com
+        email_rec = [r for r in res["field_records"] if r["field"] == "Email"][0]
+        assert email_rec["value"] == "lav84095@gmail.com"
+
+    def test_ashby_handler_records_fields_and_steps(self, tmp_path):
+        from naukari_pro.modules.career_portals import AshbyHandler
+        profile = {
+            "fullName": "Lavkush Kumar",
+            "email": "lav84095@gmail.com",
+            "phone": "+919122036484",
+            "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
+            "githubUrl": "https://github.com/lavkush-kumar",
+            "city": "Hyderabad"
+        }
+        handler = AshbyHandler(profile)
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_loc.all.return_value = []
+        mock_page.locator.return_value = mock_loc
+
+        res = handler.fill_form(mock_page)
+        assert res["ats"] == "Ashby"
+        assert len(res["field_records"]) >= 5
+
+        # Verify fields recorded
+        labels = [r["field"] for r in res["field_records"]]
+        assert "Full Name" in labels
+        assert "Email" in labels
+        email_rec = [r for r in res["field_records"] if r["field"] == "Email"][0]
+        assert email_rec["value"] == "lav84095@gmail.com"
+
+    def test_lever_handler_records_fields_and_steps(self, tmp_path):
+        from naukari_pro.modules.career_portals import LeverHandler
+        profile = {
+            "fullName": "Lavkush Kumar",
+            "email": "lav84095@gmail.com",
+            "phone": "+91-9122036484",
+            "currentCompany": "CGI India",
+            "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
+            "githubUrl": "https://github.com/lavkush-kumar",
+            "portfolioUrl": "https://github.com/lavkush-kumar"
+        }
+        handler = LeverHandler(profile)
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_page.locator.return_value = mock_loc
+
+        res = handler.fill_form(mock_page)
+        assert res["ats"] == "Lever"
+        assert len(res["field_records"]) >= 7
+        email_rec = [r for r in res["field_records"] if r["field"] == "Email"][0]
+        assert email_rec["value"] == "lav84095@gmail.com"
+
+    def test_workday_handler_records_fields_and_steps(self, tmp_path):
+        from naukari_pro.modules.career_portals import WorkdayHandler
+        profile = {
+            "firstName": "Lavkush",
+            "lastName": "Kumar",
+            "email": "lav84095@gmail.com",
+            "phone": "+919122036484",
+            "city": "Hyderabad"
+        }
+        handler = WorkdayHandler(profile)
+        mock_page = MagicMock()
+        mock_loc = MagicMock()
+        mock_loc.first = mock_loc
+        mock_loc.count.return_value = 1
+        mock_loc.is_visible.return_value = True
+        mock_page.locator.return_value = mock_loc
+
+        res = handler.fill_form(mock_page)
+        assert res["ats"] == "Workday"
+        assert len(res["field_records"]) >= 5
+        labels = [r["field"] for r in res["field_records"]]
+        assert "First Name" in labels
+        assert "Email" in labels
+        email_rec = [r for r in res["field_records"] if r["field"] == "Email"][0]
+        assert email_rec["value"] == "lav84095@gmail.com"
+
+    def test_persistence_in_sqlite_and_jsonl(self, tmp_path):
+        from naukari_pro.modules.db import record_batch_field_audit, get_application_field_audit
+        db_file = str(tmp_path / "test_audit.db")
+
+        test_entries = [
+            {"step": 1, "step_name": "BASIC_INFO", "field": "First Name", "value": "Lavkush", "type": "text"},
+            {"step": 1, "step_name": "BASIC_INFO", "field": "Email", "value": "lav84095@gmail.com", "type": "email"},
+            {"step": 1, "step_name": "BASIC_INFO", "field": "Phone", "value": "+91-9122036484", "type": "tel"},
+            {"step": 2, "step_name": "RESUME_ATTACHMENT", "field": "Resume File", "value": "Lavkush_Kumar_Devops (2).pdf", "type": "file", "action_type": "UPLOADED"},
+            {"step": 3, "step_name": "SUBMIT_APPLICATION", "field": "Submit Application Button", "value": "CLICKED", "type": "button", "action_type": "SUBMITTED"}
+        ]
+
+        inserted = record_batch_field_audit(
+            job_id="test_job_12345",
+            platform="career_portal (Greenhouse)",
+            company="GitLab",
+            title="Azure Data Platform Engineer",
+            audit_entries=test_entries,
+            db_path=db_file
+        )
+        assert inserted == 5
+
+        # Query back from SQLite
+        retrieved = get_application_field_audit("test_job_12345", db_path=db_file)
+        assert len(retrieved) == 5
+        assert retrieved[0]["field_label"] == "First Name"
+        assert retrieved[0]["field_value"] == "Lavkush"
+        assert retrieved[1]["field_label"] == "Email"
+        assert retrieved[1]["field_value"] == "lav84095@gmail.com"
+        assert retrieved[3]["step_name"] == "RESUME_ATTACHMENT"
+        assert retrieved[3]["action_type"] == "UPLOADED"
+        assert retrieved[4]["action_type"] == "SUBMITTED"
+
+    def test_zero_human_intervention_screening_flow(self, monkeypatch):
+        """Verifies that no input() or interactive pause is called during execution."""
+        from naukari_pro.modules.learning.screening_solver import FactMatrixScreeningSolver
+        solver = FactMatrixScreeningSolver()
+
+        def forbidden_input(*args, **kwargs):
+            raise AssertionError("Human intervention requested via input()! Zero human intervention violated.")
+
+        monkeypatch.setattr("builtins.input", forbidden_input)
+
+        questions = [
+            "Are you legally authorized to work in India?",
+            "Will you now or in the future require visa sponsorship?",
+            "What is your official notice period in days?",
+            "Are you open to relocate to Hyderabad or Bangalore?",
+            "Have you ever been convicted of a criminal offense?"
+        ]
+        for q in questions:
+            decision = solver.evaluate_question(q)
+            assert decision is not None
+            assert decision.answer is not None
+            assert decision.is_ambiguous is False
+
+        # Even on completely novel/unmatched questions, zero human intervention must be preserved
+        unmatched_decision = solver.evaluate_question("What is your favorite extraterrestrial programming language?")
+        assert unmatched_decision is not None
+        assert unmatched_decision.is_ambiguous is True
+        # input() was never called
+
+
+class TestStrictRepeatApplicationDeduplication:
+    """Verifies strict repeat-application deduplication across all external ATS platforms."""
+
+    def test_canonical_url_deduplication(self, tmp_path):
+        from naukari_pro.modules.db import init_db, record_applied_job, is_job_already_applied
+        db_file = str(tmp_path / "test_dedup.db")
+        init_db(db_file)
+
+        base_url = "https://job-boards.greenhouse.io/gitlab/jobs/8775507002"
+        ok, _ = record_applied_job(
+            title="Intermediate Backend Engineer, India",
+            company="GitLab",
+            job_url=base_url,
+            status="Submitted (Confirmed)",
+            db_path=db_file
+        )
+        assert ok is True
+
+        # Query with trailing slash
+        assert is_job_already_applied(job_url=f"{base_url}/", db_path=db_file) is True
+        # Query with query parameter
+        assert is_job_already_applied(job_url=f"{base_url}?gh_jid=8775507002", db_path=db_file) is True
+        # Query with subdomain variation
+        assert is_job_already_applied(job_url="https://boards.greenhouse.io/gitlab/jobs/8775507002?source=linkedin", db_path=db_file) is True
+
+    def test_token_and_uuid_deduplication(self, tmp_path):
+        from naukari_pro.modules.db import init_db, record_applied_job, is_job_already_applied
+        db_file = str(tmp_path / "test_dedup_tokens.db")
+        init_db(db_file)
+
+        # Lever UUID
+        lever_url = "https://jobs.lever.co/spotify/b4f6cd01-1d5d-41a9-b287-6d10416da03c"
+        ok1, _ = record_applied_job(
+            title="Data Scientist - Business Analytics",
+            company="Spotify",
+            job_url=lever_url,
+            status="Form Auto-Filled",
+            db_path=db_file
+        )
+        assert ok1 is True
+        assert is_job_already_applied(job_url=f"{lever_url}/apply", db_path=db_file) is True
+        assert is_job_already_applied(job_url=f"{lever_url}?source=indeed", db_path=db_file) is True
+
+        # Workday JR requisition
+        wd_url = "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/India-Bengaluru/CAD-Engineer_JR2014480-1"
+        ok2, _ = record_applied_job(
+            title="CAD Engineer",
+            company="NVIDIA",
+            job_url=wd_url,
+            status="Form Auto-Filled",
+            db_path=db_file
+        )
+        assert ok2 is True
+        assert is_job_already_applied(job_url=f"{wd_url}?source=linkedin", db_path=db_file) is True
+
+    def test_punctuation_and_company_variants_deduplication(self, tmp_path):
+        from naukari_pro.modules.db import init_db, record_applied_job, is_job_already_applied
+        db_file = str(tmp_path / "test_dedup_titles.db")
+        init_db(db_file)
+
+        ok, _ = record_applied_job(
+            title="Intermediate Backend Engineer, India",
+            company="GitLab Inc",
+            job_url="https://job-boards.greenhouse.io/gitlab/jobs/8775507002",
+            status="Submitted (Confirmed)",
+            db_path=db_file
+        )
+        assert ok is True
+
+        # Dash variant
+        assert is_job_already_applied(title="Intermediate Backend Engineer - India", company="GitLab", db_path=db_file) is True
+        # Parentheses variant
+        assert is_job_already_applied(title="Intermediate Backend Engineer (India)", company="GitLab Inc.", db_path=db_file) is True
+
+    def test_filler_fill_strictly_skips_without_navigation(self, tmp_path):
+        from naukari_pro.modules.db import init_db, record_applied_job
+        from naukari_pro.modules.career_portals import CareerPortalFiller
+        db_file = str(tmp_path / "test_filler_dedup.db")
+        init_db(db_file)
+
+        target_url = "https://job-boards.greenhouse.io/gitlab/jobs/8775507002"
+        record_applied_job(
+            title="Intermediate Backend Engineer, India",
+            company="GitLab",
+            job_url=target_url,
+            status="Submitted (Confirmed)",
+            db_path=db_file
+        )
+
+        filler = CareerPortalFiller(db_path=db_file)
+        result = filler.fill(
+            portal_url=target_url,
+            company="GitLab",
+            role="Intermediate Backend Engineer, India"
+        )
+        assert result.success is False
+        assert result.status == "SKIPPED_ALREADY_APPLIED"
+        assert len(result.fields) == 0
+

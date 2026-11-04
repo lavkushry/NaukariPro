@@ -814,7 +814,8 @@ class LinkedInApplyEngine:
                                         platform="linkedin",
                                         status="SUBMITTED_DRY_RUN",
                                         job_url=job.get("url", f"https://www.linkedin.com/jobs/view/{job_id}/"),
-                                        match_score=score_val
+                                        match_score=score_val,
+                                        field_audit=app_res.get("answers")
                                     )
                                 elif app_res.get("status") == "APPLIED":
                                     stats["applied"] += 1
@@ -829,7 +830,8 @@ class LinkedInApplyEngine:
                                         status=final_status_val,
                                         job_url=job.get("url", f"https://www.linkedin.com/jobs/view/{job_id}/"),
                                         match_score=score_val,
-                                        evidence_path=evidence_path
+                                        evidence_path=evidence_path,
+                                        field_audit=app_res.get("answers")
                                     )
                                 else:
                                     stats["failed"] += 1

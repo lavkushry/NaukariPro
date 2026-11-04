@@ -328,7 +328,7 @@ class Goal5CallsEngine:
                 "details": "Profile refreshed for after-hours hiring manager & US shift recruiter searches."
             })
             # 2. 5 Follow-ups
-            followups = self.generate_followup_batch(count=8)
+            followups = self.generate_followup_batch(count=5)
             result["actions_executed"].append({
                 "action": "48-Hour Recruiter Follow-Up Batch",
                 "count": len(followups),

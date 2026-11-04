@@ -298,8 +298,8 @@ class AIResumeMaker:
         loc = cand.get("location") or cand.get("primary_location", "")
         phone = cand.get("phone", "")
         email = cand.get("email", "")
-        linkedin = cand.get("linkedin", "linkedin.com/in/lavkushry")
-        github = cand.get("github", "github.com/lavkushry")
+        linkedin = cand.get("linkedin", "linkedin.com/in/lavkush-kumar")
+        github = cand.get("github", "github.com/lavkush-kumar")
         contact_parts = [p for p in [loc, phone, email, linkedin, github] if p]
         contact_line = " • ".join(contact_parts)
         elements.append(Paragraph(contact_line, contact_style))

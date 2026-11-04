@@ -70,8 +70,10 @@ class AmbiguousScreeningException(Exception):
 DISQUALIFIER_NEGATIVE_REGEX = re.compile(
     r"\b(convicted|conviction|felony|criminal|misdemeanor|guilty\s+plea|deferred\s+adjudication)\b|"
     r"\b(non-compete|noncompetition|non\s+competition|restrictive\s+covenant)\b|"
+    r"\b(post-employment\s+restrictions?|employment\s+agreements?)\b|"
     r"\b(terminated\s+for\s+cause|involuntarily\s+separated|disciplinary\s+action)\b|"
     r"\b(relatives?|family\s+members?)\s+(currently\s+)?(working\s+at|employed\s+by)\b|"
+    r"\b(previously\s+worked\s+at|prior\s+employee|former\s+employee)\b|"
     r"\b((active|other|competing)\s+)*(active\s+offer|competing\s+offer|other\s+offer|offers)\b|"
     r"\b(career|education|employment)\s+gaps?\b",
     re.IGNORECASE
@@ -89,10 +91,11 @@ POLICY_CONSENT_AFFIRMATIVE_REGEX = re.compile(
 
 # Foreign Jurisdiction Restrictions (Candidate is based in India -> "No")
 FOREIGN_JURISDICTION_REGEX = re.compile(
-    r"\b(authorized\s+to\s+work\s+in\s+(the\s+)?(united\s+states|us|usa|uk|united\s+kingdom|canada|eu|australia|singapore))\b|"
+    r"\b(authorized\s+to\s+work\s+in\s+(the\s+)?(united\s+states|us|usa|uk|united\s+kingdom|canada|eu|australia|singapore|poland))\b|"
     r"\b(us\s+citizen|green\s+card|permanent\s+resident\s+of\s+the\s+us)\b|"
-    r"\bcurrently\s+reside\s+in\s+(the\s+)?(us|united\s+states|uk|united\s+kingdom|canada|eu)\b|"
-    r"\bdo\s+you\s+(currently\s+)?live\s+in\s+(the\s+)?(us|united\s+states|uk|united\s+kingdom)\b",
+    r"\bcurrently\s+(reside|location|located|living)\s+in\s+(either\s+)?(the\s+)?(us|united\s+states|uk|united\s+kingdom|canada|eu|poland)\b|"
+    r"\bdo\s+you\s+(currently\s+)?live\s+in\s+(and\s+planning\s+to\s+work\s+from\s+)?(either\s+location|the\s+)?(us|united\s+states|uk|united\s+kingdom|canada|either\s+location)\b|"
+    r"\bopen\s+to\s+candidates\s+in\s+the\s+(united\s+states|us|canada)\b",
     re.IGNORECASE
 )
 
@@ -235,8 +238,8 @@ class FactMatrixScreeningSolver:
         self.candidate_name = candidate.get("name", "Lavkush Kumar")
         self.candidate_email = candidate.get("email", "lav84095@gmail.com")
         self.candidate_phone = candidate.get("phone", "+91 9122036484")
-        self.candidate_linkedin = candidate.get("linkedin", "https://linkedin.com/in/lavkushry")
-        self.candidate_github = candidate.get("github", "https://github.com/lavkushry")
+        self.candidate_linkedin = candidate.get("linkedin", "https://linkedin.com/in/lavkush-kumar")
+        self.candidate_github = candidate.get("github", "https://github.com/lavkush-kumar")
         self.total_exp = str(candidate.get("total_experience_years", "2.5"))
         self.notice_days = str(candidate.get("notice_period_days", "15"))
         
@@ -650,7 +653,39 @@ class FactMatrixScreeningSolver:
                 raw_question=raw
             )
 
-        # 14. Unmatched prompt -> Ambiguous, confidence < threshold
+        if re.search(r"\b(country\s+of\s+residence|residence\s+country|current\s+country)\b", q_lower):
+            return ScreeningDecision(
+                answer="India",
+                confidence=1.0,
+                is_ambiguous=False,
+                category=ScreeningCategory.LOCATION,
+                rationale="Candidate primary country of residence",
+                raw_question=raw
+            )
+
+        # 14. Operations & Production Incidents (On-Call Rotation)
+        if re.search(r"\b(on-call|on\s+call|production\s+incidents?)\b", q_lower):
+            return ScreeningDecision(
+                answer="Yes",
+                confidence=1.0,
+                is_ambiguous=False,
+                category=ScreeningCategory.SHIFT_AVAILABILITY,
+                rationale="Candidate participates in on-call and production incident response",
+                raw_question=raw
+            )
+
+        # 15. Interview Accessibility & Accommodations
+        if re.search(r"\b(adjustments?|accommodations?)\s+(to\s+assist\s+you|for\s+the\s+interview|during\s+the\s+hiring)\b", q_lower):
+            return ScreeningDecision(
+                answer="None",
+                confidence=1.0,
+                is_ambiguous=False,
+                category=ScreeningCategory.LEGAL_BACKGROUND,
+                rationale="No special adjustments required",
+                raw_question=raw
+            )
+
+        # 16. Unmatched prompt -> Ambiguous, confidence < threshold
         return ScreeningDecision(
             answer=None,
             confidence=0.0,

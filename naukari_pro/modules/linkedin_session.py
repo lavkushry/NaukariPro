@@ -1186,7 +1186,7 @@ class LinkedInSessionManager:
             try:
                 user_input = page.locator("#username, input[name='session_key']").first
                 if user_input.is_visible() and not user_input.input_value():
-                    candidate_email = os.getenv("LINKEDIN_EMAIL") or os.getenv("NAUKRI_EMAIL") or "lavkushry@gmail.com"
+                    candidate_email = os.getenv("LINKEDIN_EMAIL") or os.getenv("NAUKRI_EMAIL") or "lav84095@gmail.com"
                     if candidate_email:
                         user_input.fill(candidate_email)
             except Exception:

@@ -1212,6 +1212,7 @@ def handle_monday_digest(output: Optional[str] = None, db_path: Optional[str] = 
     print(digest)
     if send_email:
         send_monday_digest_email(digest_content=digest)
+    return digest
 
 
 def handle_intent_apply(
@@ -1317,6 +1318,68 @@ def handle_boost_visibility(
         dry_run=dry_run,
         headless=headless
     )
+
+
+def handle_audit_fields(job_id: Optional[str] = None, recent: int = 5, platform: Optional[str] = None, db_path: Optional[str] = None):
+    """
+    Displays the exhaustive step-by-step and field-by-field audit trail
+    of filled application inputs with zero human intervention.
+    """
+    from naukari_pro.modules.db import get_application_field_audit, get_recent_field_audits, DB_PATH
+    from collections import defaultdict
+    t_path = db_path or DB_PATH
+    print("\n" + "=" * 78)
+    print("  📋 DETAILED APPLICATION STEP & FIELD AUDIT LEDGER")
+    print("=" * 78)
+
+    if job_id:
+        records = get_application_field_audit(job_id=job_id, db_path=t_path)
+        if not records:
+            print(f"  [!] No field audit records found for Job ID: {job_id}")
+            return
+        print(f"  Target Job ID: {job_id} | Total Recorded Field Interactions: {len(records)}\n")
+        print(f"  {'Step':<6} | {'Step Name':<18} | {'Field Label / Prompt':<28} | {'Type':<8} | {'Value Filled':<24} | {'Action':<10}")
+        print("  " + "-" * 102)
+        for r in records:
+            s_num = str(r.get("step_number", 1))
+            s_name = str(r.get("step_name", "FORM"))[:17]
+            f_lbl = str(r.get("field_label", ""))[:27]
+            f_type = str(r.get("field_type", "text"))[:7]
+            f_val = str(r.get("field_value", ""))[:23]
+            act = str(r.get("action_type", "FILLED"))[:9]
+            print(f"  {s_num:<6} | {s_name:<18} | {f_lbl:<28} | {f_type:<8} | {f_val:<24} | {act:<10}")
+    else:
+        records = get_recent_field_audits(limit=recent * 20, platform=platform, db_path=t_path)
+        if not records:
+            print(f"  [!] No recent field audit records found in SQLite DB.")
+            return
+        grouped = defaultdict(list)
+        for r in records:
+            grouped[r.get("job_id")].append(r)
+
+        print(f"  Showing {min(len(grouped), recent)} Most Recent Applications Audited:\n")
+        shown = 0
+        for jid, items in list(grouped.items())[:recent]:
+            shown += 1
+            first = items[0]
+            co = first.get("company", "Company")
+            title = first.get("title", "Role")
+            plat = first.get("platform", "Platform")
+            rec_at = first.get("recorded_at", "")
+            print(f"  [{shown}] {title} @ {co} ({plat}) — Job ID: {jid} ({rec_at})")
+            print(f"      {'Step':<5} | {'Step Name':<16} | {'Field Label':<26} | {'Type':<8} | {'Value Filled':<24} | {'Action':<9}")
+            print("      " + "-" * 96)
+            for item in items:
+                s_num = str(item.get("step_number", 1))
+                s_name = str(item.get("step_name", "FORM"))[:15]
+                f_lbl = str(item.get("field_label", ""))[:25]
+                f_type = str(item.get("field_type", "text"))[:7]
+                f_val = str(item.get("field_value", ""))[:23]
+                act = str(item.get("action_type", "FILLED"))[:8]
+                print(f"      {s_num:<5} | {s_name:<16} | {f_lbl:<26} | {f_type:<8} | {f_val:<24} | {act:<9}")
+            print()
+
+    print("=" * 78)
 
 
 def interactive_loop():
@@ -1525,6 +1588,11 @@ def main():
     boost_parser.add_argument("--rotate-skills", action="store_true", help="Trigger secondary skill rotation")
     boost_parser.add_argument("--audit", action="store_true", help="Audit variations and show 100K pacing scorecard")
 
+    audit_parser = subparsers.add_parser("audit-fields", help="Inspect step-by-step and field-by-field audit logs for applications", parents=[common_parser])
+    audit_parser.add_argument("--job-id", type=str, default=None, help="Filter audit records by specific job ID")
+    audit_parser.add_argument("--recent", type=int, default=5, help="Number of recent applications to show (default: 5)")
+    audit_parser.add_argument("--platform", type=str, default=None, help="Filter by platform (e.g. linkedin, career_portal, naukri)")
+
     args = parser.parse_args()
 
     if args.command == "intent-apply":
@@ -1643,6 +1711,12 @@ def main():
         exit_code = handle_goal_5calls(args=args)
         if exit_code:
             sys.exit(exit_code)
+    elif args.command == "audit-fields":
+        handle_audit_fields(
+            job_id=getattr(args, "job_id", None),
+            recent=getattr(args, "recent", 5),
+            platform=getattr(args, "platform", None)
+        )
     else:
         interactive_loop()
 

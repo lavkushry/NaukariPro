@@ -151,7 +151,7 @@ class TestMondayDigestGenerator:
         # Section 1: Header & Candidate Profile Integrity
         assert "Lavkush Kumar" in digest
         assert "2.5 YOE Azure Data Engineer" in digest
-        assert "lavkushry@gmail.com" in digest
+        assert "lav84095@gmail.com" in digest
         assert "lav84095@gmail.com" in digest
 
         # Section 2: Application Volume
@@ -257,7 +257,7 @@ class TestCandidateIntegrityAndForbiddenVerbs:
         init_db(db_file)
         digest = generate_monday_digest(db_path=db_file)
         assert "2.5 YOE" in digest
-        assert "lavkushry@gmail.com" in digest
+        assert "lav84095@gmail.com" in digest
         assert "lav84095@gmail.com" in digest
 
     def test_spec_4_7_schema_queries(self, tmp_path):

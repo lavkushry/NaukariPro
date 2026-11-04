@@ -67,8 +67,8 @@
 
 ```
 LAVKUSH KUMAR
-Bangalore, India | +91-9122036484 | lavkushry@gmail.com
-linkedin.com/in/lavkushry | GitHub.com/lavkushry
+Bangalore, India | +91-9122036484 | lav84095@gmail.com
+linkedin.com/in/lavkush-kumar | GitHub.com/lavkushry
 ```
 
 **Rules:**
@@ -406,8 +406,8 @@ Maintain 4–5 resume variants tailored for different role types:
 
 ```markdown
 # LAVKUSH KUMAR
-Bangalore, India | +91-9122036484 | lavkushry@gmail.com
-linkedin.com/in/lavkushry | GitHub.com/lavkushry
+Bangalore, India | +91-9122036484 | lav84095@gmail.com
+linkedin.com/in/lavkush-kumar | GitHub.com/lavkushry
 
 ---
 

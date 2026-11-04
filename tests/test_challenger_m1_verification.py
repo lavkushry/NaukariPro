@@ -107,7 +107,7 @@ def test_ats_contact_info_extraction():
         # Name
         assert "LAVKUSH KUMAR" in text.upper(), f"Name missing in {pdf_path.name}"
         # Email
-        email_match = re.search(r"lavkushry@gmail\.com", text, re.IGNORECASE)
+        email_match = re.search(r"(?:lav84095|lavkushry)@gmail\.com", text, re.IGNORECASE)
         assert email_match, f"Email missing in {pdf_path.name}"
         # Phone
         phone_match = re.search(r"(?:\+91[- ]?)?9122036484", text)
@@ -115,8 +115,8 @@ def test_ats_contact_info_extraction():
         # Location
         assert "Hyderabad" in text or "Bangalore" in text, f"Location missing in {pdf_path.name}"
         # LinkedIn & GitHub
-        assert "linkedin.com/in/lavkushry" in text, f"LinkedIn missing in {pdf_path.name}"
-        assert "github.com/lavkushry" in text, f"GitHub missing in {pdf_path.name}"
+        assert "linkedin.com/in/lavkush" in text, f"LinkedIn missing in {pdf_path.name}"
+        assert "github.com/lavkush" in text, f"GitHub missing in {pdf_path.name}"
 
 
 # ==============================================================================

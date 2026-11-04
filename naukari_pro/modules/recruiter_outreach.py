@@ -47,8 +47,8 @@ CANDIDATE_FACTS = {
     "name": "Lavkush Kumar",
     "email": "lav84095@gmail.com",
     "phone": "+91-9122036484",
-    "linkedin": "linkedin.com/in/lavkushry",
-    "github": "github.com/lavkushry",
+    "linkedin": "linkedin.com/in/lavkush-kumar",
+    "github": "github.com/lavkush-kumar",
     "experience_yoe": "2.5 YOE",
     "total_yoe": "2.5 YOE",
     "current_role": "DevOps Engineer",
@@ -111,7 +111,7 @@ class RecruiterTemplateGenerator:
         raw_phone = self.candidate.get("phone", "+91-9122036484")
         self.phone = raw_phone.replace(" ", "-") if raw_phone else "+91-9122036484"
         self.email = self.candidate.get("email", "lav84095@gmail.com")
-        self.linkedin = self.candidate.get("linkedin", "linkedin.com/in/lavkushry")
+        self.linkedin = self.candidate.get("linkedin", "linkedin.com/in/lavkush-kumar")
         self.notice = self.candidate.get("notice_period", "15 Days or less (Immediate Joiner)")
         self.yoe = str(self.candidate.get("total_experience_years", "2.5")) + " YOE"
 
@@ -406,7 +406,7 @@ class RecruiterTemplateGenerator:
             f"(PNC Bank GCC) on EKS/Terraform/GitOps; project proof: Medallion Lakehouse on Azure Databricks/"
             f"PySpark/Delta (2M+ events/day, 35% ETL runtime cut).\n\n"
             f"What I can immediately deliver for your data platform:\n"
-            f"1. Lakehouse Scaling (project): Medallion pipelines with Delta Lake ACID, CDC, schema enforcement.\n"
+            f"1. Lakehouse Scaling (project): Medallion pipelines with Delta Lake ACID transactions, CDC, schema enforcement.\n"
             f"2. Query & Pipeline Optimization (project): PySpark/Spark SQL tuning cutting ETL runtime ~35%.\n"
             f"3. Reliable DataOps (employment): Terraform IaC, Ansible, Jenkins/GitLab CI, ArgoCD/Helm on K8s.\n\n"
             f"I am on a 15-day notice period and actively targeting ₹20–25 LPA Azure Data Engineering roles.\n\n"
@@ -867,7 +867,7 @@ class RecruiterOutreachCRM:
         self,
         target_list: Optional[List[Dict[str, str]]] = None,
         persona: str = "de",
-        limit: int = 15
+        limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Generates recruiter pitches for top target GCC companies and logs them.

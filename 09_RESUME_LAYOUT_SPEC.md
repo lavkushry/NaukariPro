@@ -74,7 +74,7 @@ Every vertical point must be precisely allocated across sections:
 ### A. Contact Header
 * **Name:** `\fontsize{20}{22}\selectfont\bfseries\color{navy} Lavkush Kumar`
 * **Contact Line:** `\small\color{soft}`
-  `Bangalore, India \;\textbar\; +91-9122036484 \;\textbar\; lavkushry@gmail.com \;\textbar\; linkedin.com/in/lavkushry \;\textbar\; github.com/lavkushry`
+  `Bangalore, India \;\textbar\; +91-9122036484 \;\textbar\; lav84095@gmail.com \;\textbar\; linkedin.com/in/lavkush-kumar \;\textbar\; github.com/lavkush-kumar`
 * **Rules:** All links wrapped in `\href{...}` with text matching destination; no phone/mail icons.
 
 ### B. Section Headings

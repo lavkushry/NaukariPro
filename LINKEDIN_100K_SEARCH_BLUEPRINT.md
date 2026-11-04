@@ -64,7 +64,7 @@ Engineered scalable Medallion Lakehouse architectures (Bronze, Silver, Gold Delt
 📍 Current Location: Hyderabad, India
 🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote
 ⏱ Notice Period: 15 Days or less (Immediate Joiner)
-📫 Contact: lavkushry@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry
+📫 Contact: lav84095@gmail.com | +91-9122036484 | linkedin.com/in/lavkushry
 ```
 
 ---
