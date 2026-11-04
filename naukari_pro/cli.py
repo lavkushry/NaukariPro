@@ -84,6 +84,7 @@ def print_menu():
     print("  [D] Run Complete Daily Autonomous Cycle (Unified Naukri + LinkedIn 8-Stage Cycle)")
     print("  [G] AGY Autonomous Scheduler (Linux systemd & agy CLI schedule)")
     print("  [A] Authenticate Session (One-time Login & Cookie Persistence)")
+    print("  [L-IN] Authenticate LinkedIn (Interactive Login & Cookie Sync)")
     print("  [V] LinkedIn Session Diagnostic (Verify li_at cookie & Identity)")
     print("  [L] LinkedIn Easy Apply (Autonomous Multi-Step Bot & Screening Solver)")
     print("  [K] LinkedIn 100k+ Search SEO & Recruiter Optimizer (Blueprint & Audit)")
@@ -381,6 +382,12 @@ def handle_agy_schedule(action="status"):
         print("\n[*] Checking Crontab Fallback:")
         subprocess.run(["crontab", "-l"], check=False)
 
+def handle_linkedin_auth(timeout: int = 300, headless: bool = False) -> int:
+    """Runs interactive browser login and saves fresh LinkedIn session cookies."""
+    manager = LinkedInSessionManager()
+    res = manager.interactive_login(timeout_seconds=timeout, headless=headless)
+    return 0 if res.get("status") == "VALID" else 1
+
 def handle_linkedin_verify(args=None, headless: bool = True) -> int:
     """
     Executes LinkedIn session diagnostic verification and prints structured status box.
@@ -398,6 +405,13 @@ def handle_linkedin_verify(args=None, headless: bool = True) -> int:
         headless = args
 
     manager = LinkedInSessionManager()
+
+    # Direct token update via CLI flag if provided
+    if hasattr(args, "set_token") and args.set_token:
+        set_js = getattr(args, "set_jsessionid", None)
+        manager.set_li_at_token(args.set_token, set_js)
+        print(f"\n[✓] Updated LINKEDIN_LI_AT in .env and session_cookies.json! Running verification...")
+
     token = None
     try:
         token = manager.get_li_at_cookie(raise_if_missing=True)
@@ -1345,6 +1359,8 @@ def interactive_loop():
             handle_daily_cycle()
         elif choice == "A":
             handle_auth()
+        elif choice in ("L-IN", "LIN"):
+            handle_linkedin_auth()
         elif choice == "V":
             handle_linkedin_verify(headless=True)
         elif choice == "L":
@@ -1412,8 +1428,14 @@ def main():
     sched_parser = subparsers.add_parser("agy-schedule", help="Manage Linux AGY Autonomous Scheduler (systemd timer + agy CLI)", parents=[common_parser])
     sched_parser.add_argument("action", nargs="?", default="status", choices=["install", "run", "status", "logs"], help="Action to perform: install | run | status | logs")
 
+    auth_li_parser = subparsers.add_parser("linkedin-auth", help="Interactive LinkedIn login & cookie synchronization", parents=[common_parser])
+    auth_li_parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds to complete login (default: 300)")
+
     verify_parser = subparsers.add_parser("linkedin-verify", help="Validate LinkedIn session freshness & extract candidate identity", parents=[common_parser])
     verify_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
+    verify_parser.add_argument("--set-token", type=str, default=None, help="Directly update LINKEDIN_LI_AT cookie token in .env and verify")
+    verify_parser.add_argument("--set-jsessionid", type=str, default=None, help="Optionally update LINKEDIN_JSESSIONID in .env")
+    verify_parser.add_argument("--login", action="store_true", default=False, help="Launch interactive browser login if session is expired")
 
     apply_parser = subparsers.add_parser("linkedin-apply", help="Run autonomous LinkedIn Easy Apply engine across target vacancies", parents=[common_parser])
     apply_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
@@ -1604,6 +1626,9 @@ def main():
         )
     elif args.command == "auth":
         handle_auth()
+    elif args.command == "linkedin-auth":
+        exit_code = handle_linkedin_auth(timeout=getattr(args, "timeout", 300), headless=args.headless)
+        sys.exit(exit_code)
     elif args.command == "linkedin-verify":
         is_headless = not getattr(args, "headed", False)
         exit_code = handle_linkedin_verify(args, headless=is_headless)

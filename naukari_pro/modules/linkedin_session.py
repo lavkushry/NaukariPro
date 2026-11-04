@@ -190,6 +190,41 @@ def clean_avatar_name(alt_text: Optional[str]) -> Optional[str]:
     return cleaned if cleaned else None
 
 
+def update_env_variable(key: str, value: str, env_path: Optional[str] = None) -> bool:
+    """Updates or appends a key=value pair in .env while preserving formatting."""
+    target_path = env_path or os.path.join(WORKSPACE_DIR, ".env")
+    lines = []
+    found = False
+    if os.path.exists(target_path):
+        with open(target_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    new_lines = []
+    prefix1 = f"{key}="
+    prefix2 = f"export {key}="
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(prefix1) or stripped.startswith(prefix2):
+            new_lines.append(f'{key}="{value}"\n')
+            found = True
+        else:
+            new_lines.append(line)
+
+    if not found:
+        if new_lines and not new_lines[-1].endswith("\n"):
+            new_lines.append("\n")
+        new_lines.append(f'{key}="{value}"\n')
+
+    try:
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+        os.environ[key] = value
+        return True
+    except Exception as e:
+        logger.warning("Could not write to %s: %s", target_path, e)
+        return False
+
+
 # ==============================================================================
 # Session Manager Class
 # ==============================================================================
@@ -1043,6 +1078,200 @@ class LinkedInSessionManager:
         except Exception as e:
             logger.warning("Could not persist cookies to %s: %s", self.cookie_path, e)
             return False
+
+    def set_li_at_token(self, token: str, jsessionid: Optional[str] = None) -> bool:
+        """Sets a fresh li_at token in .env and updates session_cookies.json."""
+        clean_token = sanitize_cookie_token(token)
+        if not clean_token:
+            return False
+        update_env_variable("LINKEDIN_LI_AT", clean_token)
+        if jsessionid:
+            clean_js = jsessionid.strip('"')
+            update_env_variable("LINKEDIN_JSESSIONID", f'"{clean_js}"')
+
+        # Also update session_cookies.json
+        cookies = []
+        if self.cookie_path and os.path.exists(self.cookie_path):
+            try:
+                with open(self.cookie_path, "r", encoding="utf-8") as f:
+                    cookies = json.load(f)
+            except Exception:
+                cookies = []
+
+        found_li_at = False
+        for c in cookies:
+            if isinstance(c, dict) and c.get("name") == "li_at":
+                c["value"] = clean_token
+                found_li_at = True
+            elif isinstance(c, dict) and c.get("name") == "JSESSIONID" and jsessionid:
+                c["value"] = f'"{jsessionid.strip(chr(34))}"'
+
+        if not found_li_at:
+            cookies.append({
+                "name": "li_at",
+                "value": clean_token,
+                "domain": ".linkedin.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+                "sameSite": "None"
+            })
+            if jsessionid:
+                cookies.append({
+                    "name": "JSESSIONID",
+                    "value": f'"{jsessionid.strip(chr(34))}"',
+                    "domain": ".linkedin.com",
+                    "path": "/",
+                    "secure": True,
+                    "httpOnly": False,
+                    "sameSite": "None"
+                })
+
+        self.save_session_cookies(cookies)
+        return True
+
+    def interactive_login(self, timeout_seconds: int = 300, headless: bool = False) -> Dict[str, Any]:
+        """
+        Launches Playwright in headed mode allowing the candidate to log in to LinkedIn,
+        complete any 2FA/SMS/email OTP or CAPTCHA, and automatically persists the fresh
+        cookies (li_at, JSESSIONID, bcookie, bscookie, etc.) to:
+          1. linkedin_system/session_cookies.json
+          2. .env (LINKEDIN_LI_AT, LINKEDIN_JSESSIONID)
+        """
+        from playwright.sync_api import sync_playwright
+        import time
+
+        print("\n" + "=" * 74)
+        print("   🌐 LINKEDIN AUTHENTICATION & SESSION SYNCHRONIZER")
+        print("=" * 74)
+        print("  [1] A visible browser window is opening for LinkedIn login.")
+        print("  [2] Please log in with your LinkedIn credentials.")
+        print("  [3] Complete any CAPTCHA challenge or OTP / 2-Step verification if prompted.")
+        print("  [4] Once you reach your LinkedIn Feed (https://www.linkedin.com/feed/),")
+        print("      naukariPro will automatically detect the active session, save all cookies,")
+        print("      and update .env!")
+        print("=" * 74 + "\n")
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=headless,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-infobars"
+                ]
+            )
+            context = browser.new_context(
+                user_agent=DEFAULT_USER_AGENT,
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+                timezone_id="Asia/Kolkata"
+            )
+            try:
+                existing = self.get_formatted_cookies()
+                if existing:
+                    context.add_cookies(existing)
+            except Exception:
+                pass
+
+            page = context.new_page()
+            try:
+                page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=45000)
+            except Exception:
+                try:
+                    page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=45000)
+                except Exception:
+                    pass
+
+            try:
+                user_input = page.locator("#username, input[name='session_key']").first
+                if user_input.is_visible() and not user_input.input_value():
+                    candidate_email = os.getenv("LINKEDIN_EMAIL") or os.getenv("NAUKRI_EMAIL") or "lavkushry@gmail.com"
+                    if candidate_email:
+                        user_input.fill(candidate_email)
+            except Exception:
+                pass
+
+            start_time = time.time()
+            authenticated = False
+            while time.time() - start_time < timeout_seconds:
+                curr_url = (page.url or "").lower()
+                if "/feed" in curr_url or "/in/" in curr_url:
+                    try:
+                        nav = page.locator(".global-nav, div.feed-identity-module, [data-test-global-nav]").first
+                        if nav.count() > 0 or "/feed" in curr_url:
+                            authenticated = True
+                            break
+                    except Exception:
+                        if "/feed" in curr_url:
+                            authenticated = True
+                            break
+                time.sleep(1.5)
+
+            if not authenticated:
+                browser.close()
+                return {
+                    "status": "TIMEOUT",
+                    "authenticated": False,
+                    "detail": f"Timed out waiting for login after {timeout_seconds} seconds."
+                }
+
+            time.sleep(3)
+            raw_cookies = context.cookies(["https://www.linkedin.com", "https://linkedin.com"])
+            li_at_val = None
+            jsessionid_val = None
+            for c in raw_cookies:
+                if c.get("name") == "li_at":
+                    li_at_val = c.get("value")
+                elif c.get("name") == "JSESSIONID":
+                    jsessionid_val = c.get("value")
+
+            if not li_at_val:
+                browser.close()
+                return {
+                    "status": "FAILED_MISSING_LI_AT",
+                    "authenticated": False,
+                    "detail": "Logged in but 'li_at' cookie was not present in context."
+                }
+
+            self.save_session_cookies(raw_cookies)
+            update_env_variable("LINKEDIN_LI_AT", li_at_val)
+            if jsessionid_val:
+                clean_js = jsessionid_val.strip('"')
+                update_env_variable("LINKEDIN_JSESSIONID", f'"{clean_js}"')
+
+            cand_name = None
+            headline = None
+            try:
+                for sel in ["div.feed-identity-module__actor-meta a span", "div.feed-identity-module__actor-meta a", "div.profile-rail-card__actor-link"]:
+                    loc = page.locator(sel).first
+                    if loc.count() > 0 and loc.is_visible():
+                        txt = loc.inner_text().strip()
+                        if txt:
+                            cand_name = txt
+                            break
+            except Exception:
+                pass
+
+            browser.close()
+
+            print("\n" + "=" * 74)
+            print("   [✓] SUCCESS: LINKEDIN SESSION AUTHENTICATED & PERSISTED!")
+            print("=" * 74)
+            print(f"  • Candidate Name:    {cand_name or 'Lavkush Kumar'}")
+            print(f"  • Cookie Saved:      {self.cookie_path}")
+            print(f"  • .env Updated:      LINKEDIN_LI_AT and LINKEDIN_JSESSIONID synchronized")
+            print("  • Autonomous Engine: READY for live Easy Apply and Recruiter Outreach")
+            print("=" * 74 + "\n")
+
+            return {
+                "status": "VALID",
+                "authenticated": True,
+                "candidate_name": cand_name or "Lavkush Kumar",
+                "headline": headline,
+                "li_at": li_at_val,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
 
     async def __aenter__(self):
         self.get_lock().acquire(blocking=True)

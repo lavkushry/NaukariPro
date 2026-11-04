@@ -1726,14 +1726,48 @@ class PlaywrightRunner:
             }""")
 
             if btn_info.get("type") == "company_site":
-                print(f"    ℹ️ Company portal apply detected. Routing to External Career Portal Manager...")
+                print(f"    ℹ️ Company portal apply detected. Resolving real employer ATS URL...")
+                target_url = job_url
+                ext_page = None
+                co_btn = job_tab.locator("button#company-site-button, .styles_company-site-button__C_2YK, a:has-text('Apply on Company Site'), button:has-text('Apply on Company Site')").first
+                try:
+                    if await co_btn.count() > 0:
+                        ctx = job_tab.context
+                        async with ctx.expect_page(timeout=10000) as new_page_info:
+                            await co_btn.click()
+                        ext_page = await new_page_info.value
+                        await ext_page.wait_for_load_state("domcontentloaded", timeout=25000)
+                        await ext_page.wait_for_timeout(3000)
+                        target_url = ext_page.url
+                except Exception as e_popup:
+                    try:
+                        href = await co_btn.get_attribute("href")
+                        if href and "naukri.com" not in href.lower():
+                            target_url = href
+                    except Exception:
+                        pass
+
+                print(f"    Resolved ATS URL: {target_url}")
                 from naukari_pro.modules.career_portals import CareerPortalManager
                 cpm = CareerPortalManager()
-                success, filled = cpm.fill(portal_url=job_url, company=company, role=title, headless=True, raw_jd=raw_jd, salary=salary)
-                status_str = "Submitted (Confirmed)" if success else "Form Auto-Filled (Ready for Review)"
-                sync_dual_log(title=title, company=company, platform="career_portal", status=status_str, job_url=job_url, match_score=match_score)
+                success, filled = cpm.fill(portal_url=target_url, company=company, role=title, headless=True, raw_jd=raw_jd, salary=salary)
+
+                evidence_path = None
+                if ext_page and not ext_page.is_closed():
+                    try:
+                        import re
+                        clean_id = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
+                        evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_portal_{clean_id}.png")
+                        os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
+                        await ext_page.screenshot(path=evidence_path)
+                        await ext_page.close()
+                    except Exception:
+                        evidence_path = None
+
+                status_str = "Submitted (Confirmed)" if (success and evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024) else "Form Auto-Filled (Ready for Review)"
+                sync_dual_log(title=title, company=company, platform="career_portal", status=status_str, job_url=target_url, match_score=match_score, evidence_path=evidence_path)
                 self.skip_list = add_to_skip(self.skip_list, title, company, "external-redirect")
-                return success, f"External Portal: {status_str}"
+                return (status_str == "Submitted (Confirmed)"), f"External Portal: {status_str}"
 
             if btn_info.get("type") == "already_applied":
                 print(f"    ℹ️ Already applied previously. Skipping...")

@@ -2810,6 +2810,7 @@ async def test_apply_engine_run_cycle_dry_run(tmp_path, monkeypatch):
     session_mgr.create_stealth_context = AsyncMock(return_value=mock_ctx)
     
     with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()), \
+         patch("naukari_pro.modules.db.is_job_already_applied", return_value=False), \
          patch("playwright.async_api.async_playwright", make_playwright_cm_mock(mock_ctx)):
         
         stats = await engine.run_apply_cycle(
@@ -3623,6 +3624,7 @@ async def test_m3_iter2_circuit_breaker_single_counting_on_failure_and_success()
     engine.scorer.evaluate = MagicMock(return_value=score_obj)
     
     with patch("naukari_pro.modules.linkedin_apply.humanized_delay", AsyncMock()), \
+         patch("naukari_pro.modules.db.is_job_already_applied", return_value=False), \
          patch("playwright.async_api.async_playwright", make_playwright_cm_mock(mock_ctx)):
         stats = await engine.run_apply_cycle(
             keywords=["Azure Data Engineer"],
