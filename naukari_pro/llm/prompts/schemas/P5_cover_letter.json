@@ -4,9 +4,34 @@
   "additionalProperties": false,
   "properties": {
     "cover_letter": {"type": "string"},
+    "paragraphs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sentences"],
+        "properties": {
+          "sentences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "kind", "cv_evidence"],
+              "properties": {
+                "text": {"type": "string"},
+                "kind": {"type": "string", "enum": ["cv", "job", "courtesy"]},
+                "cv_evidence": {
+                  "type": "array",
+                  "items": {"type": "integer"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "claims_used": {"type": "array", "items": {"type": "string"}},
     "unsupported_claims": {"type": "array", "items": {"type": "string"}},
     "word_count": {"type": "integer"},
     "provider": {"type": "string"}
   }
 }
+
