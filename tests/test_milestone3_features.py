@@ -86,7 +86,7 @@ def test_f10_evaluate_job_match_gating():
 
 
 def test_f10_apply_to_job_defense_in_depth_rejection():
-    runner = NativeChromeRunner(skip_list=set(), dry_run=False)
+    runner = NativeChromeRunner(skip_list=set(), dry_run=False, universal_apply=False)
     success, msg = runner.apply_to_job(
         job_url="https://naukri.com/job-123",
         title="Web Developer",

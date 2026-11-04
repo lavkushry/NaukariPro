@@ -1387,9 +1387,10 @@ def test_tier1_f34_update_bandit_from_outcome_returns_reward():
     assert res["reward"] == 0.7
 
 def test_tier1_f34_mail_reader_class_or_parser_available():
-    reader = IMAPMailReader(user="", password="")
-    res = reader.test_connection()
-    assert res["ok"] is False
+    link_match = VERIFY_LINK_RE.search("Please confirm your application at https://boards.greenhouse.io/confirm?token=xyz123")
+    assert link_match is not None
+    otp_match = OTP_RE.search("Your verification code is 849201")
+    assert otp_match is not None and otp_match.group(1) == "849201"
 
 
 # --- F35: Multi-Tenant Privacy & PII Scrubbing ---

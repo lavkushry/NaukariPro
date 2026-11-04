@@ -131,3 +131,6 @@ linkedin_applications_fallback.csv
 naukari_pro/*.db
 naukari_pro/llm_spend_ledger.jsonl
 output/
+.coverage
+coverage.json
+tests/*_last_run.json

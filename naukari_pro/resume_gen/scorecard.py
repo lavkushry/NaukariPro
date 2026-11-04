@@ -67,9 +67,11 @@ def score_ats_100(
     matched = [k for k in kws if k in resume_text]
     kw_pts = round(min(35.0, (len(matched) / max(1, len(kws))) * 35.0), 1)
 
+    missing = [k for k in kws if k not in matched]
     total = round(struct + metric_pts + kw_pts, 1)
     return {
         "overall_score": total,
+        "score": total,
         "structure": struct,
         "quantified_metrics": metric_pts,
         "keyword_alignment": kw_pts,
@@ -78,4 +80,31 @@ def score_ats_100(
         "gate_threshold": GATE_THRESHOLD,
         "gate_passed": total >= GATE_THRESHOLD,
         "matched_keywords": matched[:20],
+        "missing_keywords": missing[:20],
+    }
+
+
+def ats_score_text(resume_text: str, jd_text: str) -> Dict[str, Any]:
+    """Lightweight ATS score from plain text (CLI/API free-tier funnel)."""
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9+.#-]{1,}", jd_text or "")
+    # Prefer longer distinctive terms
+    stop = {
+        "and", "the", "for", "with", "you", "our", "will", "are", "this", "that",
+        "from", "have", "job", "role", "team", "work", "experience", "years",
+    }
+    weights: Dict[str, int] = {}
+    for t in tokens:
+        low = t.lower()
+        if low in stop or len(low) < 3:
+            continue
+        weights[low] = weights.get(low, 0) + 1
+    ranked = sorted(weights.keys(), key=lambda k: (-weights[k], -len(k), k))[:40]
+    blob = (resume_text or "").lower()
+    matched = [k for k in ranked if k in blob]
+    missing = [k for k in ranked if k not in blob]
+    score = round(100.0 * len(matched) / max(1, len(ranked)), 1) if ranked else 0.0
+    return {
+        "score": score,
+        "matched_keywords": matched,
+        "missing_keywords": missing,
     }

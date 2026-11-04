@@ -15,6 +15,13 @@
       "html_fixture": "workday_india_notice.html",
       "expected_fields": ["legal_name", "email", "phone", "notice_period", "current_ctc"],
       "absolute_blockers": ["aadhaar", "pan", "government_id"]
+    },
+    {
+      "id": "instahyre_basic",
+      "ats": "instahyre",
+      "html_fixture": "instahyre_basic.html",
+      "expected_fields": ["full_name", "email", "phone", "notice_period", "current_ctc", "expected_ctc", "preferred_location"],
+      "india_presets": ["notice_period", "current_ctc", "expected_ctc", "preferred_location"]
     }
   ]
 }

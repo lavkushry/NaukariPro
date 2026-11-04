@@ -214,6 +214,163 @@ def handle_resume_gen(args: argparse.Namespace) -> int:
     return 0 if art.dispatch_allowed else 2
 
 
+def handle_ats_score(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+    from naukari_pro.resume_gen.scorecard import ats_score_text
+
+    resume_path = Path(args.resume)
+    jd_path = Path(args.jd)
+    resume_text = resume_path.read_text(encoding="utf-8", errors="replace")
+    if resume_path.suffix.lower() == ".pdf":
+        try:
+            import pypdf
+
+            reader = pypdf.PdfReader(str(resume_path))
+            resume_text = "\n".join((p.extract_text() or "") for p in reader.pages)
+        except Exception as exc:  # noqa: BLE001
+            print(f"PDF extract failed ({exc}); scoring empty text")
+            resume_text = ""
+    jd_text = jd_path.read_text(encoding="utf-8", errors="replace")
+    result = ats_score_text(resume_text, jd_text)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def handle_e2e_demo(args: argparse.Namespace) -> int:
+    """Offline dry-run pipeline: score → tailor → ground → answers → fill verify → approval gate."""
+    import json
+    from pathlib import Path
+
+    from naukari_pro.governed_apply.dedupe_rules import CompanyDedupeLedger
+    from naukari_pro.governed_apply.fill_verify import verify_form
+    from naukari_pro.matching.deterministic_score import score_job
+    from naukari_pro.resume_gen.claim_validator import validate_text
+    from naukari_pro.resume_gen.tailor import audit_no_fabrication, tailor_from_facts
+    from naukari_pro.schema.v2_tables import ensure_v2_tables
+    from naukari_pro.security.canary import scan_posting
+
+    ensure_v2_tables()
+    job = {
+        "title": "DevOps Engineer",
+        "company": "DemoCorp",
+        "location": "Bengaluru",
+        "description_full": "Kubernetes Python Azure CI/CD. Notice period immediate joiner welcome.",
+        "url": "https://boards.greenhouse.io/democorp/jobs/1",
+    }
+    canary = scan_posting(job["description_full"])
+    if canary.blocked:
+        print(json.dumps({"status": "blocked", "reason": "canary", "detail": canary.reasons}))
+        return 2
+
+    scored = score_job(job)
+    facts = {
+        "summary": "DevOps engineer focused on Kubernetes and Azure pipelines.",
+        "skills": ["Python", "Kubernetes", "Azure", "Docker"],
+        "experience_bullets": [
+            "Containerized services with Docker on Azure.",
+            "Automated CI/CD with GitHub Actions for platform services.",
+        ],
+    }
+    tailored = tailor_from_facts(
+        facts,
+        {"must_haves": ["Kubernetes", "Python"], "ats_keywords": ["Azure", "Docker"]},
+    )
+    violations = audit_no_fabrication(tailored, facts)
+    grounding = validate_text(
+        " ".join(tailored.get("experience_bullets") or facts["experience_bullets"]),
+        facts["experience_bullets"] + [facts["summary"]],
+    )
+    # Re-ground using tailored bullets
+    bullets = []
+    for sec in tailored.get("tailored_sections") or []:
+        if sec.get("name") == "experience_bullets":
+            bullets.extend(str(b) for b in (sec.get("content") or []))
+    grounding = validate_text(" ".join(bullets), facts["experience_bullets"] + [facts["summary"]] + facts["skills"])
+
+    fill = verify_form(
+        [
+            {
+                "field_id": "email",
+                "expected": "demo@example.com",
+                "dom_value": "demo@example.com",
+                "check_validity": True,
+                "error_banners": [],
+                "model_value": "demo@example.com",
+            },
+            {
+                "field_id": "name",
+                "expected": "Demo",
+                "dom_value": "Demo",
+                "check_validity": True,
+                "error_banners": [],
+                "model_value": "Demo",
+            },
+            {
+                "field_id": "phone",
+                "expected": "+919999999999",
+                "dom_value": "+919999999999",
+                "check_validity": True,
+                "error_banners": [],
+                "model_value": "+919999999999",
+            },
+            {
+                "field_id": "notice",
+                "expected": "30 days",
+                "dom_value": "30 days",
+                "check_validity": True,
+                "error_banners": [],
+                "model_value": "30 days",
+            },
+        ]
+    )
+    dedupe = CompanyDedupeLedger(db_path=Path("naukari_pro") / "_e2e_dedupe.db").check(job["company"])
+    # e2e-demo is dry-run by contract; --submit still requires an approval token and never live-submits.
+    submit = bool(getattr(args, "submit", False))
+    approval = getattr(args, "approval_token", None)
+    if submit and not approval:
+        status = "blocked_no_approval"
+        exit_code = 2
+    elif submit and approval:
+        status = "approved_dry_run_only"
+        exit_code = 0
+    else:
+        status = "dry_run_ok"
+        exit_code = 0
+
+    report = {
+        "status": status,
+        "score": scored.total,
+        "tailor_violations": violations,
+        "grounding_ok": grounding.ok,
+        "fill_layers": fill["layers_summary"],
+        "fill_all_ok": fill["all_ok"],
+        "dedupe_allow": dedupe.allow,
+        "dry_run": True,
+        "ledger": {
+            "url": job["url"],
+            "company": job["company"],
+            "title": job["title"],
+            "resume_version": "e2e_demo",
+        },
+    }
+    print(BANNER)
+    print("=== E2E Demo (dry-run) ===")
+    print(json.dumps(report, indent=2))
+    if not (grounding.ok and fill["all_ok"] and not violations and dedupe.allow):
+        return 2
+    return exit_code
+
+
+def handle_browser_bridge(args: argparse.Namespace) -> int:
+    from naukari_pro.browser_bridge.server import BrowserBridge
+
+    port = int(getattr(args, "port", 7433) or 7433)
+    print(BANNER)
+    BrowserBridge(port=port).serve_forever()
+    return 0
+
+
 def handle_match_eval(args: argparse.Namespace) -> int:
     from pathlib import Path
     from naukari_pro.matching.eval import run_eval, write_benchmark_report, auto_apply_allowed
@@ -1909,6 +2066,29 @@ def main():
     rgen_parser.add_argument("--out", type=str, default=None, help="Output directory")
     rgen_parser.add_argument("--jd-keywords", type=str, default="Python,Azure,Databricks,SQL,Delta Lake")
 
+    ats_parser = subparsers.add_parser(
+        "ats-score",
+        help="M4: ATS keyword score {score, matched_keywords, missing_keywords}",
+        parents=[common_parser],
+    )
+    ats_parser.add_argument("resume", type=str, help="Resume PDF or text file")
+    ats_parser.add_argument("--jd", type=str, required=True, help="Job description text file")
+
+    e2e_parser = subparsers.add_parser(
+        "e2e-demo",
+        help="M5/§9: offline dry-run pipeline demo (score→tailor→ground→fill→approval gate)",
+        parents=[common_parser],
+    )
+    e2e_parser.add_argument("--submit", action="store_true", help="Attempt submit (still requires --approval-token)")
+    e2e_parser.add_argument("--approval-token", type=str, default=None)
+
+    bridge_parser = subparsers.add_parser(
+        "browser-bridge",
+        help="M1/§4.2: localhost browser-extension bridge (default :7433)",
+        parents=[common_parser],
+    )
+    bridge_parser.add_argument("--port", type=int, default=7433)
+
     gov_parser = subparsers.add_parser(
         "governed-apply",
         help="WS5: dry-run governed auto-apply (field audit, zero submissions by default)",
@@ -2086,6 +2266,12 @@ def main():
         sys.exit(handle_match_eval(args))
     elif args.command == "resume-gen":
         sys.exit(handle_resume_gen(args))
+    elif args.command == "ats-score":
+        sys.exit(handle_ats_score(args))
+    elif args.command == "e2e-demo":
+        sys.exit(handle_e2e_demo(args))
+    elif args.command == "browser-bridge":
+        sys.exit(handle_browser_bridge(args))
     elif args.command == "governed-apply":
         sys.exit(handle_governed_apply(args))
     elif args.command == "track-dashboard":

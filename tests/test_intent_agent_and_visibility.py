@@ -274,8 +274,9 @@ class TestExternalPortalBatchRunner:
         assert manager.detect_ats("https://company.wd5.myworkdayjobs.com/en-US/jobs/101") == "Workday"
         assert manager.detect_ats("https://unknowncompany.com/apply") == "Generic Portal"
 
-    def test_batch_runner_dry_run_filtering(self):
-        runner = ExternalPortalBatchRunner(dry_run=True, min_score=70.0, limit=5)
+    def test_batch_runner_dry_run_filtering(self, temp_db):
+        # limit high enough to evaluate the low-score Frontend fixture after ADE dry-runs
+        runner = ExternalPortalBatchRunner(dry_run=True, min_score=70.0, limit=10, db_path=temp_db)
         res = runner.run_batch()
         assert res["dry_run"] is True
         assert res["total_evaluated"] > 0
@@ -284,8 +285,8 @@ class TestExternalPortalBatchRunner:
         skipped_statuses = [j["status"] for j in res["jobs"]]
         assert "REJECTED_BELOW_THRESHOLD" in skipped_statuses
 
-    def test_batch_runner_ats_filter(self):
-        runner = ExternalPortalBatchRunner(dry_run=True, min_score=70.0, limit=5)
+    def test_batch_runner_ats_filter(self, temp_db):
+        runner = ExternalPortalBatchRunner(dry_run=True, min_score=70.0, limit=5, db_path=temp_db)
         res = runner.run_batch(ats_types=["Greenhouse"])
         # Only Greenhouse vacancies should be evaluated
         for job in res["jobs"]:

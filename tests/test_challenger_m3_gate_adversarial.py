@@ -66,8 +66,8 @@ class TestBoundaryScoresAndGating:
         assert p.match_score == 0
         assert p.status == "REJECTED_BELOW_THRESHOLD"
 
-        # NativeChromeRunner defense-in-depth gate
-        runner = NativeChromeRunner(skip_list=set(), dry_run=False)
+        # NativeChromeRunner defense-in-depth gate (score gate requires universal_apply=False)
+        runner = NativeChromeRunner(skip_list=set(), dry_run=False, universal_apply=False)
         applied, msg = runner.apply_to_job("https://example.com/1", "React Dev", "Startup", "15 LPA", match_score=0)
         assert applied is False
         assert "below required 70% threshold" in msg
@@ -93,8 +93,9 @@ class TestBoundaryScoresAndGating:
         assert p.status == "VALIDATED_PAYLOAD"
 
         # NativeChromeRunner defense-in-depth gate (dry-run mode)
-        runner = NativeChromeRunner(skip_list=set(), dry_run=True)
-        applied, msg = runner.apply_to_job("https://example.com/70", "Data Engineer", "Acme Corp", "25 LPA", match_score=70)
+        runner = NativeChromeRunner(skip_list=set(), dry_run=True, universal_apply=False)
+        with patch("naukari_pro.modules.db.is_job_already_applied", return_value=False):
+            applied, msg = runner.apply_to_job("https://example.com/70", "Data Engineer", "Acme Corp", "25 LPA", match_score=70)
         assert applied is True
         assert "Dry Run Simulation" in msg
 
@@ -124,7 +125,7 @@ class TestBoundaryScoresAndGating:
         2. With direct score injection or patched weights producing 69%, verify 69% is REJECTED.
         """
         # A. Direct score injection into NativeChromeRunner.apply_to_job
-        runner = NativeChromeRunner(skip_list=set(), dry_run=False)
+        runner = NativeChromeRunner(skip_list=set(), dry_run=False, universal_apply=False)
         applied, msg = runner.apply_to_job(
             "https://example.com/69", "Near Match DE", "Enterprise", "20 LPA", match_score=69
         )
@@ -158,10 +159,11 @@ class TestBoundaryScoresAndGating:
         With score 71%, verify that the gate accepts the vacancy.
         """
         # A. Direct score injection into NativeChromeRunner.apply_to_job
-        runner = NativeChromeRunner(skip_list=set(), dry_run=True)
-        applied, msg = runner.apply_to_job(
-            "https://example.com/71", "Qualifying DE", "Enterprise", "20 LPA", match_score=71
-        )
+        runner = NativeChromeRunner(skip_list=set(), dry_run=True, universal_apply=False)
+        with patch("naukari_pro.modules.db.is_job_already_applied", return_value=False):
+            applied, msg = runner.apply_to_job(
+                "https://example.com/71", "Qualifying DE", "Enterprise", "20 LPA", match_score=71
+            )
         assert applied is True
         assert "Dry Run Simulation" in msg
 

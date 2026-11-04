@@ -145,9 +145,94 @@ class OpenAICompatibleProvider:
         )
 
 
-def build_providers_from_env(cfg: Dict[str, Any]) -> Dict[str, OpenAICompatibleProvider]:
+class AnthropicMessagesProvider:
+    """Native Anthropic Messages API adapter (not OpenAI-compatible)."""
+
+    def __init__(
+        self,
+        name: str = "anthropic",
+        *,
+        api_key: str,
+        default_model: str,
+        base_url: str = "https://api.anthropic.com",
+    ) -> None:
+        self.name = name
+        self.api_key = api_key
+        self.default_model = default_model
+        self.base_url = base_url.rstrip("/")
+
+    def available(self) -> bool:
+        return bool(self.api_key)
+
+    def complete(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        json_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        model: Optional[str] = None,
+        timeout: float = 60.0,
+    ) -> LLMResponse:
+        system = ""
+        converted = []
+        for m in messages:
+            role = m.get("role") or "user"
+            content = m.get("content") or ""
+            if role == "system":
+                system = (system + "\n" + content).strip() if system else content
+            else:
+                converted.append({"role": "user" if role != "assistant" else "assistant", "content": content})
+        if json_schema and system:
+            system += "\nRespond with only valid JSON matching the required schema."
+        elif json_schema:
+            system = "Respond with only valid JSON matching the required schema."
+        body: Dict[str, Any] = {
+            "model": model or self.default_model,
+            "messages": converted or [{"role": "user", "content": ""}],
+            "max_tokens": int(max_tokens or 2048),
+            "temperature": 0.0 if temperature is None else temperature,
+        }
+        if system:
+            body["system"] = system
+        data = json.dumps(body).encode("utf-8")
+        url = self.base_url + "/v1/messages"
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("x-api-key", self.api_key)
+        req.add_header("anthropic-version", "2023-06-01")
+        req.add_header("Content-Type", "application/json")
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")
+            if e.code in (429, 500, 502, 503, 504):
+                time.sleep(1.5 + random.uniform(0, 0.5))
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+            else:
+                raise RuntimeError(f"anthropic HTTP {e.code}: {detail[:300]}") from e
+        blocks = payload.get("content") or []
+        content = ""
+        for b in blocks:
+            if isinstance(b, dict) and b.get("type") == "text":
+                content += b.get("text") or ""
+        usage = payload.get("usage") or {}
+        return LLMResponse(
+            content=content,
+            model=str(body.get("model") or self.default_model),
+            provider=self.name,
+            input_tokens=int(usage.get("input_tokens") or 0),
+            output_tokens=int(usage.get("output_tokens") or 0),
+            raw=payload,
+            latency_ms=int((time.time() - t0) * 1000),
+        )
+
+
+def build_providers_from_env(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Instantiate configured providers that have credentials (or ollama)."""
-    out: Dict[str, OpenAICompatibleProvider] = {}
+    out: Dict[str, Any] = {}
     providers = cfg.get("providers") or {}
     for name, meta in providers.items():
         if not isinstance(meta, dict):
@@ -161,12 +246,16 @@ def build_providers_from_env(cfg: Dict[str, Any]) -> Dict[str, OpenAICompatibleP
             out[name] = OpenAICompatibleProvider(name, base_url=base, api_key=key or "ollama", default_model=model)
             continue
         if name == "anthropic":
-            # Anthropic uses a different API; for M1 we route via OpenAI-compat only when base supports it.
-            # Skip unless user points COMPAT at an Anthropic proxy — keep slot for future native adapter.
             key = _env_key(str(meta.get("api_key_env") or ""), "ANTHROPIC_API_KEY")
             if not key:
                 continue
-            # Prefer OpenRouter/compat for Anthropic models if native not implemented
+            model = str(meta.get("default_model") or "claude-sonnet-4-20250514")
+            out[name] = AnthropicMessagesProvider(
+                name="anthropic",
+                api_key=key,
+                default_model=model,
+                base_url=str(meta.get("base_url") or "https://api.anthropic.com"),
+            )
             continue
         base = str(meta.get("base_url") or "").rstrip("/")
         key_env = str(meta.get("api_key_env") or "")

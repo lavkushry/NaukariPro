@@ -5,3 +5,7 @@ notion,notion,https://jobs.ashbyhq.com/notion,json_api,"{""includeCompensation""
 ramp,ramp,https://jobs.ashbyhq.com/ramp,json_api,"{""includeCompensation"":true}",ashby
 netflix,netflix,https://jobs.lever.co/netflix,json_api,"{""mode"":""json""}",lever
 shopify,shopify,https://jobs.lever.co/shopify,json_api,"{}",lever
+zerodha,zerodha,https://boards.greenhouse.io/zerodha,json_api,"{}",greenhouse
+postman,postman,https://jobs.ashbyhq.com/postman,json_api,"{""includeCompensation"":true}",ashby
+instahyre_demo,demo,https://www.instahyre.com/,stub,"{}",instahyre
+hirist_demo,demo,https://www.hirist.com/,stub,"{}",hirist

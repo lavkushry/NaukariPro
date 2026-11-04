@@ -387,8 +387,8 @@ def test_all_8_ats_portal_types_structural_and_candidate_fidelity(expected_ats, 
     assert answers["email"] == "lav84095@gmail.com"
     assert answers["phone"] == "+91-9122036484"
     assert answers["location"] == "Hyderabad"
-    assert "linkedin.com/in/lavkushry" in answers["linkedin"]
-    assert "github.com/lavkushry" in answers["github"]
+    assert "linkedin.com/in/lavkush-kumar" in answers["linkedin"]
+    assert "github.com/lavkush-kumar" in answers["github"]
     assert answers["experience"] == "2.5"
     assert answers["notice_period"] == "15"
     assert float(answers["current_ctc_lpa"]) == 12.0

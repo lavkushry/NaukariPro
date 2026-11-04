@@ -56,3 +56,15 @@ jobs:
         run: |
           python -m pytest tests/scenarios -q --tb=line
           python scripts/test_report.py
+
+      - name: Fast Hammer (Phase 1 — 420 blows + invariants)
+        env:
+          NAUKARI_LLM_MODE: replay
+          CANDIDATE_NAME: CI Candidate
+          CANDIDATE_EMAIL: ci@example.com
+          CANDIDATE_PHONE: "+91-0000000000"
+        run: |
+          python -m pytest tests/hammer -q --tb=line
+          python scripts/check_invariants.py
+          python scripts/chaos_monkey.py --seed 42 --duration 10 --interval 2
+          python scripts/mutation_hammer.py
