@@ -92,9 +92,24 @@ def print_menu():
     print("  [0] Exit")
     print("========================================================================")
 
-def handle_pro(limit=35, headless=False, dry_run=False, force=False, block=None, execute_outreach_live=False):
+def handle_pro(
+    limit=20,
+    limit_naukri=None,
+    limit_linkedin=None,
+    limit_external=None,
+    limit_redirects=None,
+    headless=False,
+    dry_run=False,
+    force=False,
+    block=None,
+    execute_outreach_live=False,
+):
     engine = ProAutoPilotEngine(
         limit=limit,
+        limit_naukri=limit_naukri,
+        limit_linkedin=limit_linkedin,
+        limit_external=limit_external,
+        limit_redirects=limit_redirects,
         headless=headless,
         dry_run=dry_run,
         force=force,
@@ -1854,6 +1869,10 @@ def main():
     pro_parser.add_argument("--force", action="store_true", help="Force profile sync and bump even if already updated today")
     pro_parser.add_argument("--block", type=int, choices=[1, 2, 3], default=None, help="Beast time block: 1 morning, 2 afternoon outreach, 3 evening follow-ups")
     pro_parser.add_argument("--live-outreach", action="store_true", default=False, help="Send LinkedIn outreach live (Mac/residential only)")
+    pro_parser.add_argument("--limit-naukri", type=int, default=None, help="Naukri apply target per cycle (default: 20)")
+    pro_parser.add_argument("--limit-linkedin", type=int, default=None, help="LinkedIn Easy Apply target per cycle (default: 20)")
+    pro_parser.add_argument("--limit-external", type=int, default=None, help="External ATS apply target per cycle (default: 20)")
+    pro_parser.add_argument("--limit-redirects", type=int, default=None, help="External redirects target per cycle (default: 20)")
 
     for cmd, hlp in [
         ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),
@@ -2157,14 +2176,19 @@ def main():
     elif args.command == "mail-test":
         sys.exit(handle_mail_test())
     elif args.command == "pro":
-        handle_pro(
-            limit=args.limit,
-            headless=args.headless,
-            dry_run=args.dry_run,
-            force=getattr(args, "force", False),
-            block=getattr(args, "block", None),
-            execute_outreach_live=getattr(args, "live_outreach", False),
-        )
+        pro_kwargs = {
+            "limit": args.limit,
+            "headless": args.headless,
+            "dry_run": args.dry_run,
+            "force": getattr(args, "force", False),
+            "block": getattr(args, "block", None),
+            "execute_outreach_live": getattr(args, "live_outreach", False),
+        }
+        for attr in ("limit_naukri", "limit_linkedin", "limit_external", "limit_redirects"):
+            val = getattr(args, attr, None)
+            if val is not None:
+                pro_kwargs[attr] = val
+        handle_pro(**pro_kwargs)
     elif args.command == "weekly-report":
         handle_weekly_report(headless=args.headless)
     elif args.command == "performance":

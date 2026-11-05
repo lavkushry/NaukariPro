@@ -61,7 +61,11 @@ def resolve_beast_block(block: Optional[int] = None) -> int:
 class ProAutoPilotEngine:
     def __init__(
         self,
-        limit=35,
+        limit=20,
+        limit_naukri=None,
+        limit_linkedin=None,
+        limit_external=None,
+        limit_redirects=None,
         headless=False,
         dry_run=False,
         force=False,
@@ -70,6 +74,10 @@ class ProAutoPilotEngine:
         execute_outreach_live: bool = False,
     ):
         self.limit = limit
+        self.limit_naukri = limit_naukri if limit_naukri is not None else limit
+        self.limit_linkedin = limit_linkedin if limit_linkedin is not None else limit
+        self.limit_external = limit_external if limit_external is not None else limit
+        self.limit_redirects = limit_redirects if limit_redirects is not None else limit
         self.headless = headless
         self.dry_run = dry_run
         self.force = force
@@ -84,7 +92,13 @@ class ProAutoPilotEngine:
         self.apply_engine = AutoApplyEngine(dry_run=dry_run, universal_apply=universal_apply)
         self.search_engine = UniversalJobSearchEngine()
         self.portal_filler = CareerPortalFiller()
-        self.portal_runner = ExternalPortalBatchRunner(headless=headless, dry_run=dry_run, min_score=0.0, limit=limit, universal_apply=universal_apply)
+        self.portal_runner = ExternalPortalBatchRunner(
+            headless=headless,
+            dry_run=dry_run,
+            min_score=0.0,
+            limit=self.limit_external,
+            universal_apply=universal_apply,
+        )
         self.perf_engine = ProfilePerformanceEngine()
         self.li_session_manager = LinkedInSessionManager()
         self.li_apply_engine = LinkedInApplyEngine(min_score=0.0, universal_apply=universal_apply)
@@ -233,10 +247,10 @@ class ProAutoPilotEngine:
                 li_session_valid = False
 
         # ── STAGE 5/8: Autonomous Naukri Auto-Apply Cycle ──
-        print(f"\n[STAGE 5/8] Executing Autonomous Naukri Apply Cycle (Target: {self.limit} Applications)...")
+        print(f"\n[STAGE 5/8] Executing Autonomous Naukri Apply Cycle (Target: {self.limit_naukri} Applications)...")
         applied_naukri = 0
         try:
-            applied_naukri = self.apply_engine.run(limit=self.limit, headless=self.headless, dry_run=self.dry_run, universal_apply=self.universal_apply)
+            applied_naukri = self.apply_engine.run(limit=self.limit_naukri, headless=self.headless, dry_run=self.dry_run, universal_apply=self.universal_apply)
             print(f"  [✓] Naukri Apply Cycle completed: {applied_naukri} applications processed.")
         except Exception as e:
             print(f"  [!] Naukri apply error (isolated): {e}")
@@ -245,14 +259,14 @@ class ProAutoPilotEngine:
         applied_linkedin = 0
         li_dry_run_verified = 0
         li_stats = {}
-        print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit} Applications)...")
+        print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit_linkedin} Applications)...")
         try:
             if self.dry_run:
-                li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit, min_score=0.0)
+                li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit_linkedin, min_score=0.0)
                 li_dry_run_verified = li_stats.get("dry_run_verified", 0)
                 applied_linkedin = li_dry_run_verified
                 print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
-            elif sys.platform != "darwin" and not os.environ.get("RESIDENTIAL_PROXY") and not os.environ.get("ALL_PROXY") and not self.config.get("residential_proxy"):
+            elif sys.platform != "darwin" and not os.environ.get("RESIDENTIAL_PROXY") and not os.environ.get("ALL_PROXY") and not self.config.get("residential_proxy") and not getattr(self, "allow_datacenter_linkedin", False):
                 print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (running on non-Mac host without residential proxy).")
                 li_stats = {"discovered": 0, "applied": 0, "status": "MAC_HOST_REQUIRED"}
             elif not li_session_valid:
@@ -260,7 +274,7 @@ class ProAutoPilotEngine:
                 li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
             else:
                 li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
-                    limit=self.limit,
+                    limit=self.limit_linkedin,
                     dry_run=False,
                     headless=self.headless,
                     universal_apply=self.universal_apply
@@ -273,12 +287,12 @@ class ProAutoPilotEngine:
             li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
 
         # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects ──
-        print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)...")
+        print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)... Target: {self.limit_external}")
         applied_external = 0
         ext_stats = {}
         try:
             ext_stats = self.portal_runner.run_batch(
-                limit=self.limit,
+                limit=self.limit_external,
                 dry_run=self.dry_run,
                 universal_apply=self.universal_apply
             )
@@ -289,8 +303,9 @@ class ProAutoPilotEngine:
 
         # Check pending redirects from tracker
         try:
+            print(f"  [*] Processing pending external portal redirects (Target: {self.limit_redirects})...")
             red_res = self.portal_filler.process_external_redirects(
-                limit=10,
+                limit=self.limit_redirects,
                 headless=self.headless,
                 dry_run=self.dry_run,
                 auto_submit=True,

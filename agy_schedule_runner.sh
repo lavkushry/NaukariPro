@@ -67,8 +67,9 @@ fi
 echo "[*] Beast Block: $BLOCK" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 
 # Single brain — no duplicate linkedin-apply / portal-apply / goal-5calls chain
+# 20,20,20,20 targets: Naukri (20), LinkedIn (20), External ATS (20), Redirects (20)
 set +e
-./naukariPro pro --headless --limit 35 --force --block "$BLOCK" 2>&1 | tee -a "$RUN_LOG"
+./naukariPro pro --headless --limit 20 --limit-naukri 20 --limit-linkedin 20 --limit-external 20 --limit-redirects 20 --force --block "$BLOCK" 2>&1 | tee -a "$RUN_LOG"
 PRO_STATUS=${PIPESTATUS[0]}
 set -e
 

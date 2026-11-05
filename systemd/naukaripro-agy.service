@@ -11,7 +11,7 @@ Environment=WORKSPACE=/home/ubuntu/Resume
 ExecStart=/bin/bash /home/ubuntu/Resume/agy_schedule_runner.sh
 StandardOutput=journal
 StandardError=journal
-TimeoutStartSec=1800
+TimeoutStartSec=5400
 
 [Install]
 WantedBy=default.target
