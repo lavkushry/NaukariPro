@@ -4,83 +4,92 @@
 
 > No software is unbreakable. NaukariPro is "break-proof" when every hammer blow ends FIXED (regression proves it) or CONTAINED (fails closed — never lies, corrupts, submits garbage, leaks, or silently swallows).
 
-**Date:** November 5, 2026  
-**Suite:** `tests/hammer/test_all_blows.py`  
+**Date:** November 8, 2026  
+**Suite:** `tests/hammer/` (catalog-backed 420 distinct blows)  
 **Ledger:** `tests/hammer/hammer_log.jsonl`
 
 ## Phase 1 — Singles (420/420)
 
 | Metric | Result |
 |--------|--------|
-| Blows delivered | **420/420** (ledger-verified, unique blow_ids) |
-| Outcomes | contained **319** · survived **101** · broke_unfixed **0** |
+| Blows delivered | **420/420** (ledger-verified unique blow_ids; **420 unique attack keys**, **84 kinds**) |
+| Outcomes (latest H* rows) | contained **319** · survived **101** · broke_unfixed **0** |
 | Hammers | input 50 · llm 45 · form 45 · state 40 · security 40 · network 35 · concurrency 30 · resource 30 · runtime 30 · time 25 · identity 25 · operator 25 |
-| pytest | `420 passed in ~11s` |
+| pytest | `tests/hammer` → **436 passed** (420 blows + combos + phase5 regressions) |
 | Invariant checker | `scripts/check_invariants.py` → **OK — 0 violations** |
 
-### Hardening landed with the arsenal
+### Hardening landed with the deepen-in-place pass
 
 | Module | Role |
 |--------|------|
-| [`naukari_pro/errors.py`](../../naukari_pro/errors.py) | Typed `NaukariProError` hierarchy (parse/validation/approval/captcha/config) |
-| [`naukari_pro/hammer_safe.py`](../../naukari_pro/hammer_safe.py) | Fail-closed parsers: string bounds, JSON depth, YAML alias cap, SSRF URL deny, salary gates, path traversal/symlink refuse, secret/PII redaction, boot config |
-| Existing | Grounding validator, 4-layer fill verify, company dedupe exit 2, canary scan, captcha circuit, webhook HMAC, ApprovalQueue single-use `decide()` |
+| [`naukari_pro/errors.py`](../../naukari_pro/errors.py) | Typed `NaukariProError` hierarchy |
+| [`naukari_pro/hammer_safe.py`](../../naukari_pro/hammer_safe.py) | Parsers, SSRF (hex/octal/nip/Unicode digits), network sim, XXE/zip-slip, path gates |
+| [`naukari_pro/governed_apply/approval.py`](../../naukari_pro/governed_apply/approval.py) | Atomic single-use `decide()` (`BEGIN IMMEDIATE`); confirmation proof required to record applied |
+| [`naukari_pro/governed_apply/confirmation.py`](../../naukari_pro/governed_apply/confirmation.py) | Negation voids text **and** URL confirmation |
+| [`naukari_pro/security/canary.py`](../../naukari_pro/security/canary.py) | Prompt-injection / exfil patterns |
+| [`naukari_pro/security/pii.py`](../../naukari_pro/security/pii.py) | `AIza…` secret redaction |
+| [`naukari_pro/resume_gen/claim_validator.py`](../../naukari_pro/resume_gen/claim_validator.py) | `NUMBER_RE` includes `ms`/unit suffixes |
+| Catalog | [`tests/hammer/catalog.py`](catalog.py) — no `__mutNN` seed-rotation padding |
 
 ### Sample contained vectors
 
-- H1: 10 MB string, null byte, YAML alias bomb, SSRF metadata/localhost, CSV formula neutralize
-- H2: fabricated cert/metric, ₹12→₹21 mutation, prompt-injection JD canary, puffery
-- H8: React commit wipe, validity false, DOM mismatch, error banners → exit-2 style refuse
-- H10: path traversal, `; rm` filename, symlink ledger, forged HMAC → 401 semantics
-- H12: `CAPTCHA_MODE=vendor` without key/allowlist → ConfigError exit 4; `--submit` without token refused
+- H1: oversized string, null byte, YAML alias bomb, SSRF metadata/localhost/hex/nip/Unicode
+- H2: fabricated cert/metric, ₹12→₹21 mutation, prompt-injection JD canary
+- H3: kill-sim uncommitted invisible; corrupt DB reopen refuse
+- H4: threaded token race → exactly one approval
+- H7: reset/stall/429/gzip/redirect-loop typed refuse
+- H8: React commit wipe, validity, DOM mismatch, captcha step → exit 2/3
+- H10: path traversal, XXE, zip-slip, symlink ledger, forged HMAC
+- H12: vendor captcha without key → ConfigError; `--submit` without token refused
 
 ## Phase 2 — Combos
 
-Scaffolded via chaos monkey selecting mixed fault+blow pairs. Full interactive combo matrix (LLM injection during network stall, etc.) remains an expansion track; short seeded run is green.
+[`tests/hammer/test_combos.py`](test_combos.py): LLM inject + network stall; kill + remount; disk-full + retry storm; expired token + race; SSRF + XXE; fabrication + budget. All fail-closed + invariants green.
 
 ## Phase 3 — Sustained chaos
 
 ```
 python scripts/chaos_monkey.py --seed 42 --duration 6 --interval 1
-→ {"faults": 6, "invariant_violations": 0, "ok": true}
+→ {"faults": 6, "invariant_violations": 0, "ok": true, "pipeline": true}
 ```
 
-CI default should use `--duration 30`. Overnight `--duration 28800` is optional ops.
+PR CI: `--duration 30`. Nightly: [`hammer-nightly.yml`](../../.github/workflows/hammer-nightly.yml) `--duration 900 --interval 30`. Overnight `--duration 28800` is optional ops.
 
 ## Phase 4 — Mutation hammer
 
 ```
 python scripts/mutation_hammer.py
-→ ssrf_denylist_gutted: KILLED
-→ size_cap_disabled: KILLED
-→ yaml_alias_cap_disabled: KILLED
+→ 8/8 safety mutants KILLED
 surviving_safety_mutants=0
+kill_rate=100.00%
 ```
 
-DIY safety mutants on `hammer_safe.py` (SSRF gate, size cap, YAML alias cap). Full `mutmut` corpus across all safety modules remains optional expansion; **0 survivors** on the Phase-4 critical trio.
+Modules covered: `hammer_safe` (SSRF, size, YAML, path, redirects), `fill_verify`, `approval` pending guard, `canary` injection gate.
 
 ## Phase 5 — Independent examiner
 
-First exam ([Phase-5 hammer examiner](abdfc2f3-f2f8-4114-b84d-85b54017c0eb)): **5 criticals** → Phase-1 fix loop.
+| Pass | Result |
+|------|--------|
+| First exam ([Phase-5 hammer examiner](a9d270ab-69dc-4198-a5dc-b3fc23f1d4cc)) | **5 criticals** → fixed + `test_p5b_*` regressions |
+| Re-exam ([Phase-5 re-exam](a85d9851-1414-4c78-896d-d75eccdb7880)) | F1–F5 hold; **2 new** (F6/F7) → fixed + `test_p5c_*` |
+| Residual new criticals after fix loop | **0** |
 
-| ID | Fix |
-|----|-----|
-| F1 empty-expected DOM bypass | `fill_verify.py` layer1 always `dom == expected` |
-| F2 `1` in `10` number substring | exact `NUMBER_RE` token set match |
-| F3 127/8 SSRF gaps | `_is_blocked_ssrf_host` via `ipaddress` + decimal forms |
-| F4 empty captcha passthrough | require non-empty token in HTML |
-| F5 open API without key | refuse unless `NAUKARI_API_KEY` or `NAUKARI_API_DEV_OPEN=1`; redact webhook payloads |
-
-Regressions: `tests/hammer/test_phase5_regressions.py` (5 tests). Findings: `PHASE5_EXAM_FINDINGS.md`.
+Findings: `PHASE5_EXAM_2026-11-08.md`, `PHASE5_REEXAM_2026-11-08.md`.
 
 ## Anti-laws checklist
 
-1. No skipped vector in the 420 ledger — OK  
-2. No test deleted to go green — OK (`tests/TESTS-CHANGELOG.md`)  
+1. No skipped vector in the 420 catalog — OK (distinct vectors/kinds)  
+2. No test deleted to go green — OK  
 3. No broad `except: pass` added — H11 lint blow asserts bare `except: pass` == 0  
-4. Invariant checker not weakened — OK  
+4. Invariant checker not weakened — expanded to I1–I10 with fixture DB  
 5. No `broke_unfixed` in final ledger — OK  
 
 ## What this certificate does *not* prove
 
-Live-site DOM drift, real vendor captcha behavior, recruiter judgment — outside offline gauntlet (Master Prompt honesty appendix).
+Live-site DOM drift, real vendor captcha behavior, recruiter judgment — outside offline gauntlet (prompt honesty appendix).
+
+## Changelog
+
+### November 8, 2026
+
+- Deepen-in-place: catalog of 420 distinct blows; real invariants; combos; chaos pipeline; 8 mutants; Phase-5 fix loop (F1–F7).

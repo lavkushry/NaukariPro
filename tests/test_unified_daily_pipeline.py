@@ -48,6 +48,35 @@ def strict_airgap(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", block_socket)
 
 
+@pytest.fixture(autouse=True)
+def mock_external_ats_network(monkeypatch):
+    """Ensure ExternalPortalBatchRunner and live outreach use offline mocks during testing."""
+    monkeypatch.setattr(
+        "naukari_pro.modules.career_portals.fetch_live_ats_vacancies",
+        lambda *args, **kwargs: []
+    )
+    monkeypatch.setattr(
+        "naukari_pro.modules.career_portals.ExternalPortalBatchRunner.run_batch",
+        lambda self, *args, **kwargs: {"submitted": 0, "skipped": 0, "jobs": []}
+    )
+    monkeypatch.setattr(
+        "naukari_pro.modules.career_portals.CareerPortalFiller.process_external_redirects",
+        lambda self, *args, **kwargs: {"submitted": 0, "skipped": 0, "items": []}
+    )
+    monkeypatch.setattr(
+        "naukari_pro.modules.goal_5calls.Goal5CallsEngine.run_block",
+        lambda self, *args, **kwargs: {"actions_executed": []}
+    )
+    monkeypatch.setattr(
+        "naukari_pro.modules.goal_5calls.Goal5CallsEngine.generate_followup_batch",
+        lambda self, *args, **kwargs: []
+    )
+    monkeypatch.setattr(
+        "naukari_pro.modules.linkedin_outreach.LinkedInOutreachSender.send_batch_outreach",
+        AsyncMock(return_value={"sent": 0, "count": 0})
+    )
+
+
 # ==============================================================================
 # 2. PIPELINE INITIALIZATION & COMPONENT INTEGRITY
 # ==============================================================================

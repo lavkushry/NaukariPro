@@ -826,7 +826,15 @@ def is_job_already_applied(
     """
     init_db(db_path)
     conn = get_db_connection(db_path)
-    UNAPPLIED_PLACEHOLDERS = {"External Redirect", "Not Available", "Targeted Vacancy"}
+    UNAPPLIED_PLACEHOLDERS = {
+        "External Redirect",
+        "Not Available",
+        "Targeted Vacancy",
+        "SUBMITTED_DRY_RUN",
+        "DRY_RUN_ELIGIBLE",
+        "DRY_RUN_MATCH",
+        "SKIPPED_ALREADY_APPLIED"
+    }
     
     def _is_applied_row(r_status: Optional[str]) -> bool:
         if include_pending:

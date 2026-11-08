@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
 @dataclass
 class Mutant:
     path: Path
@@ -50,14 +51,43 @@ MUTANTS = [
         replacement="if False and (aliases > MAX_YAML_ALIASES or refs > MAX_YAML_ALIASES):  # MUTANT",
         name="yaml_alias_cap_disabled",
     ),
+    Mutant(
+        path=ROOT / "naukari_pro" / "hammer_safe.py",
+        needle='raise ValidationError("path traversal refused", context={"path": raw[:200]})',
+        replacement='return base / "mutant_allowed"  # MUTANT',
+        name="path_traversal_gutted",
+    ),
+    Mutant(
+        path=ROOT / "naukari_pro" / "governed_apply" / "approval.py",
+        needle="WHERE token=? AND status='pending'",
+        replacement="WHERE token=? ",
+        name="approval_pending_guard_dropped",
+    ),
+    Mutant(
+        path=ROOT / "naukari_pro" / "security" / "canary.py",
+        needle="blocked = bool(canaries or no_ai or takehome or injection)",
+        replacement="blocked = bool(canaries or no_ai or takehome)  # MUTANT: ignore injection",
+        name="injection_gate_disabled",
+    ),
+    Mutant(
+        path=ROOT / "naukari_pro" / "hammer_safe.py",
+        needle="if redirects > MAX_REDIRECTS:",
+        replacement="if False and redirects > MAX_REDIRECTS:  # MUTANT",
+        name="redirect_cap_disabled",
+    ),
 ]
 
 
 FOCUS = [
     "tests/hammer/test_all_blows.py::test_hammer_blow[H1-08]",  # ssrf metadata
     "tests/hammer/test_all_blows.py::test_hammer_blow[H1-09]",  # ssrf localhost
-    "tests/hammer/test_all_blows.py::test_hammer_blow[H1-03]",  # 10mb
+    "tests/hammer/test_all_blows.py::test_hammer_blow[H1-03]",  # oversized
     "tests/hammer/test_all_blows.py::test_hammer_blow[H1-06]",  # yaml bomb
+    "tests/hammer/test_all_blows.py::test_hammer_blow[H8-01]",  # react remount
+    "tests/hammer/test_all_blows.py::test_hammer_blow[H4-03]",  # token race
+    "tests/hammer/test_all_blows.py::test_hammer_blow[H10-01]",  # path traversal
+    "tests/hammer/test_all_blows.py::test_hammer_blow[H2-18]",  # prompt inject
+    "tests/hammer/test_all_blows.py::test_hammer_blow[H7-15]",  # redirect loop
     "tests/hammer/test_phase5_regressions.py::test_p5_f1_empty_expected_rejects_fabricated_dom",
     "tests/hammer/test_phase5_regressions.py::test_p5_f3_loopback_variants_blocked",
 ]
@@ -76,7 +106,6 @@ def _run_focus() -> int:
 
 
 def main() -> int:
-    # Baseline must pass
     if _run_focus() != 0:
         print("BASELINE_FAIL — focused hammer subset red before mutation")
         return 2
@@ -100,11 +129,22 @@ def main() -> int:
             backup.unlink(missing_ok=True)
 
     survived = [n for n, s in results if s == "SURVIVED"]
+    skipped = [n for n, s in results if s == "SKIP_NEEDLE_MISSING"]
     print("MUTATION_HAMMER_RESULTS")
     for n, s in results:
         print(f"  {n}: {s}")
     print(f"surviving_safety_mutants={len(survived)}")
-    return 1 if survived else 0
+    print(f"skipped_needles={len(skipped)}")
+    kill_rate = 0.0
+    attempted = [s for _, s in results if s in ("KILLED", "SURVIVED")]
+    if attempted:
+        kill_rate = sum(1 for s in attempted if s == "KILLED") / len(attempted)
+    print(f"kill_rate={kill_rate:.2%}")
+    if survived:
+        return 1
+    if skipped:
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

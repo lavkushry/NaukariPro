@@ -986,7 +986,7 @@ def is_mac_chrome_available():
 # ENGINE 1: NATIVE CHROME RUNNER (macOS Authentic Session)
 # ─────────────────────────────────────────────────────────────────────────────
 class NativeChromeRunner:
-    def __init__(self, skip_list, dry_run=False, universal_apply=True):
+    def __init__(self, skip_list, dry_run=False, universal_apply=False):
         self.skip_list = skip_list
         self.dry_run = dry_run
         self.universal_apply = universal_apply
@@ -1052,10 +1052,18 @@ class NativeChromeRunner:
     def apply_to_job(self, job_url, title, company, salary, raw_jd="", match_score=None, universal_apply=None):
         """Applies to a single job in Chrome, handling 1-click and screening questionnaires."""
         from naukari_pro.modules.scorecard import sync_dual_log
+        from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
         is_universal = self.universal_apply if universal_apply is None else universal_apply
 
         if match_score is None:
             match_score = calculate_match_score(f"{title} {company} {raw_jd}".strip())
+
+        # Unconditional Role Guard: Never apply to non-data / non-cloud roles
+        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, score=match_score)
+        if not is_role_ok:
+            reason_msg = f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold (Non-Target Role: {role_reason})"
+            print(f"    ⛔ Application Rejected Upfront (Non-Target Role): {title} @ {company} ({reason_msg})")
+            return False, reason_msg
 
         if not is_universal:
             if match_score < MATCH_SCORE_THRESHOLD:
@@ -1509,7 +1517,7 @@ class NativeChromeRunner:
 # ENGINE 2: PLAYWRIGHT STEALTH RUNNER (Linux Cloud Server / Headless Fallback)
 # ─────────────────────────────────────────────────────────────────────────────
 class PlaywrightRunner:
-    def __init__(self, skip_list, dry_run=False, proxy=None, universal_apply=True):
+    def __init__(self, skip_list, dry_run=False, proxy=None, universal_apply=False):
         self.skip_list = skip_list
         self.dry_run = dry_run
         self.proxy = proxy
@@ -1688,11 +1696,19 @@ class PlaywrightRunner:
         """Applies to a single job in Playwright context, handling 1-click and screening questionnaires."""
         from naukari_pro.session import parse_proxy_settings
         from naukari_pro.modules.scorecard import sync_dual_log
+        from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
         is_universal = getattr(self, "universal_apply", True) if universal_apply is None else universal_apply
         proxy_settings = parse_proxy_settings(proxy or self.proxy or os.getenv("NAUKRI_PROXY"))
         if match_score is None:
             full_text = f"{title} {company} {raw_jd}".strip()
             match_score = calculate_match_score(full_text)
+
+        # Unconditional Role Guard: Never apply to non-data / non-cloud roles
+        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, score=match_score)
+        if not is_role_ok:
+            reason_msg = f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold (Non-Target Role: {role_reason})"
+            print(f"    ⛔ Application Rejected Upfront (Non-Target Role): {title} @ {company} ({reason_msg})")
+            return False, reason_msg
 
         if not is_universal:
             if match_score < MATCH_SCORE_THRESHOLD:
@@ -1962,6 +1978,14 @@ class PlaywrightRunner:
 
                 is_universal = getattr(self, "universal_apply", True)
 
+                # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
+                from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd)
+                if not is_role_ok:
+                    print(f"  ⛔ Skipped Recommended (Non-Target Role): {title} @ {comp} ({role_reason})")
+                    self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
+                    continue
+
                 # Pre-filtering gates (enforced in legacy mode only)
                 if not is_universal:
                     # Upfront Experience Verification Gate
@@ -2009,6 +2033,11 @@ class PlaywrightRunner:
                 if not is_universal and not is_match:
                     print(f"  ⛔ Skipped Recommended: {title} @ {comp} ({match_reason})")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
+                    continue
+
+                if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+                    print(f"  ⛔ Skipped Recommended (Zero Score): {title} @ {comp} (Score: 0%)")
+                    self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
                     continue
 
                 if self.dry_run:
@@ -2099,6 +2128,14 @@ class PlaywrightRunner:
                     continue
                 seen_urls.add(job_url)
 
+                # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
+                from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd)
+                if not is_role_ok:
+                    print(f"  ⛔ Skipped NVite (Non-Target Role): {title} @ {comp} ({role_reason})")
+                    self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
+                    continue
+
                 is_universal = getattr(self, "universal_apply", True)
                 is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
                 if not is_universal and not is_match and not self.dry_run:
@@ -2121,6 +2158,11 @@ class PlaywrightRunner:
                 if not is_universal and not is_match:
                     print(f"  ⛔ Skipped NVite: {title} @ {comp} ({match_reason})")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
+                    continue
+
+                if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+                    print(f"  ⛔ Skipped NVite (Zero Score): {title} @ {comp} (Score: 0%)")
+                    self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
                     continue
 
                 if self.dry_run:
@@ -2302,6 +2344,14 @@ class PlaywrightRunner:
 
                                     is_universal = getattr(self, "universal_apply", True)
 
+                                    # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
+                                    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                                    is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd)
+                                    if not is_role_ok:
+                                        print(f"  ⛔ Skipped Search (Non-Target Role): {title} @ {comp} ({role_reason})")
+                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
+                                        continue
+
                                     if not is_universal:
                                         # Upfront Experience Verification Gate
                                         is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
@@ -2355,6 +2405,11 @@ class PlaywrightRunner:
                                     if not is_universal and not is_match:
                                         print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
                                         self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
+                                        continue
+
+                                    if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+                                        print(f"  ⛔ Skipped Search (Zero Score): {title} @ {comp} (Score: 0%)")
+                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
                                         continue
 
                                     applied_ok, _ = await self.apply_to_job_async(

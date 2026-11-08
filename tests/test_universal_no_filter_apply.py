@@ -38,28 +38,37 @@ def temp_env():
 
 
 class TestUniversalNoFiltering:
-    """Verifies that no score, title, company, or salary gates reject jobs in universal mode."""
+    """Verifies that universal mode relaxes salary/company gates while strictly preserving the role guard."""
 
     def test_external_batch_runner_applies_all_unfiltered_in_universal_mode(self, temp_env):
         db_path, tracker_path, td = temp_env
         feed = [
             {
                 "company": "Random Employer A",
-                "title": "Marketing Intern (Totally Unrelated)",
-                "salary": "3 - 5 Lacs PA",  # Low salary
-                "exp": "8-12 Yrs",          # High experience
+                "title": "Azure Data Engineer",
+                "salary": "3 - 5 Lacs PA",  # Low salary - accepted in universal mode
+                "exp": "2-4 Yrs",
                 "url": "https://boards.greenhouse.io/random/1",
-                "jd": "SEO writing content creation",
+                "jd": "Azure Databricks PySpark Delta Lake ETL",
                 "ats": "Greenhouse"
             },
             {
                 "company": "Random Employer B",
-                "title": "Chief Technology Officer",
-                "salary": "Undisclosed",
-                "exp": "15+ Yrs",
+                "title": "Data Platform Engineer",
+                "salary": "Undisclosed",     # Undisclosed salary - accepted in universal mode
+                "exp": "2-5 Yrs",
                 "url": "https://jobs.lever.co/random/2",
-                "jd": "Executive management",
+                "jd": "Cloud Data Pipelines, Spark, SQL, Kafka",
                 "ats": "Lever"
+            },
+            {
+                "company": "Random Employer C",
+                "title": "Marketing Intern (Totally Unrelated)",
+                "salary": "3 - 5 Lacs PA",
+                "exp": "0-1 Yrs",
+                "url": "https://boards.greenhouse.io/random/3",
+                "jd": "SEO content writing social media",
+                "ats": "Greenhouse"
             }
         ]
 
@@ -73,9 +82,10 @@ class TestUniversalNoFiltering:
              patch("naukari_pro.modules.scorecard.TRACKER_PATH", tracker_path):
             stats = runner.run_batch(vacancies=feed, dry_run=True)
 
-        assert stats["total_evaluated"] == 2
+        assert stats["total_evaluated"] == 3
         assert stats["submitted"] == 2
-        assert stats["skipped"] == 0
+        assert stats["skipped"] == 1
+        assert stats["jobs"][2]["status"] == "REJECTED_NON_DATA_ROLE"
 
     def test_auto_apply_engine_run_offline_preserves_all_payloads_in_universal_mode(self):
         feed = [

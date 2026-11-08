@@ -14,7 +14,7 @@ PAN_RE = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b", re.I)
 # Aadhaar-like: 12 digits, optionally spaced
 AADHAAR_RE = re.compile(r"\b\d{4}\s?\d{4}\s?\d{4}\b")
 API_KEY_RE = re.compile(
-    r"\b(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|xai-[A-Za-z0-9]{16,})\b"
+    r"\b(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|xai-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z\-_]{20,})\b"
 )
 BEARER_RE = re.compile(r"(?i)(authorization:\s*bearer\s+)\S+")
 

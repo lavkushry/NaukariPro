@@ -23,6 +23,21 @@ _TAKEHOME = re.compile(
     re.I,
 )
 
+# Prompt-injection / exfil attempts embedded in JDs (H2 LLM hammer).
+_INJECTION = re.compile(
+    r"("
+    r"ignore (?:previous |all )?instructions"
+    r"|ignore safety"
+    r"|email (?:api )?keys?"
+    r"|email .{0,40}credentials?"
+    r"|attacker@"
+    r"|process\.env"
+    r"|exfiltrat"
+    r"|send (?:me |the )?(?:secrets?|credentials?|api[_ -]?keys?)"
+    r")",
+    re.I,
+)
+
 
 @dataclass
 class CanaryScan:
@@ -49,11 +64,14 @@ def scan_posting(text: str) -> CanaryScan:
                 reasons.append(f"canary:{word}")
     no_ai = bool(_NO_AI_POLICY.search(text or ""))
     takehome = bool(_TAKEHOME.search(text or ""))
+    injection = bool(_INJECTION.search(text or ""))
     if no_ai:
         reasons.append("no_ai_policy")
     if takehome:
         reasons.append("graded_takehome")
-    blocked = bool(canaries or no_ai or takehome)
+    if injection:
+        reasons.append("prompt_injection")
+    blocked = bool(canaries or no_ai or takehome or injection)
     return CanaryScan(
         blocked=blocked,
         canary_words=canaries,

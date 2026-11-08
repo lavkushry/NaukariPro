@@ -68,3 +68,80 @@ def test_p5_f5_api_requires_key(monkeypatch):
     app = create_api_app()
     client = TestClient(app)
     assert client.get("/tools").status_code == 401
+
+
+# --- Phase-5 re-exam 2026-11-08 (a9d270ab) ---------------------------------
+
+
+@pytest.mark.hammer
+def test_p5b_f1_negated_confirmation_not_applied():
+    from naukari_pro.governed_apply.confirmation import detect_submission_confirmation
+
+    r = detect_submission_confirmation(page_text="error: application submitted failed")
+    assert r.confirmed is False
+
+
+@pytest.mark.hammer
+def test_p5b_f2_hex_octal_nip_ssrf_blocked():
+    for url in (
+        "http://0x7f000001/",
+        "http://0177.0.0.1/",
+        "http://127.0.0.1.nip.io/",
+    ):
+        with pytest.raises(ValidationError):
+            validate_job_url(url)
+
+
+@pytest.mark.hammer
+def test_p5b_f3_ms_suffix_numbers_grounded():
+    report = validate_text(
+        "Reduced latency from 400ms to 999ms.",
+        ["Reduced latency from 400ms to 180ms"],
+    )
+    assert report.ok is False
+
+
+@pytest.mark.hammer
+def test_p5b_f4_aiza_redacted_in_pii_module():
+    from naukari_pro.security.pii import redact_pii, secrets_in_text
+
+    leak = "AIzaSyAbCdEfGhIjKlMnOpQrStUvWxYz123456"
+    assert "[REDACTED" in redact_pii(leak)
+    assert secrets_in_text(leak)
+
+
+@pytest.mark.hammer
+def test_p5b_f5_submit_requires_confirmation_proof(tmp_path):
+    from naukari_pro.errors import IntegrityError
+    from naukari_pro.governed_apply.approval import ApprovalQueue
+
+    q = ApprovalQueue(db_path=tmp_path / "a.db")
+    with pytest.raises(IntegrityError):
+        q.record_confirmed_submit(
+            job_url="https://example.com/j",
+            company="Co",
+            title="Eng",
+            confirmation_text=None,
+            confirmation_url=None,
+        )
+
+
+@pytest.mark.hammer
+def test_p5c_f6_url_confirm_voided_by_error_text():
+    from naukari_pro.governed_apply.confirmation import detect_submission_confirmation
+
+    r = detect_submission_confirmation(
+        page_text="error: submission failed",
+        page_url="https://boards.example.com/thanks",
+    )
+    assert r.confirmed is False
+
+
+@pytest.mark.hammer
+def test_p5c_f7_unicode_digit_ssrf_blocked():
+    for url in (
+        "http://①②⑦.⓪.⓪.①/",
+        "http://１２７.０.０.１/",
+    ):
+        with pytest.raises(ValidationError):
+            validate_job_url(url)

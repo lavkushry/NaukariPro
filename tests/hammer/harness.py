@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -120,26 +119,13 @@ def run_blow(
 
 
 def check_basic_invariants(db_path: Optional[Path] = None) -> List[str]:
-    """Subset of the 10 invariants runnable after each blow (offline)."""
-    violations: List[str] = []
-    # I5 secrets in hammer log tail
-    if LOG_PATH.exists():
-        tail = LOG_PATH.read_text(encoding="utf-8", errors="replace")[-50_000:]
-        from naukari_pro.hammer_safe import _SECRET_PATTERNS
+    """Post-blow invariant gate — delegates to the 10-invariant checker (no fixture DB)."""
+    # Import locally to avoid circular imports when scripts import harness.
+    sys_path_root = Path(__file__).resolve().parents[2]
+    if str(sys_path_root) not in __import__("sys").path:
+        __import__("sys").path.insert(0, str(sys_path_root))
+    from scripts.check_invariants import check_all
 
-        for pat in _SECRET_PATTERNS:
-            if pat.search(tail) and "[REDACTED_SECRET]" not in pat.pattern:
-                # Only flag if a raw-looking key appears
-                m = pat.search(tail)
-                if m and "REDACTED" not in m.group(0):
-                    violations.append(f"I5 secrets in hammer_log: {m.group(0)[:20]}…")
-                    break
-    if db_path and db_path.exists():
-        con = sqlite3.connect(str(db_path))
-        try:
-            row = con.execute("PRAGMA integrity_check").fetchone()
-            if not row or row[0] != "ok":
-                violations.append(f"I7 integrity_check={row}")
-        finally:
-            con.close()
+    # Per-blow: skip fixture DB rebuild (expensive); still scan log + optional db_path.
+    violations = check_all(db_path, ensure_fixture=False)
     return violations

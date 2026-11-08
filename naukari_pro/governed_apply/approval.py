@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from naukari_pro.errors import IntegrityError
+
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "governed_apply.db"
 BATCH_MAX = 25
 BATCH_TTL_HOURS = 24
@@ -138,18 +140,34 @@ class ApprovalQueue:
         return items
 
     def decide(self, token: str, *, approve: bool) -> bool:
+        """Atomically consume a single-use token (H4 concurrency-safe)."""
         self.expire_stale()
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM approval_items WHERE token=?", (token,)
-            ).fetchone()
-            if not row or row["status"] != "pending":
-                return False
-            conn.execute(
-                "UPDATE approval_items SET status=?, decided_at=? WHERE token=?",
-                ("approved" if approve else "rejected", _utc_now().isoformat(), token),
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0, isolation_level=None)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            cur = conn.execute(
+                """
+                UPDATE approval_items
+                SET status=?, decided_at=?
+                WHERE token=? AND status='pending'
+                """,
+                (
+                    "approved" if approve else "rejected",
+                    _utc_now().isoformat(),
+                    token,
+                ),
             )
-            return True
+            won = cur.rowcount == 1
+            conn.execute("COMMIT")
+            return won
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise
+        finally:
+            conn.close()
 
     def expire_stale(self) -> int:
         now = _utc_now().isoformat()
@@ -216,7 +234,14 @@ class ApprovalQueue:
         confirmation_text: Optional[str],
         confirmation_url: Optional[str],
     ) -> int:
-        """filled != applied: only call after visible ATS confirmation."""
+        """filled != applied: only call after visible ATS confirmation proof."""
+        text_ok = bool((confirmation_text or "").strip())
+        url_ok = bool((confirmation_url or "").strip())
+        if not text_ok and not url_ok:
+            raise IntegrityError(
+                "record_confirmed_submit refused: confirmation proof required",
+                context={"job_url": job_url},
+            )
         with self._connect() as conn:
             cur = conn.execute(
                 """

@@ -655,6 +655,17 @@ class LinkedInApplyEngine:
                                 # 3. Match Scoring (telemetry & legacy gating)
                                 is_two_stage = bool(job.get("stage1_passed") or job.get("two_stage_scoring"))
 
+                                # Unconditional Role Guard: Never apply to non-data / non-cloud roles
+                                from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                                is_role_ok, role_reason = is_strictly_data_or_cloud_role(job.get("title", ""), job.get("raw_snippet", ""))
+                                if not is_role_ok:
+                                    logger.info(
+                                        "Job %s ('%s') gated out (Non-Target Role): %s",
+                                        job_id, job.get("title"), role_reason
+                                    )
+                                    stats["skipped"] += 1
+                                    continue
+
                                 if not is_universal and job.get("stage1_passed") is False and not job.get("two_stage_scoring"):
                                     logger.info(
                                         "Job %s ('%s') gated out: Stage 1 title alignment failed",

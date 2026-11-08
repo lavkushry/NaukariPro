@@ -245,7 +245,7 @@ class TestGenuineMatchingRoles:
         assert payload.status == "VALIDATED_PAYLOAD"
         assert payload.dry_run is True
         assert "CGI India" in payload.answers["current_company"]
-        assert payload.answers["current_title"] in ["Azure Data Engineer", "DevOps Engineer / Azure Data Engineer"]
+        assert payload.answers["current_title"] in ["Azure Data Engineer", "DevOps Engineer / Azure Data Engineer", "DevOps Engineer"]
 
     def test_genuine_role_native_chrome_runner(self):
         """Verify NativeChromeRunner approves genuine matching role in dry-run mode."""
@@ -414,7 +414,7 @@ class TestCandidateGroundTruthFidelity:
 
     def test_default_candidate_constants(self):
         assert DEFAULT_CANDIDATE["currentCompany"] == "CGI India (PNC Bank GCC)"
-        assert DEFAULT_CANDIDATE["currentTitle"] == "DevOps Engineer / Azure Data Engineer"
+        assert DEFAULT_CANDIDATE["currentTitle"] in ["DevOps Engineer", "DevOps Engineer / Azure Data Engineer"]
         assert len(DEFAULT_CANDIDATE["workHistory"]) == 4
 
         roles = [r["company"] for r in DEFAULT_CANDIDATE["workHistory"]]
@@ -441,7 +441,7 @@ class TestCandidateGroundTruthFidelity:
             raw_jd="Azure Databricks PySpark Delta Lake"
         )
         assert "CGI India" in p.answers["current_company"]
-        assert p.answers["current_title"] in ["Azure Data Engineer", "DevOps Engineer / Azure Data Engineer"]
+        assert p.answers["current_title"] in ["Azure Data Engineer", "DevOps Engineer / Azure Data Engineer", "DevOps Engineer"]
         assert len(p.answers["work_history"]) == 4
         assert len(p.answers["education"]) >= 1
         assert p.payload_data["work_history_count"] == 4

@@ -57,7 +57,7 @@ jobs:
           python -m pytest tests/scenarios -q --tb=line
           python scripts/test_report.py
 
-      - name: Fast Hammer (Phase 1 — 420 blows + invariants)
+      - name: Fast Hammer (Phases 1–2 + short chaos + mutation)
         env:
           NAUKARI_LLM_MODE: replay
           CANDIDATE_NAME: CI Candidate
@@ -66,5 +66,5 @@ jobs:
         run: |
           python -m pytest tests/hammer -q --tb=line
           python scripts/check_invariants.py
-          python scripts/chaos_monkey.py --seed 42 --duration 10 --interval 2
+          python scripts/chaos_monkey.py --seed 42 --duration 30 --interval 2
           python scripts/mutation_hammer.py

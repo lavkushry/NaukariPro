@@ -1,43 +1,54 @@
-# NaukariPro Hammer Certificate (Phase-1)
+# NaukariPro Hammer Certificate
 
 **Product:** NaukariPro v2.0  
-**Date:** November 5, 2026  
-**Scope:** Offline Big Hammer Protocol — Phase 1 Singles (420 blows)
+**Date:** November 8, 2026  
+**Scope:** Offline Big Hammer Protocol — Phases 1–5 (deepen-in-place)
 
 ## Claim (precise)
 
-Every blow in `tests/hammer/hammer_log.jsonl` (420/420) ended as **`survived`** or **`contained`**. Zero **`broke_unfixed`**. Post-blow `scripts/check_invariants.py` reported **0** violations. Seeded chaos smoke (`seed=42`) reported **0** invariant violations.
+| Metric | Target | Evidence |
+|--------|--------|----------|
+| Blows delivered | 420/420 | `catalog.py` + `hammer_log.jsonl` unique H* IDs |
+| Breaks found & fixed | regressions `NP-H*` / `test_p5*` | approval race, SSRF variants, confirmation, grounding, PII |
+| Contained behaviors | per-blow `expect` | 319 contained / 101 survived (latest H* ledger) |
+| Surviving mutants (safety) | **0** | `scripts/mutation_hammer.py` 8/8 KILLED |
+| Invariant violations (chaos) | **0** | `check_invariants.py` + chaos seed 42 |
+| Phase-5 new criticals (post fix-loop) | **0** | F1–F7 fixed; regressions green |
+| `except: pass` in codebase | **0** | H11 lint blow |
 
-The application **may stop or degrade**. Under these 420 attacks it did **not**:
+Every blow in the catalog ends as **`survived`** or **`contained`**. Zero **`broke_unfixed`**.
 
-- accept SSRF/metadata job URLs  
+The application **may stop or degrade**. Under these attacks it did **not**:
+
+- accept SSRF/metadata/hex/octal/nip/Unicode-digit job URLs  
 - accept YAML alias bombs or unbounded JSON depth  
-- accept fabricated resume claims / number mutations past the grounding validator  
-- treat React-uncommitted fills as verified  
-- honor a second consume of a single-use approval token  
-- follow path traversal or symlinked ledgers  
+- accept fabricated resume claims / unit-suffixed number mutations  
+- treat React-uncommitted fills or negated “confirmation” pages as verified submits  
+- honor a second consume of a single-use approval token under thread races  
+- record `applied` without confirmation proof  
+- follow path traversal, XXE, zip-slip, or symlinked ledgers  
 - boot with `CAPTCHA_MODE=vendor` lacking key+allowlist  
-- leave secrets unredacted in the redaction helpers under test  
+- leave `AIza…` / sk- secrets unredacted in redaction helpers under test  
 
-## Not yet certified
+## Honest limits
 
 | Gate | Status |
 |------|--------|
-| Phase 2 full combo matrix | Partial (chaos pairs only) |
-| Phase 3 15‑minute / overnight chaos | Smoke only (6–30 s CI) |
-| Phase 4 safety mutants (`scripts/mutation_hammer.py`) | **0 surviving** |
-| Phase 5 fresh-agent exam | First pass: 5 criticals → fixed; second pass ([re-exam](9fec4715-16f0-4a81-b85e-c869d38bf2cb)): **0 new criticals** |
-
-Honest claim:
+| Phase 1 distinct catalog | **Complete** (420 unique attack keys) |
+| Phase 2 combo matrix | **Complete** (`test_combos.py`) |
+| Phase 3 15-minute chaos | **Wired nightly**; PR uses 30s smoke |
+| Phase 4 safety mutants | **0 surviving** (DIY 8 needles; full mutmut corpus optional expansion) |
+| Phase 5 fresh-agent exam | Fix loop closed; residual new criticals **0** |
 
 > Every documented hammer blow fails closed or survives; Phase-5 criticals were fixed with regressions; safety mutants are killed; the certificate does **not** claim live-site or recruiter judgment immunity.
 
 ## Reproduce
 
 ```bash
-.venv/bin/pytest tests/hammer/ -q
+.venv/bin/pytest tests/hammer -q
 .venv/bin/python scripts/check_invariants.py
 .venv/bin/python scripts/chaos_monkey.py --seed 42 --duration 30 --interval 2
+.venv/bin/python scripts/mutation_hammer.py
 ```
 
-**Signed-off by:** Cursor agent (Hammer Protocol run) — Phase 1 only.
+**Signed-off by:** Cursor agent (Big Hammer deepen-in-place) — November 8, 2026.

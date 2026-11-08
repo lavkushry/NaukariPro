@@ -32,7 +32,11 @@ TAIL = re.compile(
     re.I,
 )
 
-NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?%?\b|\b\d+\s*(?:k|m|lpa|lakhs?)\b", re.I)
+# Include unit suffixes (ms/s/x) so fabricated latency metrics cannot slip (Phase-5 F3).
+NUMBER_RE = re.compile(
+    r"\b\d+(?:\.\d+)?(?:%|ms|s|x)?\b|\b\d+\s*(?:k|m|lpa|lakhs?|ms|sec(?:onds?)?)\b",
+    re.I,
+)
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
 
 

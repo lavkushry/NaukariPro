@@ -1,0 +1,45 @@
+name: hammer-nightly
+
+on:
+  schedule:
+    - cron: "0 18 * * *"  # 18:00 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  full-gauntlet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Phase 1–2 hammer + combos
+        env:
+          NAUKARI_LLM_MODE: replay
+          CANDIDATE_NAME: CI Candidate
+          CANDIDATE_EMAIL: ci@example.com
+          CANDIDATE_PHONE: "+91-0000000000"
+        run: |
+          python -m pytest tests/hammer -q --tb=line
+          python scripts/check_invariants.py
+
+      - name: Phase 3 sustained chaos (15 min)
+        env:
+          NAUKARI_LLM_MODE: replay
+        run: |
+          python scripts/chaos_monkey.py --seed 42 --duration 900 --interval 30
+
+      - name: Phase 4 mutation hammer
+        run: |
+          python scripts/mutation_hammer.py
