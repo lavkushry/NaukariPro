@@ -56,6 +56,24 @@ def _is_asyncio_loop_running() -> bool:
     except RuntimeError:
         return False
 
+
+def _capture_portal_audit_screenshot(page: Any, company: str, role: str) -> Optional[str]:
+    """Write logs/evidence_portal_*.png after submit when confirmation is missing (audit only)."""
+    if not page or not hasattr(page, "screenshot"):
+        return None
+    try:
+        clean_id = re.sub(r"[^a-zA-Z0-9_-]", "_", f"{company}_{role}")[:35]
+        path = os.path.join(BASE_DIR, "logs", f"evidence_portal_{clean_id}.png")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        page.screenshot(path=path)
+        if os.path.exists(path) and os.path.getsize(path) >= 1024:
+            print(f"    📸 [AUDIT] Post-submit evidence captured: {path}")
+            return path
+    except Exception:
+        pass
+    return None
+
+
 # Hybrid ground truth: FACT_MATRIX titles + Azure DE market surface
 DEFAULT_CANDIDATE = json.loads(json.dumps(DEFAULT_HYBRID_PROFILE))
 
@@ -3230,11 +3248,13 @@ class CareerPortalFiller:
                 else:
                     fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
                     print(f"    [FALLBACK: {fallback_reason}] Confirmation detected but screenshot validation failed.")
-                    return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=fallback_reason)
+                    audit_path = _capture_portal_audit_screenshot(page, company, role)
+                    return FillResult(False, filled_fields, audit_path, field_records=list(handler.field_records), status=fallback_reason)
             else:
                 fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
                 print(f"    [FALLBACK: {fallback_reason}] Submit clicked but confirmation not detected within timeout.")
-                return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=fallback_reason)
+                audit_path = _capture_portal_audit_screenshot(page, company, role)
+                return FillResult(False, filled_fields, audit_path, field_records=list(handler.field_records), status=fallback_reason)
 
         all_field_records = list(handler.field_records)
         try:
