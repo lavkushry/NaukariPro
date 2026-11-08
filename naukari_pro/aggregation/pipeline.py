@@ -295,9 +295,19 @@ def run_ingest_cycle(
     store = AggregationStore(db_path=db_path) if db_path else AggregationStore()
     pipe = AggregationPipeline(store=store)
     seeded = pipe.seed_sources() if seed else 0
+    # Prefer curated verified boards (boards.csv) so limited cycles hit HEALTHY fleets first
+    boards_imported = 0
+    if seed:
+        try:
+            from naukari_pro.aggregation.boards_registry import import_boards_csv
+
+            boards_imported = import_boards_csv(store=store)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("boards.csv import skipped: %s", exc)
     stats = asyncio.run(pipe.run(limit_sources=limit_sources))
     return {
         "seeded_sources": seeded,
+        "boards_imported": boards_imported,
         "store_stats": store.stats(),
         "ingest": stats.to_dict(),
         "adapters": AdapterRegistry.known(),

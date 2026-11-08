@@ -414,3 +414,31 @@ def test_boards_csv_has_three_workday_pairs():
     assert len(wd) >= 3
     lever = [r for r in rows if r.get("board_slug") == "palantir"]
     assert lever, "palantir lever board required (netflix 404)"
+
+
+def test_list_active_sources_prioritizes_fetch_ok(tmp_path):
+    store = AggregationStore(db_path=tmp_path / "prio.db")
+    store.upsert_source(
+        {
+            "source_id": "greenhouse:zzzdead",
+            "company": "Aaa Dead",
+            "ats_type": "greenhouse",
+            "board_identifier": "zzzdead",
+            "active": True,
+        }
+    )
+    store.upsert_source(
+        {
+            "source_id": "greenhouse:gitlab",
+            "company": "Zzz GitLab",
+            "ats_type": "greenhouse",
+            "board_identifier": "gitlab",
+            "active": True,
+        }
+    )
+    store.bump_board_health(
+        "greenhouse:gitlab", ats_type="greenhouse", fetch_ok=1, jobs_new=1, fetch_attempts=1
+    )
+    ordered = [r["source_id"] for r in store.list_active_sources()]
+    assert ordered[0] == "greenhouse:gitlab"
+    assert ordered[-1] == "greenhouse:zzzdead"

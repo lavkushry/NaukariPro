@@ -509,6 +509,7 @@ def handle_ingest_jobs(args: argparse.Namespace) -> int:
     print(BANNER)
     print("=== WS1 Job Aggregation Ingest ===")
     print(f"Seeded sources : {result.get('seeded_sources')}")
+    print(f"Boards CSV     : {result.get('boards_imported')}")
     print(f"Adapters       : {', '.join(result.get('adapters') or [])}")
     store = result.get("store_stats") or {}
     print(f"Active sources : {store.get('active_sources')}")

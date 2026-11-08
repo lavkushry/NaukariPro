@@ -197,14 +197,27 @@ class AggregationStore:
         return [dict(r) for r in rows]
 
     def list_active_sources(self, *, include_quiet_every_n: int = 3, cycle: int = 0) -> List[Dict[str, Any]]:
+        """
+        Priority queue for autonomous ingest:
+        1) boards with historical fetch_ok
+        2) never/low consecutive_empty
+        3) company name
+        Dead alphabetical boards must not starve verified fleets under --limit-sources.
+        """
         now = utc_now_iso()
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT * FROM sources
-                WHERE active=1
-                  AND (backoff_until IS NULL OR backoff_until <= ?)
-                ORDER BY company
+                SELECT s.*,
+                       COALESCE(
+                         (SELECT SUM(h.fetch_ok) FROM board_health h
+                          WHERE h.source_id = s.source_id),
+                         0
+                       ) AS hist_ok
+                FROM sources s
+                WHERE s.active=1
+                  AND (s.backoff_until IS NULL OR s.backoff_until <= ?)
+                ORDER BY hist_ok DESC, s.consecutive_empty ASC, s.company ASC
                 """,
                 (now,),
             ).fetchall()
