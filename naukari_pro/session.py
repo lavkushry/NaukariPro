@@ -67,73 +67,287 @@ if (typeof WebGL2RenderingContext !== 'undefined') {
 """
 
 
+class SessionLockTimeout(TimeoutError):
+    """Raised when a foreign process holds the session lock past timeout. Caller should requeue."""
+
+    def __init__(self, message: str, *, lock_path: str = "", owner_pid: Optional[int] = None):
+        super().__init__(message)
+        self.lock_path = lock_path
+        self.owner_pid = owner_pid
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid is None or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _read_ppid(pid: int) -> Optional[int]:
+    try:
+        with open(f"/proc/{pid}/status", "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("PPid:"):
+                    return int(line.split()[1])
+    except (FileNotFoundError, OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _ancestor_pids(pid: int, *, limit: int = 64) -> set:
+    """Return {pid} ∪ ancestors via /proc (empty set if unreadable)."""
+    out = set()
+    cur = pid
+    for _ in range(limit):
+        if cur is None or cur <= 0 or cur in out:
+            break
+        out.add(cur)
+        cur = _read_ppid(cur)
+    return out
+
+
+def same_process_tree(pid_a: int, pid_b: int) -> bool:
+    """True if either pid is the other, or one appears in the other's ancestry."""
+    if not pid_a or not pid_b:
+        return False
+    if pid_a == pid_b:
+        return True
+    a_anc = _ancestor_pids(pid_a)
+    b_anc = _ancestor_pids(pid_b)
+    return pid_a in b_anc or pid_b in a_anc or bool(a_anc & b_anc)
+
+
+def read_lock_owner_pid(lock_path: str) -> Optional[int]:
+    try:
+        with open(lock_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("pid="):
+                    return int(line.split("=", 1)[1].strip())
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    return None
+
+
+def cleanup_orphaned_chromium(session_dir: Optional[str] = None) -> int:
+    """
+    Terminate chromium processes launched with --user-data-dir=<session_dir>
+    whose parent process is dead, then remove the session lock file if orphaned.
+    Returns number of processes signaled.
+    """
+    import signal
+    import subprocess
+
+    target = os.path.abspath(session_dir or SESSION_DIR)
+    killed = 0
+    try:
+        out = subprocess.check_output(["ps", "-eo", "pid=,ppid=,args="], text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        out = ""
+    needle = f"--user-data-dir={target}"
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or needle not in line:
+            continue
+        if "chrome" not in line.lower() and "chromium" not in line.lower():
+            continue
+        parts = line.split(None, 2)
+        if len(parts) < 2:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        if _pid_alive(ppid):
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+            logger.info("[lock] terminated orphaned chromium pid=%s (dead parent=%s)", pid, ppid)
+        except OSError:
+            pass
+    lock_path = os.path.join(target, ".naukari_session.lock")
+    owner = read_lock_owner_pid(lock_path)
+    if owner is not None and not _pid_alive(owner):
+        try:
+            os.remove(lock_path)
+            logger.info("[lock] removed orphaned lock file (dead pid=%s)", owner)
+        except OSError:
+            pass
+    return killed
+
+
+def requeue_after_lock_timeout(
+    *,
+    portal_url: str,
+    company: str = "Company",
+    role: str = "Azure Data Engineer",
+) -> None:
+    """Requeue a portal job into the External Redirect backlog after lock timeout."""
+    try:
+        from naukari_pro.modules.scorecard import sync_dual_log
+
+        sync_dual_log(
+            title=role,
+            company=company,
+            platform="career_portal",
+            status="External Redirect",
+            job_url=portal_url,
+            match_score=None,
+            error_reason="session_lock_timeout_requeued",
+        )
+        logger.warning("[apply] requeued after lock timeout: %s @ %s -> %s", role, company, portal_url)
+        print(f"[apply] requeued after lock timeout: {role} @ {company}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[apply] requeue failed: %s", exc)
+
+
 class SessionLock:
     """
     Process-level mutual exclusion file lock for Chromium SESSION_DIR using fcntl.flock.
-    Prevents concurrent browser launches against the same user data directory,
-    eliminating Chromium SingletonLock collisions, SQLite database locks, and process aborts.
-    Supports both synchronous and asynchronous context managers.
+    Same-process-tree re-entrancy succeeds immediately so child stages can share the
+    cycle browser session. Stale locks from dead PIDs are stolen. Foreign holders
+    wait up to timeout_sec with exponential backoff, then raise SessionLockTimeout.
     """
 
-    def __init__(self, session_dir=None, lock_filename=".naukari_session.lock", timeout_sec=15.0, poll_interval=0.25):
+    def __init__(
+        self,
+        session_dir=None,
+        lock_filename=".naukari_session.lock",
+        timeout_sec=120.0,
+        poll_interval=0.25,
+    ):
         self.session_dir = session_dir or SESSION_DIR
         os.makedirs(self.session_dir, exist_ok=True)
         self.lock_path = os.path.join(self.session_dir, lock_filename)
-        self.timeout_sec = timeout_sec
-        self.poll_interval = poll_interval
+        self.timeout_sec = float(timeout_sec)
+        self.poll_interval = float(poll_interval)
         self._file_obj = None
         self._acquired = False
+        self._reentrant = False
+
+    def _write_owner(self) -> None:
+        try:
+            self._file_obj.seek(0)
+            self._file_obj.truncate()
+            self._file_obj.write(f"pid={os.getpid()}\ntime={time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self._file_obj.flush()
+        except Exception:
+            pass
+
+    def _steal_stale_if_needed(self) -> bool:
+        owner = read_lock_owner_pid(self.lock_path)
+        if owner is None:
+            return False
+        if _pid_alive(owner):
+            return False
+        logger.warning("[lock] stole stale lock from dead pid=%s path=%s", owner, self.lock_path)
+        print(f"[lock] stole stale lock from dead pid={owner}")
+        try:
+            # Drop any existing OFD then recreate
+            self._cleanup_fd()
+            try:
+                os.remove(self.lock_path)
+            except OSError:
+                pass
+            self._file_obj = open(self.lock_path, "a+")
+            return True
+        except OSError as exc:
+            logger.debug("stale lock steal notice: %s", exc)
+            return False
+
+    def _grant_reentrant(self, owner: int) -> bool:
+        self._reentrant = True
+        self._acquired = True
+        self._cleanup_fd()
+        logger.info(
+            "[lock] re-entrant acquire granted (owner pid=%s self=%s tree-share)",
+            owner,
+            os.getpid(),
+        )
+        return True
 
     def acquire(self, blocking=True):
-        """Acquires exclusive process lock on SESSION_DIR."""
-        if self._acquired and self._file_obj is not None:
+        """Acquires exclusive process lock on SESSION_DIR (re-entrant for same process tree)."""
+        if self._acquired:
             return True
 
+        self._steal_stale_if_needed()
+        owner = read_lock_owner_pid(self.lock_path)
+        if owner and same_process_tree(owner, os.getpid()):
+            return self._grant_reentrant(owner)
+
         start_time = time.time()
-        self._file_obj = open(self.lock_path, "a+")
+        if self._file_obj is None:
+            self._file_obj = open(self.lock_path, "a+")
+        backoff = self.poll_interval
 
         while True:
+            # Re-check owner each loop (holder may exit / child may start)
+            owner = read_lock_owner_pid(self.lock_path)
+            if owner and not _pid_alive(owner):
+                self._steal_stale_if_needed()
+                owner = None
+            if owner and same_process_tree(owner, os.getpid()):
+                return self._grant_reentrant(owner)
+
             try:
                 if fcntl:
                     fcntl.flock(self._file_obj.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 self._acquired = True
-                try:
-                    self._file_obj.seek(0)
-                    self._file_obj.truncate()
-                    self._file_obj.write(f"pid={os.getpid()}\ntime={time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    self._file_obj.flush()
-                except Exception:
-                    pass
+                self._reentrant = False
+                self._write_owner()
                 logger.debug("Acquired session lock on %s (PID %d)", self.lock_path, os.getpid())
                 return True
             except (BlockingIOError, IOError, OSError) as e:
                 if not blocking:
                     self._cleanup_fd()
-                    raise BlockingIOError(f"Session lock currently held on {self.lock_path} by another process") from e
+                    raise BlockingIOError(
+                        f"Session lock currently held on {self.lock_path} by another process"
+                    ) from e
 
                 elapsed = time.time() - start_time
                 if elapsed >= self.timeout_sec:
                     self._cleanup_fd()
-                    raise TimeoutError(
+                    raise SessionLockTimeout(
                         f"Timed out after {self.timeout_sec}s waiting for session lock on {self.lock_path}. "
-                        "Another Chromium browser session is currently active."
+                        "Another Chromium browser session is currently active.",
+                        lock_path=self.lock_path,
+                        owner_pid=owner,
                     ) from e
 
-                logger.info("Session directory locked by another process. Waiting (%.1fs elapsed)...", elapsed)
-                time.sleep(self.poll_interval)
+                logger.info(
+                    "Session directory locked by another process. Waiting (%.1fs elapsed, backoff=%.2fs)...",
+                    elapsed,
+                    backoff,
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 2.0, 5.0)
 
     def release(self):
-        """Releases the session lock. Idempotent across multiple invocations."""
-        if not self._acquired or self._file_obj is None:
+        """Releases the session lock. Idempotent. Re-entrant guests do not unlock the owner."""
+        if not self._acquired:
+            return
+        if self._reentrant:
+            self._acquired = False
+            self._reentrant = False
+            self._cleanup_fd()
             return
         try:
-            if fcntl:
+            if fcntl and self._file_obj is not None:
                 fcntl.flock(self._file_obj.fileno(), fcntl.LOCK_UN)
         except Exception as e:
             logger.debug("Notice releasing flock: %s", e)
         finally:
             self._cleanup_fd()
             self._acquired = False
+            self._reentrant = False
             logger.debug("Released session lock on %s", self.lock_path)
 
     def _cleanup_fd(self):
@@ -270,7 +484,7 @@ def save_session_cookies(context):
     return False
 
 
-def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.0, session_dir=None):
+def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=120.0, session_dir=None):
     """
     Launches an anti-detect persistent Google Chrome/Chromium context with
     process-level file lock protection on target session_dir, automatic stale lock cleanup,
@@ -289,7 +503,11 @@ def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.
 
     # 2. Acquire exclusive process file lock on target session_dir to prevent concurrent Chromium collisions
     session_lock = SessionLock(session_dir=target_dir, timeout_sec=lock_timeout)
-    session_lock.acquire(blocking=True)
+    try:
+        session_lock.acquire(blocking=True)
+    except SessionLockTimeout:
+        cleanup_orphaned_chromium(target_dir)
+        raise
 
     # 3. Clean up stale lock files ONLY while holding exclusive session lock
     cleanup_stale_chromium_locks(target_dir)
@@ -357,6 +575,10 @@ def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.
             return orig_close(*args, **kwargs)
         finally:
             session_lock.release()
+            try:
+                cleanup_orphaned_chromium(target_dir)
+            except Exception:
+                pass
 
     context.close = safe_close
 

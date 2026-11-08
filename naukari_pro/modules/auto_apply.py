@@ -2266,9 +2266,11 @@ class PlaywrightRunner:
         active_proxy = proxy or self.proxy or os.getenv("NAUKRI_PROXY")
         proxy_settings = parse_proxy_settings(active_proxy)
 
-        # Naukri holds SESSION_DIR for the whole apply cycle; portal fills MUST use
-        # PORTALS_SESSION_DIR (CareerPortalFiller). Keep a longer wait only as safety.
-        session_lock = SessionLock(session_dir=SESSION_DIR, timeout_sec=60.0)
+        # Naukri holds SESSION_DIR for the whole apply cycle; portal fills use
+        # PORTALS_SESSION_DIR and/or same-process-tree re-entrancy (120s foreign wait).
+        from naukari_pro.session import cleanup_orphaned_chromium
+
+        session_lock = SessionLock(session_dir=SESSION_DIR, timeout_sec=120.0)
         session_lock.acquire(blocking=True)
         try:
             cleanup_stale_chromium_locks(SESSION_DIR)
@@ -2489,7 +2491,13 @@ class PlaywrightRunner:
                     pass
                 return total_applied
         finally:
-            session_lock.release()
+            try:
+                session_lock.release()
+            finally:
+                try:
+                    cleanup_orphaned_chromium(SESSION_DIR)
+                except Exception:
+                    pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────

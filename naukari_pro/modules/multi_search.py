@@ -223,6 +223,24 @@ class UniversalJobSearchEngine:
         li_payloads = self.generate_application_payloads_from_linkedin(limit=limit)
         return hn_payloads + li_payloads
 
+    @staticmethod
+    def _is_ats_portal_url(url: str) -> bool:
+        u = (url or "").lower()
+        return any(
+            tok in u
+            for tok in (
+                "greenhouse.io",
+                "ashbyhq.com",
+                "lever.co",
+                "myworkdayjobs.com",
+                "workdayjobs.com",
+                "boards.eu.greenhouse.io",
+                "jobs.ashbyhq.com",
+                "apply.workable.com",
+                "smartrecruiters.com",
+            )
+        )
+
     def run_multi_search(self, dry_run: bool = False):
         print("\n" + "=" * 65)
         print("  🌐 UNIVERSAL MULTI-SOURCE JOB HUNTER")
@@ -240,19 +258,103 @@ class UniversalJobSearchEngine:
             print("=" * 65 + "\n")
             return payloads
 
+        universal_queue: List[Dict[str, Any]] = []
+
         hn_jobs = self.search_hacker_news(limit=6)
         print(f"\n[+] Hacker News Who's Hiring: Found {len(hn_jobs)} Data & AI Engineering roles:")
         for j in hn_jobs:
             print(f" -> {j['title']} @ {j['company']} [{j['location']}]")
             print(f"    Apply: {j['url']}")
+            universal_queue.append(
+                {
+                    "source": "hn",
+                    "title": j.get("title") or "Azure Data Engineer",
+                    "company": j.get("company") or "Company",
+                    "url": j.get("url") or "",
+                    "kind": "portal" if self._is_ats_portal_url(j.get("url") or "") else "direct",
+                }
+            )
 
         li_links = self.get_linkedin_search_links()
         print(f"\n[+] LinkedIn Precision Search Targets (Past Week | Hybrid/Remote | 2-5 YOE):")
         for l in li_links[:4]:
             print(f" -> {l['title']} in {l['location']}")
             print(f"    URL: {l['url']}")
+            universal_queue.append(
+                {
+                    "source": "linkedin",
+                    "title": l.get("title") or "Azure Data Engineer",
+                    "company": "LinkedIn Network Opportunity",
+                    "url": l.get("url") or "",
+                    "kind": "linkedin",
+                    "location": l.get("location") or "",
+                }
+            )
 
-        print("\n[+] To auto-fill any discovered external job portal (Greenhouse, Ashby, Lever, Workday):")
-        print("    Run: ./naukariPro portal-apply --url \"<URL>\"")
+        # Audit line retained for operators
+        print("\n[+] Universal Apply queue (No Filtering) — portal-apply / LinkedIn consume:")
+        for item in universal_queue:
+            print(f"    Run: ./naukariPro portal-apply --url \"{item['url']}\"")
+        print(f"  Queued {len(universal_queue)} URLs for Block consumption.")
         print("=" * 65 + "\n")
-        return hn_jobs
+
+        # Enqueue into External Redirect / Targeted Vacancy backlog + execute portal-apply on ATS URLs
+        portal_applied = 0
+        linkedin_enqueued = 0
+        try:
+            from naukari_pro.modules.scorecard import sync_dual_log
+            from naukari_pro.modules.career_portals import CareerPortalFiller
+
+            filler = CareerPortalFiller()
+            for item in universal_queue:
+                url = item.get("url") or ""
+                if not url:
+                    continue
+                if item.get("kind") == "linkedin":
+                    sync_dual_log(
+                        title=item.get("title") or "Azure Data Engineer",
+                        company=item.get("company") or "LinkedIn",
+                        platform="linkedin",
+                        status="Targeted Vacancy",
+                        job_url=url,
+                        match_score=None,
+                    )
+                    linkedin_enqueued += 1
+                    continue
+                # Universal Apply Mode — No Filtering: enqueue then attempt portal-apply
+                sync_dual_log(
+                    title=item.get("title") or "Azure Data Engineer",
+                    company=item.get("company") or "Company",
+                    platform="career_portal",
+                    status="External Redirect",
+                    job_url=url,
+                    match_score=None,
+                )
+                if self._is_ats_portal_url(url):
+                    try:
+                        fill_res = filler.fill(
+                            portal_url=url,
+                            company=item.get("company") or "Company",
+                            role=item.get("title") or "Azure Data Engineer",
+                            headless=True,
+                            auto_submit=True,
+                        )
+                        ok = bool(fill_res[0]) if isinstance(fill_res, (tuple, list)) else bool(
+                            getattr(fill_res, "success", False)
+                        )
+                        if ok:
+                            portal_applied += 1
+                    except Exception as e_fill:
+                        print(f"    [!] portal-apply notice for {url}: {e_fill}")
+        except Exception as e_q:
+            print(f"  [!] Universal apply enqueue notice: {e_q}")
+
+        return {
+            "jobs": hn_jobs,
+            "linkedin_links": li_links[:4],
+            "universal_queue": universal_queue,
+            "discovered": len(universal_queue),
+            "portal_applied": portal_applied,
+            "linkedin_enqueued": linkedin_enqueued,
+            "status": "OK",
+        }

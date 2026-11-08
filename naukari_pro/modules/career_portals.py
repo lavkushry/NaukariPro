@@ -2957,7 +2957,7 @@ class CareerPortalFiller:
                 from naukari_pro.session import get_stealth_context
                 with sync_playwright() as p:
                     context = get_stealth_context(
-                        p, headless=True, session_dir=PORTALS_SESSION_DIR, lock_timeout=90.0
+                        p, headless=True, session_dir=PORTALS_SESSION_DIR, lock_timeout=120.0
                     )
                     page = context.pages[0] if context.pages else context.new_page()
                     success, filled = self.fill_in_playwright(page, portal_url, company=company, role=role)
@@ -3403,13 +3403,17 @@ class CareerPortalFiller:
                 from naukari_pro.session import get_stealth_context
                 with sync_playwright() as p:
                     context = get_stealth_context(
-                        p, headless=headless, session_dir=PORTALS_SESSION_DIR, lock_timeout=90.0
+                        p, headless=headless, session_dir=PORTALS_SESSION_DIR, lock_timeout=120.0
                     )
                     page_ctx = context.pages[0] if context.pages else context.new_page()
                     res = self.fill_in_playwright(page_ctx, portal_url, company=company, role=role, auto_submit=auto_submit)
                     context.close()
                     return res
             except Exception as e:
+                from naukari_pro.session import SessionLockTimeout, requeue_after_lock_timeout
+
+                if isinstance(e, SessionLockTimeout) or "waiting for session lock" in str(e).lower():
+                    requeue_after_lock_timeout(portal_url=portal_url, company=company, role=role)
                 print(f"Playwright automation error: {e}")
                 return FillResult(False, [], None)
 

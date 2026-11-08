@@ -266,8 +266,17 @@ class ProAutoPilotEngine:
                 li_dry_run_verified = li_stats.get("dry_run_verified", 0)
                 applied_linkedin = li_dry_run_verified
                 print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
-            elif sys.platform != "darwin" and not os.environ.get("RESIDENTIAL_PROXY") and not os.environ.get("ALL_PROXY") and not self.config.get("residential_proxy") and not getattr(self, "allow_datacenter_linkedin", False):
-                print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (running on non-Mac host without residential proxy).")
+            elif (
+                sys.platform != "darwin"
+                and not os.environ.get("RESIDENTIAL_PROXY")
+                and not os.environ.get("ALL_PROXY")
+                and not self.config.get("residential_proxy")
+                and not getattr(self, "allow_datacenter_linkedin", False)
+                and not li_session_valid
+            ):
+                # Healthy li_at on Linux is enough to proceed; only skip when cookie is missing
+                # AND no residential proxy / explicit allow flag is set.
+                print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (no li_at / residential proxy).")
                 li_stats = {"discovered": 0, "applied": 0, "status": "MAC_HOST_REQUIRED"}
             elif not li_session_valid:
                 print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
