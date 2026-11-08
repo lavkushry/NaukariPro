@@ -5,6 +5,7 @@ Strictly blocks non-Data Engineer / non-MLOps / non-DevOps roles.
 Guarantees that universal apply NEVER bypasses core candidate domain alignment.
 """
 
+import re
 from typing import Tuple, Optional
 import logging
 
@@ -137,8 +138,8 @@ def is_strictly_data_or_cloud_role(
             return False, f"Rejected: Non-data role detected in title ('{forbidden}')"
 
     # 2. Positive Target Role Check in title
-    de_shorthands = (" de", "de ", "/de", "-de", "(de)", "[de]")
-    if any(target in title_clean for target in TARGET_ROLE_KEYWORDS) or any(sh in title_clean for sh in de_shorthands) or title_clean == "de":
+    has_target = any(target in title_clean for target in TARGET_ROLE_KEYWORDS) or bool(re.search(r"\bde\b", title_clean))
+    if has_target:
         # Even with target title, zero-score check if score is explicitly 0.0 with empty text
         if score is not None and score <= 0.0 and not any(k in title_clean for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
             return False, f"Rejected: Match score {score}% has zero candidate competencies"

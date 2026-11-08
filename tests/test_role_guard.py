@@ -42,6 +42,10 @@ class TestRoleGuard:
         ("Manual QA Tester", "TestCo"),
         ("Operations Manager", "Delivery Corp"),
         ("Scrum Master", "Agile Services"),
+        ("Guidewire Claim Developer 2-15 Yrs For Pan India", "Confidential Employer"),
+        ("Dot Net Developer - Bangalore", "Veetechnologies"),
+        ("Fullstack Developer", "Deloitte Shared Services India"),
+        ("Java Developer", "Generic IT Services"),
     ])
     def test_non_data_roles_strictly_rejected(self, title, company):
         ok, reason = is_strictly_data_or_cloud_role(title, "", company=company)
