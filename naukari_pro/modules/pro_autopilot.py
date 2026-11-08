@@ -246,20 +246,13 @@ class ProAutoPilotEngine:
                 print("      * Error Isolation: Naukri and offline pipelines proceed normally.")
                 li_session_valid = False
 
-        # ── STAGE 5/8: Autonomous Naukri Auto-Apply Cycle ──
-        print(f"\n[STAGE 5/8] Executing Autonomous Naukri Apply Cycle (Target: {self.limit_naukri} Applications)...")
-        applied_naukri = 0
-        try:
-            applied_naukri = self.apply_engine.run(limit=self.limit_naukri, headless=self.headless, dry_run=self.dry_run, universal_apply=self.universal_apply)
-            print(f"  [✓] Naukri Apply Cycle completed: {applied_naukri} applications processed.")
-        except Exception as e:
-            print(f"  [!] Naukri apply error (isolated): {e}")
-
-        # ── STAGE 6/8: Autonomous LinkedIn Easy Apply Cycle ──
+        # ── STAGE 5/8: Autonomous LinkedIn Easy Apply Cycle ──
+        # LinkedIn runs before Naukri: Naukri keyword sweep can exhaust the cycle
+        # timeout and previously left LinkedIn Applications (Run) stuck at 0.
         applied_linkedin = 0
         li_dry_run_verified = 0
         li_stats = {}
-        print(f"\n[STAGE 6/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit_linkedin} Applications)...")
+        print(f"\n[STAGE 5/8] Executing Autonomous LinkedIn Easy Apply Cycle (Target: {self.limit_linkedin} Applications)...")
         try:
             if self.dry_run:
                 li_stats = self.li_apply_engine.run_offline_dry_run(limit=self.limit_linkedin, min_score=0.0)
@@ -294,6 +287,15 @@ class ProAutoPilotEngine:
         except Exception as e:
             print(f"  [!] LinkedIn apply error (isolated): {e}")
             li_stats = {"error": str(e), "discovered": 0, "applied": 0, "status": "FAILED"}
+
+        # ── STAGE 6/8: Autonomous Naukri Auto-Apply Cycle ──
+        print(f"\n[STAGE 6/8] Executing Autonomous Naukri Apply Cycle (Target: {self.limit_naukri} Applications)...")
+        applied_naukri = 0
+        try:
+            applied_naukri = self.apply_engine.run(limit=self.limit_naukri, headless=self.headless, dry_run=self.dry_run, universal_apply=self.universal_apply)
+            print(f"  [✓] Naukri Apply Cycle completed: {applied_naukri} applications processed.")
+        except Exception as e:
+            print(f"  [!] Naukri apply error (isolated): {e}")
 
         # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects ──
         print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)... Target: {self.limit_external}")
