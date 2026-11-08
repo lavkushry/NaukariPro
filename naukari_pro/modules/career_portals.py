@@ -3268,7 +3268,7 @@ class CareerPortalFiller:
         from naukari_pro.modules.job_alerts import MATCH_SCORE_THRESHOLD
         status = "VALIDATED_PAYLOAD" if final_score >= MATCH_SCORE_THRESHOLD else "REJECTED_BELOW_THRESHOLD"
         from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-        is_role_ok, _ = is_strictly_data_or_cloud_role(role, raw_jd, score=final_score)
+        is_role_ok, _ = is_strictly_data_or_cloud_role(role, raw_jd, score=final_score, company=company)
         if not is_role_ok:
             status = "REJECTED_BELOW_THRESHOLD"
 
@@ -3358,7 +3358,7 @@ class CareerPortalFiller:
 
         # Unconditional Role Guard: Never apply to non-data / non-cloud roles
         from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-        is_role_ok, role_reason = is_strictly_data_or_cloud_role(role, raw_jd, score=match_score)
+        is_role_ok, role_reason = is_strictly_data_or_cloud_role(role, raw_jd, score=match_score, company=company)
         if not is_role_ok:
             logger.info("CareerPortalFiller rejected non-target role: %s @ %s (%s)", role, company, role_reason)
             return FillResult(False, [], None, status="REJECTED_NON_DATA_ROLE")
@@ -3476,7 +3476,7 @@ class CareerPortalFiller:
 
                 # Unconditional Role Guard: Never apply to non-data / non-cloud roles
                 from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-                is_role_ok, _ = is_strictly_data_or_cloud_role(title, "", score=score)
+                is_role_ok, _ = is_strictly_data_or_cloud_role(title, "", score=score, company=company)
                 if not is_role_ok:
                     continue
 
@@ -4332,7 +4332,7 @@ class ExternalPortalBatchRunner:
 
             # Unconditional Role Guard: Never apply to non-data / non-cloud roles
             from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-            is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, jd, score=score)
+            is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, jd, score=score, company=company)
             if not is_role_ok:
                 stats["skipped"] += 1
                 stats["jobs"].append({

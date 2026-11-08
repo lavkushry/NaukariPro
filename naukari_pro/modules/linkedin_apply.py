@@ -657,7 +657,11 @@ class LinkedInApplyEngine:
 
                                 # Unconditional Role Guard: Never apply to non-data / non-cloud roles
                                 from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-                                is_role_ok, role_reason = is_strictly_data_or_cloud_role(job.get("title", ""), job.get("raw_snippet", ""))
+                                is_role_ok, role_reason = is_strictly_data_or_cloud_role(
+                                    job.get("title", ""),
+                                    job.get("raw_snippet", ""),
+                                    company=job.get("company", "")
+                                )
                                 if not is_role_ok:
                                     logger.info(
                                         "Job %s ('%s') gated out (Non-Target Role): %s",

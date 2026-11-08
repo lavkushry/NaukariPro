@@ -32,11 +32,26 @@ class TestRoleGuard:
         ("Junior Receptionist", "Generic Corp"),
         ("Talent Acquisition Executive", "HR Corp"),
         ("Chartered Accountant", "Audit Firm"),
+        ("Drilling Engineer MSc (Freelancer)", "Soul Ai"),
+        ("Biology PhD Expert", "Soul Ai"),
+        ("Product Manager II", "Linear"),
+        ("Project Leader", "Confidential Employer"),
+        ("Data Analyst", "Ecolab"),
+        ("Business Analyst", "Fintech Corp"),
+        ("2D CAD & Fabrication Drafter", "Glentec Engineering"),
+        ("Manual QA Tester", "TestCo"),
+        ("Operations Manager", "Delivery Corp"),
+        ("Scrum Master", "Agile Services"),
     ])
     def test_non_data_roles_strictly_rejected(self, title, company):
-        ok, reason = is_strictly_data_or_cloud_role(title, "")
+        ok, reason = is_strictly_data_or_cloud_role(title, "", company=company)
         assert not ok, f"Expected '{title}' to be rejected, but got passed with reason: {reason}"
         assert "Rejected" in reason
+
+    def test_forbidden_company_rejected_even_with_target_title(self):
+        ok, reason = is_strictly_data_or_cloud_role("Azure Data Engineer", company="Soul Ai")
+        assert not ok
+        assert "Excluded non-target / gig annotator employer" in reason
 
     @pytest.mark.parametrize("title", [
         "Azure Data Engineer",

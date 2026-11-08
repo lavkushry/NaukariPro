@@ -16,18 +16,29 @@ FORBIDDEN_ROLE_KEYWORDS = (
     "telecalling", "telecaller", "tele-calling", "tele-caller", "tele caller", "call center",
     "bpo", "kpo", "customer care", "customer support", "customer success", "client support",
     "helpdesk", "technical support executive", "desktop support",
-    # Non-software Engineering
+    # Non-software Engineering & CAD
     "mechanical", "civil engineer", "civil engineering", "electrical design", "hardware engineer",
-    "embedded engineer", "vlsi", "pcb", "autocad", "structural engineer",
-    "manufacturing engineer", "chemical engineer", "automotive engineer",
+    "embedded engineer", "vlsi", "pcb", "autocad", "structural engineer", "drafter", "draftsman",
+    "cad designer", "cad engineer", "solidworks", "cad ", "autodesk",
+    "manufacturing engineer", "chemical engineer", "automotive engineer", "drilling engineer",
+    "mining engineer", "geotechnical engineer", "power systems engineer", "process engineer",
+    "aerospace engineer", "marine engineer", "petroleum engineer",
+    # Natural Sciences, Humanities, Academia & Freelance Annotation
+    "biology", "physics", "chemistry", "history", "economics", "statistician", "economist",
+    "environmental scientist", "geologist", "agriculture", "botanist", "zoologist", "journalist",
+    "annotator", "annotation", "freelancer", "freelance",
     # Languages & Translation
-    "german", "french", "spanish", "japanese", "mandarin", "russian", "chinese",
+    "german", "french", "spanish", "japanese", "mandarin", "russian", "chinese", "italian",
     "language processor", "translator", "linguist", "interpreter",
     # Non-Data ERP & Functional
     "sap mdg", "sap mm", "sap fico", "sap sd", "sap abap", "sap basis",
-    "sap functional",
+    "sap functional", "sap hcm", "salesforce functional",
     # Operations, Logistics & Procurement
     "procurement", "purchasing", "supply chain", "logistics", "inventory", "buyer",
+    # Project, Product & Agile Management
+    "product manager", "project manager", "program manager", "delivery manager",
+    "scrum master", "agile coach", "release train engineer", "operations manager",
+    "account manager",
     # Education, Coaching & Teaching
     "trainer", "teacher", "educator", "faculty", "instructor", "tutor",
     "robotics educator", "coding educator", "counselor",
@@ -43,18 +54,34 @@ FORBIDDEN_ROLE_KEYWORDS = (
     "copywriter", "social media", "inside sales", "field sales", "pre-sales",
     # Pure Frontend, Mobile & Design (unless data engineering explicitly in title)
     "front end developer", "frontend developer", "react developer",
-    "angular developer", "ios developer", "android developer", "flutter developer",
+    "angular developer", "vue developer", "ios developer", "android developer", "flutter developer",
     "ui/ux", "graphic designer", "webmaster",
+    # Manual QA & Non-automation Testing
+    "manual tester", "manual qa", "qa manual", "functional tester",
     # Generic Fresher / Non-tech bulk hiring
     "bca freshers", "bsc freshers", "mca freshers", "freshers hiring",
     "hiring for bca", "hiring freshers", "freshers",
     # Clerical, Back Office & Admin
     "mis analyst", "data entry", "back office", "typist", "clerk",
     "receptionist", "office assistant", "executive assistant", "admin executive",
+    # Non-Engineering Analyst
+    "business analyst", "data analyst", "financial analyst", "operations analyst",
+    "reporting analyst", "bi analyst", "risk analyst", "mis executive",
     # Finance, Accounting, Legal & HR
     "accountant", "chartered accountant", "bookkeeper", "tax consultant",
     "audit associate", "hr executive", "recruiter", "talent acquisition",
-    "hr generalist", "paralegal", "lawyer"
+    "hr generalist", "paralegal", "lawyer", "legal associate"
+)
+
+# Known gig annotation / crowd-task / spam vendors
+FORBIDDEN_COMPANIES = (
+    "soul ai",
+    "clickerscabin",
+    "nextgen education foundation",
+    "gratitude india",
+    "wonksknow technologies",
+    "remotasks",
+    "appen",
 )
 
 # Core candidate domain target title keywords (Data Engineering / MLOps / DevOps)
@@ -82,7 +109,8 @@ COMPETENCY_KEYWORDS = (
 def is_strictly_data_or_cloud_role(
     title: str,
     raw_jd: str = "",
-    score: Optional[float] = None
+    score: Optional[float] = None,
+    company: str = ""
 ) -> Tuple[bool, str]:
     """
     Evaluates whether a job strictly belongs to the candidate's core domain
@@ -93,9 +121,15 @@ def is_strictly_data_or_cloud_role(
     """
     title_clean = (title or "").lower().strip()
     jd_clean = (raw_jd or "").lower().strip()
+    comp_clean = (company or "").lower().strip()
 
     if not title_clean:
         return False, "Rejected: Missing or empty job title"
+
+    # 0. Excluded Companies Gate (Known gig annotators / crowd spam)
+    for forbidden_co in FORBIDDEN_COMPANIES:
+        if forbidden_co in comp_clean:
+            return False, f"Rejected: Excluded non-target / gig annotator employer ('{forbidden_co}')"
 
     # 1. Hard Exclusion Gate: Blacklisted keywords in title
     for forbidden in FORBIDDEN_ROLE_KEYWORDS:

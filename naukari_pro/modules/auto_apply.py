@@ -1059,7 +1059,7 @@ class NativeChromeRunner:
             match_score = calculate_match_score(f"{title} {company} {raw_jd}".strip())
 
         # Unconditional Role Guard: Never apply to non-data / non-cloud roles
-        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, score=match_score)
+        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, score=match_score, company=company)
         if not is_role_ok:
             reason_msg = f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold (Non-Target Role: {role_reason})"
             print(f"    ⛔ Application Rejected Upfront (Non-Target Role): {title} @ {company} ({reason_msg})")
@@ -1704,7 +1704,7 @@ class PlaywrightRunner:
             match_score = calculate_match_score(full_text)
 
         # Unconditional Role Guard: Never apply to non-data / non-cloud roles
-        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, score=match_score)
+        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, score=match_score, company=company)
         if not is_role_ok:
             reason_msg = f"Rejected: Match score {match_score}% is below required {MATCH_SCORE_THRESHOLD}% threshold (Non-Target Role: {role_reason})"
             print(f"    ⛔ Application Rejected Upfront (Non-Target Role): {title} @ {company} ({reason_msg})")
@@ -1980,7 +1980,7 @@ class PlaywrightRunner:
 
                 # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
                 from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-                is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd)
+                is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, company=comp)
                 if not is_role_ok:
                     print(f"  ⛔ Skipped Recommended (Non-Target Role): {title} @ {comp} ({role_reason})")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
@@ -2130,7 +2130,7 @@ class PlaywrightRunner:
 
                 # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
                 from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-                is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd)
+                is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, company=comp)
                 if not is_role_ok:
                     print(f"  ⛔ Skipped NVite (Non-Target Role): {title} @ {comp} ({role_reason})")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
@@ -2346,7 +2346,7 @@ class PlaywrightRunner:
 
                                     # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
                                     from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-                                    is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd)
+                                    is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, company=comp)
                                     if not is_role_ok:
                                         print(f"  ⛔ Skipped Search (Non-Target Role): {title} @ {comp} ({role_reason})")
                                         self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
