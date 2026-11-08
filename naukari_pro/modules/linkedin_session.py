@@ -13,6 +13,7 @@ import time
 import shutil
 import logging
 import inspect
+import asyncio
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from typing import Optional, Dict, Any, List, Union, Tuple
@@ -671,20 +672,38 @@ class LinkedInSessionManager:
         """
         logger.info("Verifying LinkedIn session status...")
 
-        # Step 0: Navigation Execution with Exception Trap
+        # Step 0: Navigation with short 429 backoff (datacenter IPs often soft-throttle)
         nav_failed = False
         nav_error_msg = ""
-        try:
-            res_goto = page.goto(FEED_URL, wait_until="domcontentloaded", timeout=30000)
-            if inspect.isawaitable(res_goto):
-                await res_goto
-        except Exception as e:
-            nav_failed = True
-            nav_error_msg = str(e)
-            logger.warning("Navigation notice during session verification: %s", e)
+        for attempt in range(1, 4):
+            nav_failed = False
+            nav_error_msg = ""
+            try:
+                res_goto = page.goto(FEED_URL, wait_until="domcontentloaded", timeout=30000)
+                if inspect.isawaitable(res_goto):
+                    await res_goto
+                break
+            except Exception as e:
+                nav_failed = True
+                nav_error_msg = str(e)
+                is_429 = "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
+                logger.warning(
+                    "Navigation notice during session verification (attempt %s/3): %s",
+                    attempt,
+                    e,
+                )
+                if is_429 and attempt < 3:
+                    await asyncio.sleep(8 * attempt)
+                    continue
+                break
 
         raw_url = getattr(page, "url", "") or ""
         current_url = raw_url.lower()
+
+        # Soft recovery: if goto threw on 429 but the page still landed on LinkedIn feed, continue.
+        if nav_failed and ("linkedin.com" in current_url) and ("/feed" in current_url or "/in/" in current_url):
+            logger.info("LinkedIn verify: treating post-429 feed landing as navigable (%s)", raw_url)
+            nav_failed = False
 
         # If navigation completely failed/timed out, distinguish 429 rate limit vs expired/unreachable
         if nav_failed:
