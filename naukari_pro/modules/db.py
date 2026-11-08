@@ -833,7 +833,9 @@ def is_job_already_applied(
         "SUBMITTED_DRY_RUN",
         "DRY_RUN_ELIGIBLE",
         "DRY_RUN_MATCH",
-        "SKIPPED_ALREADY_APPLIED"
+        "SKIPPED_ALREADY_APPLIED",
+        "REJECTED_NON_DATA_ROLE",
+        "REJECTED_BELOW_THRESHOLD"
     }
     
     def _is_applied_row(r_status: Optional[str]) -> bool:
