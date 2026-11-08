@@ -672,28 +672,39 @@ class LinkedInSessionManager:
         """
         logger.info("Verifying LinkedIn session status...")
 
-        # Step 0: Navigation with short 429 backoff (datacenter IPs often soft-throttle)
+        # Step 0: Navigation with short 429 backoff (datacenter IPs often soft-throttle).
+        # Prefer wait_until="commit" first — Chromium throws ERR_HTTP_RESPONSE_CODE_FAILURE
+        # on 429 with domcontentloaded in persistent contexts, even when feed HTML lands.
         nav_failed = False
         nav_error_msg = ""
+        wait_modes = ("commit", "domcontentloaded", "domcontentloaded")
         for attempt in range(1, 4):
             nav_failed = False
             nav_error_msg = ""
+            wait_until = wait_modes[attempt - 1]
             try:
-                res_goto = page.goto(FEED_URL, wait_until="domcontentloaded", timeout=30000)
+                res_goto = page.goto(FEED_URL, wait_until=wait_until, timeout=30000)
                 if inspect.isawaitable(res_goto):
                     await res_goto
+                try:
+                    ready = page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    if inspect.isawaitable(ready):
+                        await ready
+                except Exception:
+                    pass
                 break
             except Exception as e:
                 nav_failed = True
                 nav_error_msg = str(e)
                 is_429 = "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
                 logger.warning(
-                    "Navigation notice during session verification (attempt %s/3): %s",
+                    "Navigation notice during session verification (attempt %s/3, wait=%s): %s",
                     attempt,
+                    wait_until,
                     e,
                 )
                 if is_429 and attempt < 3:
-                    await asyncio.sleep(8 * attempt)
+                    await asyncio.sleep(5 * attempt)
                     continue
                 break
 
@@ -704,6 +715,25 @@ class LinkedInSessionManager:
         if nav_failed and ("linkedin.com" in current_url) and ("/feed" in current_url or "/in/" in current_url):
             logger.info("LinkedIn verify: treating post-429 feed landing as navigable (%s)", raw_url)
             nav_failed = False
+
+        # Last-chance recovery via location assign (avoids Chromium navigation error path)
+        if nav_failed and (
+            "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
+        ):
+            try:
+                ev = page.evaluate("() => { window.location.href = 'https://www.linkedin.com/feed/'; return true; }")
+                if inspect.isawaitable(ev):
+                    await ev
+                ready = page.wait_for_load_state("domcontentloaded", timeout=20000)
+                if inspect.isawaitable(ready):
+                    await ready
+                raw_url = getattr(page, "url", "") or ""
+                current_url = raw_url.lower()
+                if "linkedin.com" in current_url and ("/feed" in current_url or "/in/" in current_url or "/login" not in current_url):
+                    logger.info("LinkedIn verify: recovered via location.assign (%s)", raw_url)
+                    nav_failed = False
+            except Exception as e_rec:
+                logger.warning("LinkedIn verify location.assign recovery failed: %s", e_rec)
 
         # If navigation completely failed/timed out, distinguish 429 rate limit vs expired/unreachable
         if nav_failed:
