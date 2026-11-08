@@ -1,0 +1,12 @@
+[Unit]
+Description=NaukariPro Aggregation Ingest Timer (Asia/Kolkata)
+PartOf=naukaripro-ingest.service
+
+[Timer]
+# Every 6 hours at :15 IST — separate from beast `pro` cycle
+OnCalendar=*-*-* 00,06,12,18:15:00 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

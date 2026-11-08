@@ -164,6 +164,16 @@ def handle_governed_apply(args: argparse.Namespace) -> int:
     # Default path is dry-run; --auto-submit still respects confirmation rules
     if not getattr(args, "auto_submit", False):
         dry = True
+    # G-6 coverage law: live submit requires healthy_boards ≥ 4
+    if not dry and getattr(args, "auto_submit", False):
+        from naukari_pro.aggregation.gates import SubmitBootBlocked, assert_submit_boot_healthy
+
+        try:
+            assert_submit_boot_healthy()
+        except SubmitBootBlocked as exc:
+            print(BANNER)
+            print(f"Submit boot blocked: {exc}")
+            return 3
     pipe = GovernedApplyPipeline(
         facts,
         dry_run=dry,
@@ -481,14 +491,21 @@ def handle_boards_import(args: argparse.Namespace) -> int:
 def handle_ingest_jobs(args: argparse.Namespace) -> int:
     """WS1 aggregation: seed sources.json → fetch → content-hash upsert (no fabricated fields)."""
     from pathlib import Path
+    from naukari_pro.aggregation.ingest_lock import IngestLockError, ingest_lock
     from naukari_pro.aggregation.pipeline import run_ingest_cycle
 
     db_path = Path(args.db) if getattr(args, "db", None) else None
-    result = run_ingest_cycle(
-        seed=not getattr(args, "no_seed", False),
-        limit_sources=getattr(args, "limit_sources", None),
-        db_path=db_path,
-    )
+    try:
+        with ingest_lock():
+            result = run_ingest_cycle(
+                seed=not getattr(args, "no_seed", False),
+                limit_sources=getattr(args, "limit_sources", None),
+                db_path=db_path,
+            )
+    except IngestLockError as exc:
+        print(BANNER)
+        print(f"Ingest skipped (lock): {exc}")
+        return 2
     print(BANNER)
     print("=== WS1 Job Aggregation Ingest ===")
     print(f"Seeded sources : {result.get('seeded_sources')}")
@@ -496,10 +513,13 @@ def handle_ingest_jobs(args: argparse.Namespace) -> int:
     store = result.get("store_stats") or {}
     print(f"Active sources : {store.get('active_sources')}")
     print(f"Active jobs    : {store.get('active_jobs')}")
+    print(f"Healthy boards : {len(result.get('healthy_boards') or [])}")
+    print(f"Verified total : {result.get('verified_boards_total')}")
     ingest = result.get("ingest") or {}
     for k in (
         "sources_attempted", "sources_ok", "sources_failed", "sources_missing",
         "inserted", "updated", "unchanged", "removed", "dedup_skipped", "age_filtered",
+        "empty_success_rejected",
     ):
         print(f"  {k}: {ingest.get(k)}")
     errors = ingest.get("errors") or []

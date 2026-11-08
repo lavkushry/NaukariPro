@@ -66,6 +66,7 @@ def create_app(store: Optional[TrackingStore] = None):
             f" ({(v['rate'] or 0):.0%})</li>"
             for k, v in (spr.get("by_board") or {}).items()
         )
+        kpi = _aggregation_kpi()
         html = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>NaukariPro Tracking</title>
 <style>
@@ -85,6 +86,8 @@ th{{background:#eee}}
 <div class="stat"><div class="n">{rate_lbl}</div><div class="l">screen-pass</div></div>
 <div class="stat"><div class="n">{spr.get('screens',0)}</div><div class="l">screens</div></div>
 <div class="stat"><div class="n">{spr.get('submitted',0)}</div><div class="l">submitted</div></div>
+<div class="stat"><div class="n">{kpi.get('verified_boards_total',0)}</div><div class="l">verified_boards_total</div></div>
+<div class="stat"><div class="n">{kpi.get('healthy_boards',0)}</div><div class="l">healthy_boards</div></div>
 {funnel_cells}
 </div>
 <table>
@@ -102,15 +105,27 @@ th{{background:#eee}}
     return app
 
 
+def _aggregation_kpi() -> dict:
+    try:
+        from naukari_pro.aggregation.storage import AggregationStore
+
+        return AggregationStore().registry_kpi()
+    except Exception:  # noqa: BLE001
+        return {"verified_boards_total": 0, "healthy_boards": 0}
+
+
 def render_dashboard_html(store: Optional[TrackingStore] = None) -> str:
     """Offline HTML snapshot for tests / CLI without running uvicorn."""
     store = store or TrackingStore()
     funnel = store.funnel_counts()
     feed = store.feed(limit=10)
     spr = store.screen_pass_rate()
+    kpi = _aggregation_kpi()
     return (
         f"<html><body><h1>NaukariPro Tracking</h1>"
         f"<pre>funnel={funnel}</pre>"
         f"<pre>screen_pass={spr}</pre>"
+        f"<pre>verified_boards_total={kpi.get('verified_boards_total')}</pre>"
+        f"<pre>healthy_boards={kpi.get('healthy_boards')}</pre>"
         f"<pre>feed_n={len(feed)}</pre></body></html>"
     )

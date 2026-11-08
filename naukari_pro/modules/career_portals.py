@@ -4256,7 +4256,24 @@ class ExternalPortalBatchRunner:
             # Offline/dry-run stays on curated fixtures so pytest and demos stay deterministic.
             feed = list(self.curated_vacancies)
         else:
-            live_feed = fetch_live_ats_vacancies(limit=max(active_limit * 10, 400), ats_types=ats_types)
+            # Prefer aggregation store / fetch_live_normalized over hardcoded boards.
+            live_feed: List[Dict[str, Any]] = []
+            try:
+                from naukari_pro.aggregation.pipeline import fetch_live_normalized
+                from naukari_pro.aggregation.storage import AggregationStore
+
+                store = AggregationStore()
+                cached = store.list_active_jobs(limit=max(active_limit * 10, 400))
+                if cached:
+                    live_feed = [j.to_legacy_vacancy() for j in cached]
+                else:
+                    live_feed = fetch_live_normalized(limit_sources=min(30, max(active_limit, 10)))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("aggregation feed unavailable, falling back: %s", exc)
+            if not live_feed:
+                live_feed = fetch_live_ats_vacancies(
+                    limit=max(active_limit * 10, 400), ats_types=ats_types
+                )
             feed = live_feed if live_feed else list(self.curated_vacancies)
 
         # Filter by ats_types if explicitly specified

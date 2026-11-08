@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import secrets
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ SOURCES_PATH = Path(__file__).with_name("sources.json")
 AGE_FILTER_DAYS = 90
 BOARD_404_BACKOFF_HOURS = 12
 GLOBAL_CONCURRENCY = 8
+BOARD_JITTER_S = (2.0, 5.0)
 
 
 @dataclass
@@ -38,10 +40,13 @@ class IngestStats:
     removed: int = 0
     dedup_skipped: int = 0
     age_filtered: int = 0
+    empty_success_rejected: int = 0
     errors: List[str] = field(default_factory=list)
+    cycle_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "cycle_id": self.cycle_id,
             "sources_attempted": self.sources_attempted,
             "sources_ok": self.sources_ok,
             "sources_failed": self.sources_failed,
@@ -52,6 +57,7 @@ class IngestStats:
             "removed": self.removed,
             "dedup_skipped": self.dedup_skipped,
             "age_filtered": self.age_filtered,
+            "empty_success_rejected": self.empty_success_rejected,
             "errors": self.errors[:20],
         }
 
@@ -72,6 +78,8 @@ class AggregationPipeline:
         self.cycle = 0
 
     def seed_sources(self, path: Optional[Path] = None) -> int:
+        import json
+
         p = Path(path) if path else self.sources_path
         raw = json.loads(p.read_text(encoding="utf-8"))
         seen_ids = set()
@@ -104,14 +112,13 @@ class AggregationPipeline:
     @staticmethod
     def _too_old(job: NormalizedJob) -> bool:
         if not job.published_at:
-            return False  # unknown age — keep; do not invent dates
+            return False
         try:
             published = datetime.fromisoformat(str(job.published_at).replace("Z", "+00:00"))
             if published.tzinfo is None:
                 published = published.replace(tzinfo=timezone.utc)
             return datetime.now(timezone.utc) - published > timedelta(days=AGE_FILTER_DAYS)
         except ValueError:
-            # epoch millis?
             try:
                 ms = int(float(str(job.published_at)))
                 if ms > 10_000_000_000:
@@ -122,6 +129,8 @@ class AggregationPipeline:
                 return False
 
     async def _fetch_one(self, row: Dict[str, Any], stats: IngestStats, sem: asyncio.Semaphore) -> None:
+        import random
+
         source = SourceRecord(
             company=row["company"],
             ats_type=row["ats_type"],
@@ -132,67 +141,128 @@ class AggregationPipeline:
             consecutive_empty=int(row.get("consecutive_empty") or 0),
             backoff_until=row.get("backoff_until"),
         )
+        sid = source.source_id or ""
         adapter_cls = AdapterRegistry.get(source.ats_type)
         if not adapter_cls:
             stats.sources_failed += 1
             stats.errors.append(f"no adapter for {source.ats_type}")
+            self.store.record_drop(reason="no_adapter", source_id=sid, detail=source.ats_type)
+            self.store.bump_board_health(sid, ats_type=source.ats_type, fetch_attempts=1, fetch_err=1)
             return
 
         async with sem:
-            async with self._lock_for(source.source_id or ""):
+            async with self._lock_for(sid):
+                # Jitter between boards (JSON boards are generous but not unlimited)
+                await asyncio.sleep(random.uniform(*BOARD_JITTER_S))
                 stats.sources_attempted += 1
                 adapter = adapter_cls()
                 result = await adapter.fetch_with_retry(source)
+                code = result.status_code or 0
+                http_4xx = 1 if 400 <= code < 500 else 0
+                http_5xx = 1 if code >= 500 else 0
+                timeout = 1 if result.error and "timeout" in (result.error or "").lower() else 0
 
                 if result.board_missing:
                     stats.sources_missing += 1
                     backoff = (
                         datetime.now(timezone.utc) + timedelta(hours=BOARD_404_BACKOFF_HOURS)
                     ).isoformat()
-                    self.store.mark_source_checked(
-                        source.source_id or "",
-                        board_missing=True,
-                        backoff_until=backoff,
+                    self.store.mark_source_checked(sid, board_missing=True, backoff_until=backoff)
+                    self.store.record_drop(reason="board_missing", source_id=sid, detail=result.error)
+                    self.store.bump_board_health(
+                        sid, ats_type=source.ats_type, fetch_attempts=1, fetch_err=1, http_4xx=1
                     )
                     return
 
                 if result.error and not result.jobs:
                     stats.sources_failed += 1
-                    stats.errors.append(f"{source.source_id}: {result.error}")
-                    self.store.mark_source_checked(source.source_id or "", empty=True)
+                    stats.errors.append(f"{sid}: {result.error}")
+                    self.store.mark_source_checked(sid, empty=True)
+                    self.store.record_drop(reason="fetch_error", source_id=sid, detail=result.error)
+                    self.store.bump_board_health(
+                        sid,
+                        ats_type=source.ats_type,
+                        fetch_attempts=1,
+                        fetch_err=1,
+                        http_4xx=http_4xx,
+                        http_5xx=http_5xx,
+                        timeouts=timeout,
+                    )
+                    return
+
+                # Fail-closed: HTTP 200 with zero jobs is NOT a healthy fetch for JSON boards
+                # (wrong slug / jobs:null already mapped to board_missing by adapters).
+                if not result.jobs:
+                    stats.empty_success_rejected += 1
+                    stats.sources_failed += 1
+                    stats.errors.append(f"{sid}: empty_board_no_jobs")
+                    self.store.mark_source_checked(sid, empty=True)
+                    self.store.record_drop(
+                        reason="empty_board",
+                        source_id=sid,
+                        detail="HTTP success but 0 jobs — not counted as fetch_ok",
+                    )
+                    self.store.bump_board_health(
+                        sid, ats_type=source.ats_type, fetch_attempts=1, fetch_err=1, http_4xx=http_4xx
+                    )
                     return
 
                 stats.sources_ok += 1
                 seen_keys: Set[str] = set()
-                empty = True
+                jobs_new = 0
+                dedupe_hits = 0
+                jobs_seen = 0
                 for job in result.jobs:
+                    jobs_seen += 1
                     if self._too_old(job):
                         stats.age_filtered += 1
+                        self.store.record_drop(
+                            reason="age_filtered",
+                            source_id=sid,
+                            ats_job_key=job.ats_job_key,
+                            detail=str(job.published_at),
+                        )
                         continue
-                    empty = False
                     decision = self.dedup.check(job)
                     if decision.is_duplicate and decision.reason == "simhash":
-                        # Same content different key — skip insert but track
                         stats.dedup_skipped += 1
+                        dedupe_hits += 1
                         seen_keys.add(decision.matched_key or job.ats_job_key)
+                        self.store.record_drop(
+                            reason="dedupe_simhash",
+                            source_id=sid,
+                            ats_job_key=job.ats_job_key,
+                            detail=decision.matched_key,
+                        )
                         continue
                     upsert = self.store.upsert_job(job)
                     self.dedup.remember(job)
                     seen_keys.add(upsert.job_key)
                     if upsert.status == "inserted":
                         stats.inserted += 1
+                        jobs_new += 1
                     elif upsert.status == "updated":
                         stats.updated += 1
                     else:
                         stats.unchanged += 1
 
-                removed = self.store.deactivate_missing(source.source_id or "", seen_keys)
+                removed = self.store.deactivate_missing(sid, seen_keys)
                 stats.removed += removed
-                self.store.mark_source_checked(source.source_id or "", empty=empty)
+                self.store.mark_source_checked(sid, empty=False)
+                self.store.bump_board_health(
+                    sid,
+                    ats_type=source.ats_type,
+                    fetch_attempts=1,
+                    fetch_ok=1,
+                    jobs_seen=jobs_seen,
+                    jobs_new=jobs_new,
+                    dedupe_hits=dedupe_hits,
+                )
 
     async def run(self, *, limit_sources: Optional[int] = None) -> IngestStats:
         self.cycle += 1
-        # Seed dedup from existing active jobs
+        cycle_id = f"cycle-{utc_now_iso()}-{secrets.token_hex(3)}"
+        self.store.record_cycle(cycle_id, "cycle_started", {"cycle": self.cycle})
         existing = self.store.list_active_jobs(limit=20000)
         self.dedup.seed_from_jobs(existing)
 
@@ -200,9 +270,19 @@ class AggregationPipeline:
         if limit_sources is not None:
             sources = sources[:limit_sources]
 
-        stats = IngestStats()
+        stats = IngestStats(cycle_id=cycle_id)
         sem = asyncio.Semaphore(self.max_concurrency)
         await asyncio.gather(*(self._fetch_one(s, stats, sem) for s in sources))
+        self.store.record_cycle(
+            cycle_id,
+            "cycle_done",
+            {
+                "jobs_seen": stats.inserted + stats.updated + stats.unchanged + stats.dedup_skipped,
+                "jobs_new": stats.inserted,
+                "dedupe_hits": stats.dedup_skipped,
+                **{k: v for k, v in stats.to_dict().items() if k != "errors"},
+            },
+        )
         return stats
 
 
@@ -221,6 +301,8 @@ def run_ingest_cycle(
         "store_stats": store.stats(),
         "ingest": stats.to_dict(),
         "adapters": AdapterRegistry.known(),
+        "healthy_boards": store.healthy_boards(),
+        "verified_boards_total": store.verified_boards_total(),
         "finished_at": utc_now_iso(),
     }
 
@@ -232,7 +314,7 @@ def fetch_live_normalized(
 ) -> List[Dict[str, Any]]:
     """
     Run a bounded ingest and return legacy vacancy dicts with honest NULLs.
-    Replaces fabricated exp/salary/jd stamping in career_portals.
+    Preferred over career_portals.fetch_live_ats_vacancies for apply feeds.
     """
     result = run_ingest_cycle(seed=True, limit_sources=limit_sources, db_path=db_path)
     store = AggregationStore(db_path=db_path) if db_path else AggregationStore()

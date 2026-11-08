@@ -56,8 +56,22 @@ def parse_ats_from_url(url: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-async def verify_board_live(ats_type: str, board_identifier: str, company: str = "Unknown") -> bool:
-    """Hit the live adapter; accept only HTTP 200 with parseable payload (may be empty jobs)."""
+# Probe-before-trust: max retries before leaving board unverified
+VERIFY_MAX_RETRIES = 4
+
+
+async def verify_board_live(
+    ats_type: str,
+    board_identifier: str,
+    company: str = "Unknown",
+    *,
+    require_jobs: bool = True,
+    max_retries: int = VERIFY_MAX_RETRIES,
+) -> bool:
+    """
+    Probe-before-trust: status_code==200 AND len(jobs)>=1 within freshness window.
+    Failures stay unverified (capped retries). Empty-200 is NOT trusted.
+    """
     adapter_cls = AdapterRegistry.get(ats_type)
     if not adapter_cls:
         return False
@@ -70,12 +84,18 @@ async def verify_board_live(ats_type: str, board_identifier: str, company: str =
         board_identifier=board_identifier,
         active=True,
     )
-    result = await adapter_cls().fetch_jobs(source)
-    if result.board_missing:
-        return False
-    if result.status_code == 200 and result.error is None:
-        return True
-    return False
+    last_ok = False
+    for _ in range(max(1, max_retries)):
+        result = await adapter_cls().fetch_jobs(source)
+        if result.board_missing:
+            return False
+        if result.status_code == 200 and result.error is None:
+            if require_jobs and len(result.jobs or []) < 1:
+                last_ok = False
+                continue
+            return True
+        last_ok = False
+    return last_ok
 
 
 async def discover_from_cdx(

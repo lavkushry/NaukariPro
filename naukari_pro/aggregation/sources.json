@@ -315,10 +315,24 @@
     "active": true
   },
   {
-    "company": "Microsoft",
+    "company": "NVIDIA",
     "ats_type": "workday",
-    "board_identifier": "microsoft.wd1.myworkdayjobs.com|microsoft|External",
-    "domain": "microsoft.wd1.myworkdayjobs.com",
+    "board_identifier": "nvidia.wd5.myworkdayjobs.com|nvidia|NVIDIAExternalCareerSite",
+    "domain": "nvidia.wd5.myworkdayjobs.com",
+    "active": true
+  },
+  {
+    "company": "Salesforce",
+    "ats_type": "workday",
+    "board_identifier": "salesforce.wd12.myworkdayjobs.com|salesforce|External_Career_Site",
+    "domain": "salesforce.wd12.myworkdayjobs.com",
+    "active": true
+  },
+  {
+    "company": "Adobe",
+    "ats_type": "workday",
+    "board_identifier": "adobe.wd5.myworkdayjobs.com|adobe|external_experienced",
+    "domain": "adobe.wd5.myworkdayjobs.com",
     "active": true
   },
   {

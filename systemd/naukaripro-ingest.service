@@ -1,0 +1,19 @@
+[Unit]
+Description=NaukariPro Aggregation Ingest (ingest-jobs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/Resume
+Environment=HOME=/home/ubuntu
+Environment=WORKSPACE=/home/ubuntu/Resume
+Environment=TZ=Asia/Kolkata
+# Bounded cycle — do not overload beast `pro` timer
+ExecStart=/home/ubuntu/Resume/naukariPro ingest-jobs --limit-sources 40
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=default.target

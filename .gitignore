@@ -61,6 +61,7 @@ skip_list_linkedin.json
 .naukri_system_profile/
 # Aggregation / LLM local state
 naukari_pro/aggregation.db
+naukari_pro/runtime/
 naukari_pro/.llm_cache/
 naukari_pro/governed_apply.db
 naukari_pro/tracking.db
@@ -68,6 +69,7 @@ naukari_pro/notifications.db
 applied_jobs.db
 *.sqlite
 *.sqlite3
+*.db
 
 # Operating System Files
 .DS_Store

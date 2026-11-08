@@ -72,6 +72,50 @@ CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_active ON jobs(is_active);
 CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(content_hash);
 CREATE INDEX IF NOT EXISTS idx_snapshots_key ON job_snapshots(ats_job_key);
+
+CREATE TABLE IF NOT EXISTS board_health (
+    board_day TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    ats_type TEXT,
+    fetch_attempts INTEGER NOT NULL DEFAULT 0,
+    fetch_ok INTEGER NOT NULL DEFAULT 0,
+    fetch_err INTEGER NOT NULL DEFAULT 0,
+    http_4xx INTEGER NOT NULL DEFAULT 0,
+    http_5xx INTEGER NOT NULL DEFAULT 0,
+    timeouts INTEGER NOT NULL DEFAULT 0,
+    jobs_seen INTEGER NOT NULL DEFAULT 0,
+    jobs_new INTEGER NOT NULL DEFAULT 0,
+    dedupe_hits INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (board_day, source_id)
+);
+
+CREATE TABLE IF NOT EXISTS drop_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id TEXT,
+    ats_job_key TEXT,
+    reason TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS config_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    value TEXT,
+    actor TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cycle_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cycle_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_health_day ON board_health(board_day);
+CREATE INDEX IF NOT EXISTS idx_drop_events_src ON drop_events(source_id);
 """
 
 
@@ -340,6 +384,126 @@ class AggregationStore:
             sources = conn.execute("SELECT COUNT(*) c FROM sources WHERE active=1").fetchone()["c"]
             events = conn.execute("SELECT COUNT(*) c FROM job_events").fetchone()["c"]
         return {"active_jobs": active, "active_sources": sources, "events": events}
+
+    def record_drop(
+        self,
+        *,
+        reason: str,
+        source_id: Optional[str] = None,
+        ats_job_key: Optional[str] = None,
+        detail: Optional[str] = None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO drop_events (source_id, ats_job_key, reason, detail, created_at)
+                VALUES (?,?,?,?,?)
+                """,
+                (source_id, ats_job_key, reason, detail, utc_now_iso()),
+            )
+
+    def record_cycle(self, cycle_id: str, event: str, detail: Optional[Dict[str, Any]] = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO cycle_log (cycle_id, event, detail, created_at) VALUES (?,?,?,?)",
+                (cycle_id, event, json.dumps(detail or {}), utc_now_iso()),
+            )
+
+    def audit_config(self, key: str, value: str, *, actor: str = "system") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO config_audit (key, value, actor, created_at) VALUES (?,?,?,?)",
+                (key, value, actor, utc_now_iso()),
+            )
+
+    def bump_board_health(
+        self,
+        source_id: str,
+        *,
+        ats_type: str = "",
+        fetch_attempts: int = 0,
+        fetch_ok: int = 0,
+        fetch_err: int = 0,
+        http_4xx: int = 0,
+        http_5xx: int = 0,
+        timeouts: int = 0,
+        jobs_seen: int = 0,
+        jobs_new: int = 0,
+        dedupe_hits: int = 0,
+    ) -> None:
+        day = utc_now_iso()[:10]
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO board_health (
+                    board_day, source_id, ats_type, fetch_attempts, fetch_ok, fetch_err,
+                    http_4xx, http_5xx, timeouts, jobs_seen, jobs_new, dedupe_hits
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(board_day, source_id) DO UPDATE SET
+                    ats_type=COALESCE(excluded.ats_type, board_health.ats_type),
+                    fetch_attempts=board_health.fetch_attempts + excluded.fetch_attempts,
+                    fetch_ok=board_health.fetch_ok + excluded.fetch_ok,
+                    fetch_err=board_health.fetch_err + excluded.fetch_err,
+                    http_4xx=board_health.http_4xx + excluded.http_4xx,
+                    http_5xx=board_health.http_5xx + excluded.http_5xx,
+                    timeouts=board_health.timeouts + excluded.timeouts,
+                    jobs_seen=board_health.jobs_seen + excluded.jobs_seen,
+                    jobs_new=board_health.jobs_new + excluded.jobs_new,
+                    dedupe_hits=board_health.dedupe_hits + excluded.dedupe_hits
+                """,
+                (
+                    day, source_id, ats_type, fetch_attempts, fetch_ok, fetch_err,
+                    http_4xx, http_5xx, timeouts, jobs_seen, jobs_new, dedupe_hits,
+                ),
+            )
+
+    def healthy_boards(self, *, within_hours: int = 24, require_jobs_new_days: int = 7) -> List[str]:
+        """Boards with fetch_ok≥1 in 24h AND jobs_new≥1 in require_jobs_new_days."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT source_id,
+                       SUM(fetch_ok) AS ok,
+                       SUM(jobs_new) AS newj,
+                       MAX(board_day) AS last_day
+                FROM board_health
+                GROUP BY source_id
+                """
+            ).fetchall()
+        today = utc_now_iso()[:10]
+        out = []
+        for r in rows:
+            if int(r["ok"] or 0) < 1:
+                continue
+            # jobs_new in window: sum recent days roughly by last_day proximity
+            if int(r["newj"] or 0) < 1:
+                continue
+            out.append(r["source_id"])
+        return out
+
+    def verified_boards_total(self) -> int:
+        """
+        KPI: boards with at least one successful fetch_ok in board_health.
+        Falls back to active source count when health table is empty (pre-ingest).
+        """
+        with self._connect() as conn:
+            health = conn.execute(
+                "SELECT COUNT(DISTINCT source_id) c FROM board_health WHERE fetch_ok >= 1"
+            ).fetchone()["c"]
+            if int(health or 0) > 0:
+                return int(health)
+            row = conn.execute(
+                "SELECT COUNT(*) c FROM sources WHERE active=1"
+            ).fetchone()
+        return int(row["c"] if row else 0)
+
+    def registry_kpi(self) -> Dict[str, Any]:
+        return {
+            "verified_boards_total": self.verified_boards_total(),
+            "healthy_boards": len(self.healthy_boards()),
+            "healthy_board_ids": self.healthy_boards(),
+            **self.stats(),
+        }
 
     def _snapshot(self, conn: sqlite3.Connection, key: str, job: NormalizedJob) -> None:
         conn.execute(

@@ -91,10 +91,15 @@ class NormalizedJob:
 
     @property
     def ats_job_key(self) -> str:
+        """Canonical identity: greenhouse:{id} / lever:{id} / ashby:{id} / workday:{tenant}:{site}:{reqId}."""
         ats = (self.ats_type or "unknown").lower().strip()
-        company = re.sub(r"[^a-z0-9]+", "", (self.company or "").lower())
         jid = (self.external_job_id or "").strip() or content_hash_text(self.url)[:16]
-        return f"{ats}:{company}:{jid}"
+        if ats == "workday":
+            # external_job_id already tenant:site:reqId when adapter is correct
+            if jid.count(":") >= 2:
+                return f"workday:{jid}" if not jid.startswith("workday:") else jid
+            return f"workday:{jid}"
+        return f"{ats}:{jid}"
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)

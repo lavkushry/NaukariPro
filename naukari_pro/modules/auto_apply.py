@@ -1365,6 +1365,17 @@ class NativeChromeRunner:
                         match_score=match_score,
                         error_reason=f"Security challenge encountered: {data.get('detail', 'Checkpoint')}"
                     )
+                    try:
+                        from naukari_pro.aggregation.browser_posture import handle_challenge_stop
+                        from naukari_pro.aggregation.storage import AggregationStore
+
+                        handle_challenge_stop(
+                            AggregationStore(),
+                            connector="naukri",
+                            challenge_type=str(data.get("detail") or "naukri_checkpoint"),
+                        )
+                    except Exception:
+                        pass
                     raise SecurityChallengeError(challenge_type="Naukri Security Checkpoint", details=f"URL: {job_url}")
                 if data.get("action") == "company_site":
                     from naukari_pro.modules.career_portals import CareerPortalManager
@@ -1763,6 +1774,17 @@ class PlaywrightRunner:
                     match_score=match_score,
                     error_reason=f"Security challenge encountered: {challenge}"
                 )
+                try:
+                    from naukari_pro.aggregation.browser_posture import handle_challenge_stop
+                    from naukari_pro.aggregation.storage import AggregationStore
+
+                    handle_challenge_stop(
+                        AggregationStore(),
+                        connector="naukri",
+                        challenge_type=str(challenge),
+                    )
+                except Exception:
+                    pass
                 raise SecurityChallengeError(challenge_type=challenge, details=f"URL: {job_url}")
 
             # Hard Stop 2: Dead Link / Closed / Expired

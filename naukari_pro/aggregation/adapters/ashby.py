@@ -34,7 +34,17 @@ class AshbyAdapter(BaseATSAdapter):
 
         jobs_raw: List[Dict[str, Any]] = []
         if isinstance(data, dict):
-            jobs_raw = data.get("jobs") or data.get("jobPostings") or []
+            # jobs: null is F2 (wrong org), NOT a successful empty board
+            if "jobs" in data and data.get("jobs") is None:
+                return FetchResult(
+                    status_code=code if code else 200,
+                    board_missing=True,
+                    error="ashby jobs=null (wrong org slug)",
+                )
+            raw = data.get("jobs")
+            if raw is None:
+                raw = data.get("jobPostings")
+            jobs_raw = raw if isinstance(raw, list) else []
         elif isinstance(data, list):
             jobs_raw = data
 
