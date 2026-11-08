@@ -26,7 +26,7 @@ from typing import Optional, List, Dict, Any, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import openpyxl
 
-from naukari_pro.config import TRACKER_PATH, RESUME_PDF_PATH, load_config
+from naukari_pro.config import BASE_DIR, TRACKER_PATH, RESUME_PDF_PATH, load_config
 from naukari_pro.modules.candidate_profile import (
     DEFAULT_HYBRID_PROFILE,
     OFFICIAL_WORK_HISTORY,
@@ -41,8 +41,12 @@ from naukari_pro.modules.scorecard import sync_dual_log
 
 logger = logging.getLogger("naukariPro.CareerPortals")
 
-# Dedicated worker thread pool to isolate Playwright Sync API from any running asyncio loops
-_PORTAL_WORKER_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="PortalWorker")
+PORTALS_SESSION_DIR = os.path.join(BASE_DIR, "career_portals_system", "browser_session")
+
+# Dedicated worker thread pool to isolate Playwright Sync API from any running asyncio loops.
+# max_workers=1: serialize portal browsers so they never contend with each other
+# (Naukri holds a separate session dir; portals use PORTALS_SESSION_DIR).
+_PORTAL_WORKER_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="PortalWorker")
 
 def _is_asyncio_loop_running() -> bool:
     """Returns True if the current thread owns an active running asyncio event loop."""
@@ -2952,7 +2956,9 @@ class CareerPortalFiller:
                 from playwright.sync_api import sync_playwright
                 from naukari_pro.session import get_stealth_context
                 with sync_playwright() as p:
-                    context = get_stealth_context(p, headless=True)
+                    context = get_stealth_context(
+                        p, headless=True, session_dir=PORTALS_SESSION_DIR, lock_timeout=90.0
+                    )
                     page = context.pages[0] if context.pages else context.new_page()
                     success, filled = self.fill_in_playwright(page, portal_url, company=company, role=role)
                     context.close()
@@ -3396,7 +3402,9 @@ class CareerPortalFiller:
                 from playwright.sync_api import sync_playwright
                 from naukari_pro.session import get_stealth_context
                 with sync_playwright() as p:
-                    context = get_stealth_context(p, headless=headless)
+                    context = get_stealth_context(
+                        p, headless=headless, session_dir=PORTALS_SESSION_DIR, lock_timeout=90.0
+                    )
                     page_ctx = context.pages[0] if context.pages else context.new_page()
                     res = self.fill_in_playwright(page_ctx, portal_url, company=company, role=role, auto_submit=auto_submit)
                     context.close()
@@ -3617,7 +3625,9 @@ class CareerPortalFiller:
         from naukari_pro.session import get_stealth_context
 
         with sync_playwright() as p:
-            context = get_stealth_context(p, headless=headless)
+            context = get_stealth_context(
+                p, headless=headless, session_dir=PORTALS_SESSION_DIR, lock_timeout=90.0
+            )
             page = context.pages[0] if context.pages else context.new_page()
 
             for item in candidates_to_process[:limit]:
@@ -4329,7 +4339,12 @@ class ExternalPortalBatchRunner:
                 from playwright.sync_api import sync_playwright
                 from naukari_pro.session import get_stealth_context
                 playwright_mgr = sync_playwright().start()
-                browser_context = get_stealth_context(playwright_mgr, headless=self.headless)
+                browser_context = get_stealth_context(
+                    playwright_mgr,
+                    headless=self.headless,
+                    session_dir=PORTALS_SESSION_DIR,
+                    lock_timeout=90.0,
+                )
             except Exception as e_pw:
                 logger.debug("Notice pre-initializing batch Playwright context: %s", e_pw)
 

@@ -616,7 +616,7 @@ def sync_notice_period(page, target_notice="15 Days or less"):
 
     # Strategy B: Check Career Profile (#lazyCareerProfile)
     try:
-        cp_section = page.locator('#lazyCareerProfile, .desiredProfile')
+        cp_section = page.locator('#lazyCareerProfile, .desiredProfile').first
         if cp_section.count() > 0:
             cp_section.scroll_into_view_if_needed()
             edit_btn = cp_section.locator('.editOneTheme, span.edit, .desiredProfile .edit').first
@@ -662,7 +662,7 @@ def sync_preferred_locations(page, locations=None):
         time.sleep(0.2)
     time.sleep(1)
 
-    cp_section = page.locator('#lazyCareerProfile, .desiredProfile')
+    cp_section = page.locator('#lazyCareerProfile, .desiredProfile').first
     if cp_section.count() == 0:
         logger.warning("#lazyCareerProfile section not found.")
         return False

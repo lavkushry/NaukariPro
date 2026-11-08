@@ -270,27 +270,29 @@ def save_session_cookies(context):
     return False
 
 
-def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.0):
+def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.0, session_dir=None):
     """
     Launches an anti-detect persistent Google Chrome/Chromium context with
-    process-level file lock protection on SESSION_DIR, automatic stale lock cleanup,
+    process-level file lock protection on target session_dir, automatic stale lock cleanup,
     and Akamai Bot Protection WAF evasion.
     Works natively across macOS and Linux with zero configuration.
     Routes through NAUKRI_PROXY if specified or present in environment.
     Seamlessly falls back to bundled Chromium if Google Chrome is not installed.
     """
+    target_dir = session_dir or SESSION_DIR
+
     # 1. On Linux servers without an X11 display, automatically enforce headless mode
     if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
         headless = True
 
-    os.makedirs(SESSION_DIR, exist_ok=True)
+    os.makedirs(target_dir, exist_ok=True)
 
-    # 2. Acquire exclusive process file lock on SESSION_DIR to prevent concurrent Chromium collisions
-    session_lock = SessionLock(session_dir=SESSION_DIR, timeout_sec=lock_timeout)
+    # 2. Acquire exclusive process file lock on target session_dir to prevent concurrent Chromium collisions
+    session_lock = SessionLock(session_dir=target_dir, timeout_sec=lock_timeout)
     session_lock.acquire(blocking=True)
 
     # 3. Clean up stale lock files ONLY while holding exclusive session lock
-    cleanup_stale_chromium_locks(SESSION_DIR)
+    cleanup_stale_chromium_locks(target_dir)
 
     launch_args = [
         "--disable-blink-features=AutomationControlled",
@@ -317,7 +319,7 @@ def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.
     channel = "chrome" if has_system_chrome else None
 
     kwargs = {
-        "user_data_dir": SESSION_DIR,
+        "user_data_dir": target_dir,
         "headless": headless,
         "args": launch_args,
         "viewport": None,
@@ -342,7 +344,7 @@ def get_stealth_context(playwright, headless=False, proxy=None, lock_timeout=15.
         kwargs.pop("channel", None)
         kwargs.pop("executable_path", None)
         # Refresh stale locks in case first attempt left broken state
-        cleanup_stale_chromium_locks(SESSION_DIR)
+        cleanup_stale_chromium_locks(target_dir)
         context = playwright.chromium.launch_persistent_context(**kwargs)
 
     # 7. Bind session lock lifecycle to Playwright context

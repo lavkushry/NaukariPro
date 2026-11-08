@@ -1840,27 +1840,56 @@ class PlaywrightRunner:
                         pass
 
                 print(f"    Resolved ATS URL: {target_url}")
-                from naukari_pro.modules.career_portals import CareerPortalManager
-                cpm = CareerPortalManager()
-                fill_res = cpm.fill(portal_url=target_url, company=company, role=title, headless=True, raw_jd=raw_jd, salary=salary)
-                success = bool(fill_res[0]) if isinstance(fill_res, (tuple, list)) else bool(getattr(fill_res, "success", False))
-                evidence_path = getattr(fill_res, "evidence_path", None)
-
+                # Capture evidence + close popup BEFORE portal fill so we don't nest
+                # browsers against the Naukri session lock. Portal fill uses a
+                # dedicated career_portals_system session directory.
+                evidence_path = None
                 if ext_page and not ext_page.is_closed():
                     try:
-                        if not evidence_path or not os.path.exists(evidence_path):
-                            import re
-                            clean_id = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
-                            evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_portal_{clean_id}.png")
-                            os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
-                            await ext_page.screenshot(path=evidence_path)
+                        import re
+                        clean_id = re.sub(r'[^a-zA-Z0-9_-]', '_', f"{company}_{title}")[:35]
+                        evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_portal_{clean_id}.png")
+                        os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
+                        await ext_page.screenshot(path=evidence_path)
                         await ext_page.close()
                     except Exception:
-                        pass
+                        try:
+                            if ext_page and not ext_page.is_closed():
+                                await ext_page.close()
+                        except Exception:
+                            pass
 
-                is_confirmed = (success and evidence_path and os.path.exists(evidence_path) and os.path.getsize(evidence_path) >= 1024)
+                from naukari_pro.modules.career_portals import CareerPortalManager
+                cpm = CareerPortalManager()
+                fill_res = cpm.fill(
+                    portal_url=target_url,
+                    company=company,
+                    role=title,
+                    headless=True,
+                    raw_jd=raw_jd,
+                    salary=salary,
+                )
+                success = bool(fill_res[0]) if isinstance(fill_res, (tuple, list)) else bool(getattr(fill_res, "success", False))
+                portal_evidence = getattr(fill_res, "evidence_path", None)
+                if portal_evidence and os.path.exists(portal_evidence):
+                    evidence_path = portal_evidence
+
+                is_confirmed = (
+                    success
+                    and evidence_path
+                    and os.path.exists(evidence_path)
+                    and os.path.getsize(evidence_path) >= 1024
+                )
                 status_str = "Submitted (Confirmed)" if is_confirmed else "Form Auto-Filled (Ready for Review)"
-                sync_dual_log(title=title, company=company, platform="career_portal", status=status_str, job_url=target_url, match_score=match_score, evidence_path=evidence_path)
+                sync_dual_log(
+                    title=title,
+                    company=company,
+                    platform="career_portal",
+                    status=status_str,
+                    job_url=target_url,
+                    match_score=match_score,
+                    evidence_path=evidence_path,
+                )
                 self.skip_list = add_to_skip(self.skip_list, title, company, "external-redirect")
                 return is_confirmed, f"External Portal: {status_str}"
 
@@ -2237,7 +2266,9 @@ class PlaywrightRunner:
         active_proxy = proxy or self.proxy or os.getenv("NAUKRI_PROXY")
         proxy_settings = parse_proxy_settings(active_proxy)
 
-        session_lock = SessionLock(session_dir=SESSION_DIR, timeout_sec=15.0)
+        # Naukri holds SESSION_DIR for the whole apply cycle; portal fills MUST use
+        # PORTALS_SESSION_DIR (CareerPortalFiller). Keep a longer wait only as safety.
+        session_lock = SessionLock(session_dir=SESSION_DIR, timeout_sec=60.0)
         session_lock.acquire(blocking=True)
         try:
             cleanup_stale_chromium_locks(SESSION_DIR)
