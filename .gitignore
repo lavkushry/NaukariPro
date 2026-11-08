@@ -48,6 +48,7 @@ cookies_seed.json
 *session*.json
 naukri_system/cookies_seed.json
 naukri_system/browser_session/
+career_portals_system/
 naukri_system/config.local.json
 linkedin_system/session_cookies.json
 linkedin_system/cookies_seed.json
