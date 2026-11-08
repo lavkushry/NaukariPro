@@ -890,16 +890,40 @@ def sync_it_skills(page, it_skills=None):
     return True
 
 def dismiss_open_modals(page):
-    """Safely dismisses any open modal dialogs, drawers, or backdrop overlays."""
+    """Safely dismisses any open modal dialogs, drawers, or backdrop overlays.
+
+    Naukri often leaves a blocking ``.ltLayer.open`` / ``.ltCont`` lightbox that
+    intercepts pointer events (strict click retries forever). Force-remove it.
+    """
     try:
-        page.keyboard.press("Escape")
-        time.sleep(0.5)
-        for sel in [".crossIcon", ".close", "[aria-label='Close']", "button:has-text('Cancel')", "a:has-text('Cancel')"]:
-            btns = page.locator(sel)
-            if btns.count() > 0 and btns.first.is_visible():
-                btns.first.click()
-                time.sleep(0.5)
-                break
+        for _ in range(3):
+            page.keyboard.press("Escape")
+            time.sleep(0.25)
+        for sel in [
+            ".crossIcon",
+            ".close",
+            "[aria-label='Close']",
+            "button:has-text('Cancel')",
+            "a:has-text('Cancel')",
+            ".ltCont .cross",
+            ".ltLayer .crossIcon",
+        ]:
+            try:
+                btns = page.locator(sel)
+                if btns.count() > 0 and btns.first.is_visible():
+                    btns.first.click(timeout=1500, force=True)
+                    time.sleep(0.3)
+            except Exception:
+                continue
+        # Last resort: detach lightbox layers so subsequent clicks are not intercepted
+        page.evaluate(
+            """() => {
+                document.querySelectorAll('.ltLayer.open, .ltCont, .lightbox, .modal-backdrop').forEach(el => {
+                    try { el.remove(); } catch (e) {}
+                });
+                document.body && document.body.classList.remove('modal-open');
+            }"""
+        )
     except Exception:
         pass
 
