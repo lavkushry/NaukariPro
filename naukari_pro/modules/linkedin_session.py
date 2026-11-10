@@ -1238,6 +1238,7 @@ class LinkedInSessionManager:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=headless,
+                ignore_default_args=["--enable-automation"],
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
@@ -1250,61 +1251,101 @@ class LinkedInSessionManager:
                 locale="en-US",
                 timezone_id="Asia/Kolkata"
             )
+            init_res = context.add_init_script(STEALTH_JS)
+            if inspect.isawaitable(init_res):
+                await init_res
 
             page = await context.new_page()
 
             # Navigate directly to login page to avoid redirect loops on expired cookies
             login_url = "https://www.linkedin.com/login"
             try:
-                await page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
+                res_g = page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
+                if inspect.isawaitable(res_g):
+                    await res_g
             except Exception as e:
                 logger.warning("Initial navigation to %s encountered: %s", login_url, e)
                 try:
-                    await page.goto("https://www.linkedin.com/checkpoint/lg/login", wait_until="domcontentloaded", timeout=30000)
+                    res_g2 = page.goto("https://www.linkedin.com/checkpoint/lg/login", wait_until="domcontentloaded", timeout=30000)
+                    if inspect.isawaitable(res_g2):
+                        await res_g2
                 except Exception:
                     pass
 
             candidate_email = os.getenv("LINKEDIN_EMAIL") or os.getenv("CANDIDATE_EMAIL") or os.getenv("NAUKRI_EMAIL") or "lav84095@gmail.com"
             candidate_password = os.getenv("LINKEDIN_PASSWORD")
 
-            # 1. Fill Email/Username
+            # 1. Fill Email/Username into visible input
             user_filled = False
-            user_input = None
+            user_loc = None
             try:
-                user_input = page.locator("#username, input[name='session_key'], input#session_key").first
-                if await user_input.is_visible(timeout=4000):
-                    curr_val = await user_input.input_value()
-                    if candidate_email and not curr_val:
-                        await user_input.fill(candidate_email)
-                        user_filled = True
-                    elif curr_val:
-                        user_filled = True
+                loc_user = page.locator("input[type='email'], input[autocomplete='username'], #username, input[name='session_key']")
+                all_user_res = loc_user.all()
+                all_user = await all_user_res if inspect.isawaitable(all_user_res) else (all_user_res if isinstance(all_user_res, list) else [loc_user.first])
+                for loc in all_user:
+                    vis_res = loc.is_visible()
+                    is_vis = await vis_res if inspect.isawaitable(vis_res) else vis_res
+                    if is_vis:
+                        user_loc = loc
+                        val_res = loc.input_value()
+                        curr_val = await val_res if inspect.isawaitable(val_res) else val_res
+                        if candidate_email and not curr_val:
+                            fill_res = loc.fill(candidate_email)
+                            if inspect.isawaitable(fill_res):
+                                await fill_res
+                            user_filled = True
+                            print(f"  [✓] Auto-filled username: {candidate_email}")
+                            sys.stdout.flush()
+                        elif curr_val:
+                            user_filled = True
+                        break
             except Exception as e_user:
                 logger.debug("Notice filling username: %s", e_user)
 
-            # 2. Fill Password
+            # 2. Fill Password into visible input
             pass_filled = False
-            pass_input = None
+            pass_loc = None
             try:
-                pass_input = page.locator("#password, input[name='session_password'], input#session_password").first
-                if await pass_input.is_visible(timeout=3000):
-                    curr_pass = await pass_input.input_value()
-                    if candidate_password and not curr_pass:
-                        await pass_input.fill(candidate_password)
-                        pass_filled = True
-                    elif curr_pass:
-                        pass_filled = True
+                loc_pass = page.locator("input[type='password'], input[autocomplete='current-password'], #password, input[name='session_password']")
+                all_pass_res = loc_pass.all()
+                all_pass = await all_pass_res if inspect.isawaitable(all_pass_res) else (all_pass_res if isinstance(all_pass_res, list) else [loc_pass.first])
+                for loc in all_pass:
+                    vis_res = loc.is_visible()
+                    is_vis = await vis_res if inspect.isawaitable(vis_res) else vis_res
+                    if is_vis:
+                        pass_loc = loc
+                        val_res = loc.input_value()
+                        curr_pass = await val_res if inspect.isawaitable(val_res) else val_res
+                        if candidate_password and not curr_pass:
+                            fill_res = loc.fill(candidate_password)
+                            if inspect.isawaitable(fill_res):
+                                await fill_res
+                            pass_filled = True
+                            print("  [✓] Auto-filled password")
+                            sys.stdout.flush()
+                        elif curr_pass:
+                            pass_filled = True
+                        break
             except Exception as e_pass:
                 logger.debug("Notice filling password: %s", e_pass)
 
             # 3. Submit Login Form
             if user_filled and pass_filled:
                 try:
-                    submit_btn = page.locator("button[type='submit'], button[data-id='sign-in-form__submit-btn'], button.btn__primary--large").first
-                    if await submit_btn.is_visible(timeout=2000):
-                        print("  [*] Submitting LinkedIn login credentials...")
-                        await submit_btn.click()
-                        await asyncio.sleep(2.5)
+                    loc_btn = page.locator("button:has-text('Sign in'), button[type='submit'], button[data-id='sign-in-form__submit-btn']")
+                    all_btn_res = loc_btn.all()
+                    all_btn = await all_btn_res if inspect.isawaitable(all_btn_res) else (all_btn_res if isinstance(all_btn_res, list) else [loc_btn.first])
+                    for loc in all_btn:
+                        vis_res = loc.is_visible()
+                        is_vis = await vis_res if inspect.isawaitable(vis_res) else vis_res
+                        if is_vis:
+                            print("  [*] Submitting LinkedIn login credentials...")
+                            sys.stdout.flush()
+                            clk_res = loc.click()
+                            if inspect.isawaitable(clk_res):
+                                await clk_res
+                            await asyncio.sleep(2.5)
+                            break
                 except Exception as e_sub:
                     logger.debug("Notice clicking submit: %s", e_sub)
 
@@ -1318,6 +1359,7 @@ class LinkedInSessionManager:
                 # Notice security checkpoint / 2FA
                 if ("/checkpoint" in curr_url or "/challenge" in curr_url) and not notified_challenge:
                     print("  ⚠️ LinkedIn security verification or OTP required. Please complete verification in browser window...")
+                    sys.stdout.flush()
                     notified_challenge = True
 
                 if (
