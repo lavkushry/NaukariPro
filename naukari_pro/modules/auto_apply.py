@@ -106,6 +106,22 @@ else:
     LOCATIONS = CANONICAL_LOCATIONS
 
 
+async def safe_close_tab(tab, timeout: float = 5.0):
+    """Safely closes a Playwright page or context with timeout and bypasses onbeforeunload to prevent hangs."""
+    if not tab:
+        return
+    try:
+        if hasattr(tab, "is_closed") and tab.is_closed():
+            return
+        import asyncio
+        try:
+            await asyncio.wait_for(tab.close(run_before_unload=False), timeout=timeout)
+        except TypeError:
+            await asyncio.wait_for(tab.close(), timeout=timeout)
+    except Exception:
+        pass
+
+
 def build_search_url(keyword: str, location: str, page_num: int = 1) -> str:
     """
     Constructs search query URL with freshness parameters and multi-page pagination.
@@ -1851,13 +1867,9 @@ class PlaywrightRunner:
                         evidence_path = os.path.join(WORKSPACE_DIR, "logs", f"evidence_portal_{clean_id}.png")
                         os.makedirs(os.path.dirname(evidence_path), exist_ok=True)
                         await ext_page.screenshot(path=evidence_path)
-                        await ext_page.close()
+                        await safe_close_tab(ext_page)
                     except Exception:
-                        try:
-                            if ext_page and not ext_page.is_closed():
-                                await ext_page.close()
-                        except Exception:
-                            pass
+                        await safe_close_tab(ext_page)
 
                 from naukari_pro.modules.career_portals import CareerPortalManager
                 cpm = CareerPortalManager()
@@ -1959,7 +1971,7 @@ class PlaywrightRunner:
             sync_dual_log(title=title, company=company, platform="naukri", status="FAILED_FORM_ERROR", match_score=match_score, job_url=job_url, error_reason=str(e))
             return False, str(e)
         finally:
-            await job_tab.close()
+            await safe_close_tab(job_tab)
 
     async def harvest_recommended_jobs_async(self, context, page, limit, total_applied=0, proxy=None):
         """
@@ -2076,10 +2088,7 @@ class PlaywrightRunner:
                     except Exception:
                         pass
                     finally:
-                        try:
-                            await detail_tab.close()
-                        except Exception:
-                            pass
+                        await safe_close_tab(detail_tab)
 
                 if not is_universal and not is_match:
                     print(f"  ⛔ Skipped Recommended: {title} @ {comp} ({match_reason})")
@@ -2201,10 +2210,7 @@ class PlaywrightRunner:
                     except Exception:
                         pass
                     finally:
-                        try:
-                            await detail_tab.close()
-                        except Exception:
-                            pass
+                        await safe_close_tab(detail_tab)
 
                 if not is_universal and not is_match:
                     print(f"  ⛔ Skipped NVite: {title} @ {comp} ({match_reason})")
@@ -2451,10 +2457,7 @@ class PlaywrightRunner:
                                         except Exception:
                                             pass
                                         finally:
-                                            try:
-                                                await detail_tab.close()
-                                            except Exception:
-                                                pass
+                                            await safe_close_tab(detail_tab)
 
                                     # Match Scoring Gate (>= 70%) (Feature 10 - legacy mode only)
                                     if not is_universal and not is_match:
@@ -2485,10 +2488,7 @@ class PlaywrightRunner:
                             except Exception as e:
                                 print(f"Search warning: {e}")
 
-                try:
-                    await context.close()
-                except Exception:
-                    pass
+                await safe_close_tab(context)
                 return total_applied
         finally:
             try:
