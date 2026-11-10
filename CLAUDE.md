@@ -6,6 +6,10 @@ Before reviewing, generating, or editing any file in this workspace, read and fo
 
 Do not copy or restate the complete contents of `AGENTS.md` in this file or another document. When instructions conflict, follow the user's current request first, then `AGENTS.md`, then this compatibility file.
 
+## Skills + Markdown Router
+
+For world-top skills, multi-agent entrypoints, and which markdown to open by task, follow [`docs/AGENT_MARKDOWN_MAP.md`](docs/AGENT_MARKDOWN_MAP.md). Restore project skills with `./scripts/setup_agent_skills.sh`.
+
 ## Candidate Integrity
 
 - Preserve the role titles, employers, and dates recorded in `AGENTS.md` Section 9.
@@ -54,6 +58,10 @@ Before delivering a resume or resume-source change, confirm:
 When working on the `naukari_pro/` package (not resume markdown), follow the run contract in [`playbooks/AGENTS.md`](playbooks/AGENTS.md). Runtime maps: [`playbooks/GROKBOT.md`](playbooks/GROKBOT.md), [`playbooks/MUSE.md`](playbooks/MUSE.md), [`playbooks/ANTIGRAVITY.md`](playbooks/ANTIGRAVITY.md). MCP: `python -m naukari_pro.mcp.server`. Resume content rules in root `AGENTS.md` still govern candidate facts.
 
 ## Changelog
+
+### November 8, 2026
+
+- Pointed Claude Code / Cursor at `docs/AGENT_MARKDOWN_MAP.md` and project skill restore.
 
 ### November 5, 2026
 

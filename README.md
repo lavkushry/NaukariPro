@@ -204,6 +204,33 @@ Install the included background agent to run `./naukariPro daily` automatically 
 
 ---
 
+## 🤖 Agent Setup (skills + markdown)
+
+This repo is wired for Cursor, Claude Code, Codex, Gemini-class agents, Copilot, and NaukariPro playbooks.
+
+| Piece | Path |
+|:---|:---|
+| Canonical policy | [`AGENTS.md`](AGENTS.md) |
+| Skills + docs router | [`docs/AGENT_MARKDOWN_MAP.md`](docs/AGENT_MARKDOWN_MAP.md) |
+| Pinned world-top skills | [`skills-lock.json`](skills-lock.json) → `.agents/skills/` (213 skills) |
+| Claude / Cursor pointer | [`CLAUDE.md`](CLAUDE.md) |
+| Gemini pointer | [`GEMINI.md`](GEMINI.md) |
+| Cursor always-on rule | [`.cursor/rules/workspace.mdc`](.cursor/rules/workspace.mdc) |
+| NaukariPro run contract | [`playbooks/AGENTS.md`](playbooks/AGENTS.md) |
+
+```bash
+# After clone: restore project skills from the lockfile
+./scripts/setup_agent_skills.sh
+
+# Or manually
+npx skills experimental_install
+npx skills list -p
+```
+
+Browse more skills: [skills.sh](https://skills.sh/)
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).

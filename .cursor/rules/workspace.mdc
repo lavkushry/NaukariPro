@@ -1,0 +1,13 @@
+---
+description: Resume + NaukariPro workspace agent policy and markdown/skills routing
+alwaysApply: true
+---
+
+# Workspace agent rule
+
+- Canonical policy: read and follow root `AGENTS.md` before resume or candidate-fact edits.
+- Conflict order: user request → `AGENTS.md` → `CLAUDE.md` / this rule.
+- Task docs + world-top skills index: `docs/AGENT_MARKDOWN_MAP.md`.
+- NaukariPro package work: `playbooks/AGENTS.md` (dry-run apply until human approval).
+- Project skills live in `.agents/skills/` (pinned by `skills-lock.json`). Restore with `npx skills experimental_install`.
+- Never invent candidate facts, metrics, employers, or dates.

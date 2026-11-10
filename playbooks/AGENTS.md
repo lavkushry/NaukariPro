@@ -2,6 +2,7 @@
 
 > Use this playbook from **any** AI runtime (Grok Bot, Muse, Antigravity, Claude Code, Cursor, Codex).
 > Runtime-specific tool names: see sibling files `GROKBOT.md`, `MUSE.md`, `ANTIGRAVITY.md`, `CLAUDE.md` (NaukariPro section).
+> Workspace skills + full markdown router: [`../docs/AGENT_MARKDOWN_MAP.md`](../docs/AGENT_MARKDOWN_MAP.md). Candidate facts still come from root [`../AGENTS.md`](../AGENTS.md).
 
 ## North star
 
@@ -42,6 +43,10 @@ Tools: `search_jobs`, `get_job`, `score_job`, `tailor_resume`, `draft_answers`, 
 Set `AI_GATEWAY_DEFAULT_PROVIDER` or edit `config/ai_gateway.yml` (`groq` | `openai` | `gemini` | `xai` | `anthropic` | `ollama` | …).
 
 ## Changelog
+
+### November 8, 2026
+
+- Linked shared skills/markdown map for multi-runtime project use.
 
 ### November 5, 2026
 

@@ -46,6 +46,12 @@ class TestRoleGuard:
         ("Dot Net Developer - Bangalore", "Veetechnologies"),
         ("Fullstack Developer", "Deloitte Shared Services India"),
         ("Java Developer", "Generic IT Services"),
+        ("Senior Qa Automation Test Engineer", "EY"),
+        ("Dot Net Fullstack Developer", "BriskWin IT"),
+        ("Java + Kafka Developer", "Tata Consultancy Services"),
+        ("Braze Architect", "Wipro"),
+        ("Senior Associate - Speech Analytics", "Bread Financial"),
+        ("Node.js Developer with AWS/Azure - Pune", "Infosys"),
     ])
     def test_non_data_roles_strictly_rejected(self, title, company):
         ok, reason = is_strictly_data_or_cloud_role(title, "", company=company)

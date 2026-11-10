@@ -3,8 +3,22 @@
 > **Workspace:** /Users/lavkushkumar/Desktop/Resume  
 > **Target Roles:** MLOps Engineer, ML Platform Engineer, AI Infrastructure Engineer, DevOps for AI (2+ YOE)  
 > **Target Companies:** Google, Amazon, Microsoft, Uber, Atlassian, Flipkart, Razorpay, Salesforce, Adobe, LinkedIn, Databricks, NVIDIA  
-> **Last Updated:** June 29, 2026  
+> **Last Updated:** November 8, 2026  
 > **Governed by:** Deep research from 50+ public JDs, Stanford/Harvard career services, ATS documentation, MLOps Community
+
+---
+
+## 0. Skills, Agents & Markdown Map
+
+Before deep work, open [`docs/AGENT_MARKDOWN_MAP.md`](docs/AGENT_MARKDOWN_MAP.md). It routes:
+
+- **World-top skills** pinned by `skills-lock.json` (213 skills from skills.sh leaderboard packs) into `.agents/skills/`
+- **Runtime entrypoints**: `CLAUDE.md`, `GEMINI.md`, `.cursor/rules/workspace.mdc`, `.github/copilot-instructions.md`, `playbooks/*`
+- **Task markdown** (resume fact matrix, NaukariPro reports, ATS guides) without copying this file
+
+Restore skills after clone: `./scripts/setup_agent_skills.sh` or `npx skills experimental_install`.
+
+Skills **supplement** this policy. They never override the user request or Sections 1–9 below.
 
 ---
 
@@ -190,6 +204,10 @@ Before finalizing any document, verify:
 | File | Purpose |
 |:---|:---|
 | `AGENTS.md` | THIS FILE — rules for all AI agents |
+| `docs/AGENT_MARKDOWN_MAP.md` | Skills + agents + markdown router (load by task) |
+| `skills-lock.json` | Pinned world-top skill packs for this project |
+| `CLAUDE.md` / `GEMINI.md` | Thin runtime pointers into this file + the map |
+| `playbooks/AGENTS.md` | NaukariPro v2 run contract (any runtime) |
 | `COMPLETE_RESUME_STRATEGY_MASTERBUNDLE.md` | Master strategy guide (21 sections) |
 | `MLOPS_2YOE_RESUME_BLUEPRINT.md` | Actionable resume blueprint with sample resume |
 | `How_to_Write_MLOps_Project_Points.md` | Project bullet writing guide with transformations |
@@ -202,6 +220,12 @@ Before finalizing any document, verify:
 ---
 
 ## Changelog
+
+### Update: November 8, 2026
+
+- Added §0 Skills / Agents / Markdown Map pointer to `docs/AGENT_MARKDOWN_MAP.md`.
+- Pinned world-top skills via `skills-lock.json` + `.agents/skills/` for project-local agent use.
+- Extended workspace file guide with agent entrypoints and the markdown map.
 
 ### Update: June 29, 2026
 

@@ -53,12 +53,25 @@ FORBIDDEN_ROLE_KEYWORDS = (
     "sales executive", "business development", "bde", "telesales",
     "real estate", "digital marketing", "seo specialist", "content writer",
     "copywriter", "social media", "inside sales", "field sales", "pre-sales",
-    # Pure Frontend, Mobile & Design (unless data engineering explicitly in title)
-    "front end developer", "frontend developer", "react developer",
-    "angular developer", "vue developer", "ios developer", "android developer", "flutter developer",
-    "ui/ux", "graphic designer", "webmaster",
-    # Manual QA & Non-automation Testing
+    # QA, Automation Testing & SDET
+    "qa", "qa engineer", "qa analyst", "qa lead", "qa manager", "qa automation",
+    "quality assurance", "test engineer", "automation tester", "automation test",
+    "automation testing", "automation engineer", "sdet", "tester", "testing",
+    "software test", "software testing", "test analyst", "test lead",
     "manual tester", "manual qa", "qa manual", "functional tester",
+    # Non-Data Software, Web & Mobile Development
+    "full stack", "fullstack", "full-stack", "dot net", ".net", "dotnet", "c#", "asp.net",
+    "node.js", "nodejs", "react", "react.js", "reactjs", "angular", "vue", "vue.js",
+    "front end developer", "frontend developer", "front-end developer",
+    "backend developer", "back end developer", "java developer", "java +", "java/j2ee", "j2ee",
+    "golang developer", "go developer", "php developer", "php", "ruby developer", "ruby on rails",
+    "android developer", "android engineer", "ios developer", "ios engineer", "mobile developer", "mobile app",
+    "ui/ux", "graphic designer", "webmaster", "web developer", "ui developer",
+    "wordpress", "magento", "drupal", "shopify",
+    # Non-Data Enterprise / Domain Architectures & Solutions
+    "braze", "speech analytics", "audio engineer", "speech engineer",
+    "crm developer", "crm architect", "salesforce developer", "salesforce architect",
+    "pega", "guidewire", "workday consultant", "servicenow developer",
     # Generic Fresher / Non-tech bulk hiring
     "bca freshers", "bsc freshers", "mca freshers", "freshers hiring",
     "hiring for bca", "hiring freshers", "freshers",
@@ -134,8 +147,12 @@ def is_strictly_data_or_cloud_role(
 
     # 1. Hard Exclusion Gate: Blacklisted keywords in title
     for forbidden in FORBIDDEN_ROLE_KEYWORDS:
-        if forbidden in title_clean:
-            return False, f"Rejected: Non-data role detected in title ('{forbidden}')"
+        if len(forbidden) <= 4 or forbidden.startswith(".") or forbidden.startswith("c#"):
+            if re.search(rf"(?:\b|^|\s){re.escape(forbidden)}(?:\b|$|\s)", title_clean):
+                return False, f"Rejected: Non-data role detected in title ('{forbidden}')"
+        else:
+            if forbidden in title_clean:
+                return False, f"Rejected: Non-data role detected in title ('{forbidden}')"
 
     # 2. Positive Target Role Check in title
     has_target = any(target in title_clean for target in TARGET_ROLE_KEYWORDS) or bool(re.search(r"\bde\b", title_clean))
@@ -149,22 +166,21 @@ def is_strictly_data_or_cloud_role(
     if score is not None and score >= 70.0:
         return True, f"Role verified by high technical competency match score ({score}%)"
 
-    # 4. Secondary Evaluation for General Tech Titles (e.g., Software Engineer, Python Developer, Backend Developer)
+    # 4. Secondary Evaluation for General Tech Titles (Strictly Software / Systems Engineer with Data Focus)
     general_tech_titles = (
-        "software engineer", "software developer", "backend engineer", "backend developer",
-        "python developer", "systems engineer", "cloud associate", "consultant", "analyst",
-        "member of technical staff", "mts", "member technical staff", "specialist",
-        "developer", "engineer", "architect", "lead", "associate"
+        "software engineer", "software developer", "backend engineer",
+        "systems engineer", "member of technical staff", "mts", "member technical staff"
     )
 
     is_general_tech = any(gt in title_clean for gt in general_tech_titles)
     combined_text = f"{title_clean} {jd_clean}".strip()
 
-    has_competency = any(comp in combined_text for comp in COMPETENCY_KEYWORDS)
+    # Must contain at least 2 candidate technical data/cloud platform competencies
+    matched_competencies = [comp for comp in COMPETENCY_KEYWORDS if comp in combined_text]
 
-    if is_general_tech and has_competency:
-        if score is not None and score < 20.0:
-            return False, f"Rejected: Match score {score}% is below candidate competency floor (20%)"
+    if is_general_tech and len(matched_competencies) >= 2:
+        if score is not None and score < 50.0:
+            return False, f"Rejected: Match score {score}% is below candidate competency floor (50%) for general tech title"
         return True, "Role supported by technical data/cloud competencies"
 
     # If neither title matches target domain nor general tech with verified competencies:

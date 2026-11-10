@@ -110,8 +110,10 @@ scroll_*.py
 ~$*.docx
 ~$*.xlsx
 
-# Subagent internal scratch directories
+# Agent local trees (restore skills via skills-lock.json + scripts/setup_agent_skills.sh)
 .agents/
+.claude/skills/
+.cursor/skills
 
 # Backup files
 *.bak
