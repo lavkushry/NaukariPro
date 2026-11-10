@@ -272,8 +272,27 @@ class ProAutoPilotEngine:
                 print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (no li_at / residential proxy).")
                 li_stats = {"discovered": 0, "applied": 0, "status": "MAC_HOST_REQUIRED"}
             elif not li_session_valid:
-                print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
-                li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
+                if sys.platform == "darwin":
+                    print("  [!] LinkedIn session expired or requires renewal. Triggering automatic login...")
+                    auth_res = self.li_session_manager.interactive_login(timeout_seconds=180, headless=False)
+                    if auth_res.get("status") == "VALID":
+                        li_session_valid = True
+                        print("  [✓] LinkedIn session renewed! Proceeding with live Easy Apply...")
+                        li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
+                            limit=self.limit_linkedin,
+                            dry_run=False,
+                            headless=self.headless,
+                            universal_apply=self.universal_apply
+                        ))
+                        applied_linkedin = li_stats.get("applied", 0)
+                        status = li_stats.get("status")
+                        print(f"  [✓] LinkedIn Live Easy Apply completed: {applied_linkedin} applications submitted (Status: {status or 'IDLE'}).")
+                    else:
+                        print(f"  [!] LinkedIn authentication failed: {auth_res.get('detail', 'Timeout')}")
+                        li_stats = {"discovered": 0, "applied": 0, "status": "LOGIN_FAILED"}
+                else:
+                    print("  [!] LinkedIn live auto-apply paused: li_at cookie refresh required.")
+                    li_stats = {"discovered": 0, "applied": 0, "status": "COOKIE_REFRESH_REQUIRED"}
             else:
                 li_stats = asyncio.run(self.li_apply_engine.run_apply_cycle(
                     limit=self.limit_linkedin,

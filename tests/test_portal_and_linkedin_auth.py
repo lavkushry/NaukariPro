@@ -162,3 +162,153 @@ def test_hard_stop_2_expired_job_detection():
 
     if os.path.exists(tf_path):
         os.remove(tf_path)
+
+
+def test_interactive_login_async_autofill_and_persist():
+    import asyncio
+    async def _test():
+        with tempfile.TemporaryDirectory() as td:
+            cookie_file = os.path.join(td, "session_cookies.json")
+            env_file = os.path.join(td, ".env")
+            with open(env_file, "w") as f:
+                f.write('EXISTING="yes"\n')
+
+            with patch("naukari_pro.modules.linkedin_session.WORKSPACE_DIR", td), \
+                 patch.dict(os.environ, {"LINKEDIN_EMAIL": "test@example.com", "LINKEDIN_PASSWORD": "SecretPassword123"}):
+
+                mgr = LinkedInSessionManager(cookie_path=cookie_file)
+
+                # Mock Async Playwright components
+                mock_user_input = MagicMock()
+                mock_user_input.is_visible = MagicMock(return_value=True)
+                mock_user_input.input_value = MagicMock(return_value="")
+                mock_user_input.fill = MagicMock()
+
+                async def async_ret(val):
+                    return val
+
+                mock_user_input.is_visible = lambda timeout=None: async_ret(True)
+                mock_user_input.input_value = lambda: async_ret("")
+                mock_user_input.fill = lambda val: async_ret(None)
+
+                mock_pass_input = MagicMock()
+                mock_pass_input.is_visible = lambda timeout=None: async_ret(True)
+                mock_pass_input.input_value = lambda: async_ret("")
+                mock_pass_input.fill = lambda val: async_ret(None)
+
+                mock_submit_btn = MagicMock()
+                mock_submit_btn.is_visible = lambda timeout=None: async_ret(True)
+                mock_submit_btn.click = lambda: async_ret(None)
+
+                mock_nav = MagicMock()
+                mock_nav.count = lambda: async_ret(1)
+
+                def mock_locator(selector):
+                    if "#username" in selector or "session_key" in selector:
+                        return MagicMock(first=mock_user_input)
+                    elif "#password" in selector or "session_password" in selector:
+                        return MagicMock(first=mock_pass_input)
+                    elif "button[type='submit']" in selector or "sign-in-form__submit-btn" in selector:
+                        return MagicMock(first=mock_submit_btn)
+                    elif ".global-nav" in selector:
+                        return MagicMock(first=mock_nav)
+                    return MagicMock(first=MagicMock(count=lambda: async_ret(0), is_visible=lambda: async_ret(False)))
+
+                mock_page = MagicMock()
+                mock_page.goto = lambda url, **kwargs: async_ret(None)
+                mock_page.locator = mock_locator
+                mock_page.url = "https://www.linkedin.com/feed/"
+
+                mock_context = MagicMock()
+                mock_context.new_page = lambda: async_ret(mock_page)
+                mock_context.cookies = lambda urls: async_ret([
+                    {"name": "li_at", "value": "AQED_NEW_FRESH_TOKEN_999"},
+                    {"name": "JSESSIONID", "value": "ajax:99999"}
+                ])
+
+                mock_browser = MagicMock()
+                mock_browser.new_context = lambda **kwargs: async_ret(mock_context)
+                mock_browser.close = lambda: async_ret(None)
+
+                mock_playwright = MagicMock()
+                mock_playwright.chromium.launch = lambda **kwargs: async_ret(mock_browser)
+
+                class MockAsyncPWContext:
+                    async def __aenter__(self):
+                        return mock_playwright
+                    async def __aexit__(self, exc_type, exc_val, exc_tb):
+                        pass
+
+                with patch("playwright.async_api.async_playwright", return_value=MockAsyncPWContext()):
+                    res = await mgr.interactive_login_async(timeout_seconds=5, headless=True)
+
+                assert res["status"] == "VALID"
+                assert res["authenticated"] is True
+                assert res["li_at"] == "AQED_NEW_FRESH_TOKEN_999"
+
+                # Verify saved cookies
+                assert os.path.exists(cookie_file)
+                # Verify .env updated
+                with open(env_file) as f:
+                    env_text = f.read()
+                assert "AQED_NEW_FRESH_TOKEN_999" in env_text
+
+    asyncio.run(_test())
+
+
+def test_run_apply_cycle_auto_login_on_expired_token():
+    import asyncio
+    async def _test():
+        from naukari_pro.modules.linkedin_apply import LinkedInApplyEngine
+
+        mock_session_mgr = MagicMock()
+        # 1st verify -> EXPIRED, 2nd verify (after login) -> VALID
+        verify_results = [
+            {"status": "EXPIRED", "authenticated": False, "detail": "Session cookie rejected"},
+            {"status": "VALID", "authenticated": True, "candidate_name": "Lavkush Kumar"}
+        ]
+        async def mock_verify(page, raise_for_status=False):
+            return verify_results.pop(0) if verify_results else {"status": "VALID", "authenticated": True}
+
+        mock_session_mgr.verify_session = mock_verify
+
+        async def mock_interactive_login(timeout_seconds=180, headless=False):
+            return {"status": "VALID", "authenticated": True, "li_at": "AQED_FRESH_123"}
+
+        mock_session_mgr.interactive_login_async = mock_interactive_login
+
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock.release.return_value = None
+        mock_session_mgr.get_lock.return_value = mock_lock
+
+        mock_page = MagicMock()
+        mock_context = MagicMock()
+        mock_context.pages = [mock_page]
+
+        async def async_ret(val=None):
+            return val
+
+        mock_context.close = lambda: async_ret(None)
+        mock_session_mgr.create_stealth_context = lambda p, headless=True: async_ret(mock_context)
+
+        mock_search = MagicMock()
+        mock_search.search_jobs = lambda **kwargs: async_ret([])
+
+        engine = LinkedInApplyEngine(session_manager=mock_session_mgr, search_engine=mock_search)
+
+        class MockAsyncPW:
+            async def __aenter__(self):
+                return MagicMock()
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                pass
+
+        with patch("playwright.async_api.async_playwright", return_value=MockAsyncPW()), \
+             patch("sys.platform", "darwin"):
+            stats = await engine.run_apply_cycle(limit=5, dry_run=False, headless=True)
+
+        # Successfully renewed and ran discovery without halting on EXPIRED
+        assert stats["status"] != "FAILED"
+        assert stats["discovered"] == 0
+
+    asyncio.run(_test())

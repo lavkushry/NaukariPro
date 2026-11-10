@@ -592,10 +592,25 @@ class LinkedInApplyEngine:
                     # 1. Verify session freshness
                     diag = await self.session_manager.verify_session(page, raise_for_status=False)
                     if diag.get("status") != "VALID":
-                        logger.error("Session verification failed: %s", diag.get("status"))
-                        stats["status"] = diag.get("status", "FAILED")
-                        stats["detail"] = diag.get("detail", "")
-                        return stats
+                        if diag.get("status") in ("EXPIRED", "COOKIE_REFRESH_REQUIRED", "COOKIE_MISSING", "UNKNOWN") and sys.platform == "darwin":
+                            logger.info("LinkedIn session status '%s'. Launching interactive login & renewal...", diag.get("status"))
+                            print(f"\n[!] LinkedIn session is {diag.get('status')}. Initiating browser login & session renewal...")
+                            try:
+                                await context.close()
+                            except Exception:
+                                pass
+                            auth_res = await self.session_manager.interactive_login_async(timeout_seconds=180, headless=False)
+                            if auth_res.get("status") == "VALID":
+                                print("  [✓] Login successful! Reconnecting stealth session context...")
+                                context = await self.session_manager.create_stealth_context(p, headless=headless)
+                                page = context.pages[0] if (hasattr(context, "pages") and context.pages) else await context.new_page()
+                                diag = await self.session_manager.verify_session(page, raise_for_status=False)
+
+                        if diag.get("status") != "VALID":
+                            logger.error("Session verification failed: %s", diag.get("status"))
+                            stats["status"] = diag.get("status", "FAILED")
+                            stats["detail"] = diag.get("detail", "")
+                            return stats
 
                     logger.info("Session verified for '%s'. Beginning precision job discovery...", diag.get("candidate_name"))
 

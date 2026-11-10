@@ -122,16 +122,17 @@ async def safe_close_tab(tab, timeout: float = 5.0):
         pass
 
 
-def build_search_url(keyword: str, location: str, page_num: int = 1) -> str:
+def build_search_url(keyword: str, location: str, page_num: int = 1, job_age: int = 1) -> str:
     """
     Constructs search query URL with freshness parameters and multi-page pagination.
-    experience={EXPERIENCE_PARAM}&jobAge=1&freshness=1&sortBy=date&sortType=1
+    experience={EXPERIENCE_PARAM}&jobAge={job_age}&freshness={1 if job_age == 1 else 0}&sortBy=date&sortType=1
     """
     slug = "-".join(keyword.lower().split())
     loc = location.lower().strip()
     page_suffix = f"-{page_num}" if page_num > 1 else ""
     page_query = f"&pageNo={page_num}" if page_num > 1 else ""
-    return f"https://www.naukri.com/{slug}-jobs-in-{loc}{page_suffix}?experience={EXPERIENCE_PARAM}&jobAge=1&freshness=1&sortBy=date&sortType=1{page_query}"
+    fresh_param = "&freshness=1" if job_age == 1 else ""
+    return f"https://www.naukri.com/{slug}-jobs-in-{loc}{page_suffix}?experience={EXPERIENCE_PARAM}&jobAge={job_age}{fresh_param}&sortBy=date&sortType=1{page_query}"
 
 
 SCREENING_RADIO_JS = r"""(qText) => {
@@ -1451,18 +1452,21 @@ class NativeChromeRunner:
         """
 
         search_locs = LOCATIONS if LOCATIONS else CANONICAL_LOCATIONS
-        for loc in search_locs:
+        for job_age in (1, 7):
             if total_applied >= limit:
                 break
-            for kw in DEFAULT_KEYWORDS:
+            for loc in search_locs:
                 if total_applied >= limit:
                     break
-
-                for page_num in range(1, 4):
+                for kw in DEFAULT_KEYWORDS:
                     if total_applied >= limit:
                         break
 
-                    url = build_search_url(kw, loc, page_num)
+                    for page_num in range(1, 4):
+                        if total_applied >= limit:
+                            break
+
+                        url = build_search_url(kw, loc, page_num, job_age=job_age)
                     print(f"\n[*] Scanning keyword: '{kw}' ({loc}, page {page_num}) -> {url}")
 
                     jobs_raw = self.exec_js_in_tab(url, search_js, wait_sec=4)
@@ -2340,18 +2344,21 @@ class PlaywrightRunner:
                 print("  🔍 [PHASE 3] Scanning Freshness-Sorted Search Results...")
                 print("-" * 65)
                 search_locs = LOCATIONS if LOCATIONS else CANONICAL_LOCATIONS
-                for loc in search_locs:
+                for job_age in (1, 7):
                     if total_applied >= limit:
                         break
-                    for kw in DEFAULT_KEYWORDS:
+                    for loc in search_locs:
                         if total_applied >= limit:
                             break
-
-                        for page_num in range(1, 4):
+                        for kw in DEFAULT_KEYWORDS:
                             if total_applied >= limit:
                                 break
 
-                            url = build_search_url(kw, loc, page_num)
+                            for page_num in range(1, 4):
+                                if total_applied >= limit:
+                                    break
+
+                                url = build_search_url(kw, loc, page_num, job_age=job_age)
                             print(f"\n[*] Scanning keyword: '{kw}' ({loc}, page {page_num}) -> {url}")
 
                             try:

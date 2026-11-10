@@ -220,6 +220,24 @@ def update_env_variable(key: str, value: str, env_path: Optional[str] = None) ->
         with open(target_path, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
         os.environ[key] = value
+
+        # Automatically sync updated token to production Linux VM if SSH key is present
+        if sys.platform == "darwin":
+            ssh_key = os.path.expanduser("~/.ssh/ssh-key-2026-08-30.key")
+            if os.path.exists(ssh_key):
+                try:
+                    import subprocess
+                    val_escaped = value.replace('"', '\\"')
+                    cmd = (
+                        f'ssh -i {ssh_key} -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@130.210.19.226 '
+                        f'"if grep -q \'^{key}=\' /home/ubuntu/Resume/.env; then '
+                        f'sed -i \'s|^{key}=.*|{key}=\\\"{val_escaped}\\\"|\' /home/ubuntu/Resume/.env; '
+                        f'else echo \'{key}=\\\"{val_escaped}\\\"\' >> /home/ubuntu/Resume/.env; fi"'
+                    )
+                    subprocess.run(cmd, shell=True, timeout=8, capture_output=True)
+                except Exception:
+                    pass
+
         return True
     except Exception as e:
         logger.warning("Could not write to %s: %s", target_path, e)
@@ -1117,12 +1135,26 @@ class LinkedInSessionManager:
         }
 
     def save_session_cookies(self, cookies: List[Dict[str, Any]]) -> bool:
-        """Persists extracted browser cookies to session_cookies.json."""
+        """Persists extracted browser cookies to session_cookies.json and syncs to remote VM."""
         try:
             os.makedirs(os.path.dirname(self.cookie_path), exist_ok=True)
             with open(self.cookie_path, "w", encoding="utf-8") as f:
                 json.dump(cookies, f, indent=2)
             logger.info("Saved %d LinkedIn cookies to %s", len(cookies), self.cookie_path)
+
+            # Sync cookies to production Linux VM if SSH key is available
+            if sys.platform == "darwin":
+                ssh_key = os.path.expanduser("~/.ssh/ssh-key-2026-08-30.key")
+                if os.path.exists(ssh_key):
+                    try:
+                        import subprocess
+                        subprocess.run(
+                            f"scp -i {ssh_key} -o StrictHostKeyChecking=no -o ConnectTimeout=5 {self.cookie_path} ubuntu@130.210.19.226:/home/ubuntu/Resume/linkedin_system/session_cookies.json",
+                            shell=True, timeout=10, capture_output=True
+                        )
+                    except Exception:
+                        pass
+
             return True
         except Exception as e:
             logger.warning("Could not persist cookies to %s: %s", self.cookie_path, e)
@@ -1179,30 +1211,32 @@ class LinkedInSessionManager:
         self.save_session_cookies(cookies)
         return True
 
-    def interactive_login(self, timeout_seconds: int = 300, headless: bool = False) -> Dict[str, Any]:
+    async def interactive_login_async(self, timeout_seconds: int = 300, headless: bool = False) -> Dict[str, Any]:
         """
         Launches Playwright in headed mode allowing the candidate to log in to LinkedIn,
         complete any 2FA/SMS/email OTP or CAPTCHA, and automatically persists the fresh
         cookies (li_at, JSESSIONID, bcookie, bscookie, etc.) to:
           1. linkedin_system/session_cookies.json
           2. .env (LINKEDIN_LI_AT, LINKEDIN_JSESSIONID)
+          3. Synchronizes to production Linux VM via SSH
         """
-        from playwright.sync_api import sync_playwright
+        from playwright.async_api import async_playwright
         import time
 
         print("\n" + "=" * 74)
         print("   🌐 LINKEDIN AUTHENTICATION & SESSION SYNCHRONIZER")
         print("=" * 74)
         print("  [1] A visible browser window is opening for LinkedIn login.")
-        print("  [2] Please log in with your LinkedIn credentials.")
-        print("  [3] Complete any CAPTCHA challenge or OTP / 2-Step verification if prompted.")
+        print("  [2] Auto-filling credentials (email & password from environment)...")
+        print("  [3] If a CAPTCHA challenge or OTP / 2-Step verification is prompted,")
+        print("      please complete it in the browser window.")
         print("  [4] Once you reach your LinkedIn Feed (https://www.linkedin.com/feed/),")
         print("      naukariPro will automatically detect the active session, save all cookies,")
-        print("      and update .env!")
+        print("      and update .env & production VM!")
         print("=" * 74 + "\n")
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
                 headless=headless,
                 args=[
                     "--disable-blink-features=AutomationControlled",
@@ -1210,63 +1244,110 @@ class LinkedInSessionManager:
                     "--disable-infobars"
                 ]
             )
-            context = browser.new_context(
+            context = await browser.new_context(
                 user_agent=DEFAULT_USER_AGENT,
                 viewport={"width": 1280, "height": 800},
                 locale="en-US",
                 timezone_id="Asia/Kolkata"
             )
-            try:
-                existing = self.get_formatted_cookies()
-                if existing:
-                    context.add_cookies(existing)
-            except Exception:
-                pass
 
-            page = context.new_page()
+            page = await context.new_page()
+
+            # Navigate directly to login page to avoid redirect loops on expired cookies
+            login_url = "https://www.linkedin.com/login"
             try:
-                page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=45000)
-            except Exception:
+                await page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
+            except Exception as e:
+                logger.warning("Initial navigation to %s encountered: %s", login_url, e)
                 try:
-                    page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=45000)
+                    await page.goto("https://www.linkedin.com/checkpoint/lg/login", wait_until="domcontentloaded", timeout=30000)
                 except Exception:
                     pass
 
-            try:
-                user_input = page.locator("#username, input[name='session_key']").first
-                if user_input.is_visible() and not user_input.input_value():
-                    candidate_email = os.getenv("LINKEDIN_EMAIL") or os.getenv("NAUKRI_EMAIL") or "lav84095@gmail.com"
-                    if candidate_email:
-                        user_input.fill(candidate_email)
-            except Exception:
-                pass
+            candidate_email = os.getenv("LINKEDIN_EMAIL") or os.getenv("CANDIDATE_EMAIL") or os.getenv("NAUKRI_EMAIL") or "lav84095@gmail.com"
+            candidate_password = os.getenv("LINKEDIN_PASSWORD")
 
+            # 1. Fill Email/Username
+            user_filled = False
+            user_input = None
+            try:
+                user_input = page.locator("#username, input[name='session_key'], input#session_key").first
+                if await user_input.is_visible(timeout=4000):
+                    curr_val = await user_input.input_value()
+                    if candidate_email and not curr_val:
+                        await user_input.fill(candidate_email)
+                        user_filled = True
+                    elif curr_val:
+                        user_filled = True
+            except Exception as e_user:
+                logger.debug("Notice filling username: %s", e_user)
+
+            # 2. Fill Password
+            pass_filled = False
+            pass_input = None
+            try:
+                pass_input = page.locator("#password, input[name='session_password'], input#session_password").first
+                if await pass_input.is_visible(timeout=3000):
+                    curr_pass = await pass_input.input_value()
+                    if candidate_password and not curr_pass:
+                        await pass_input.fill(candidate_password)
+                        pass_filled = True
+                    elif curr_pass:
+                        pass_filled = True
+            except Exception as e_pass:
+                logger.debug("Notice filling password: %s", e_pass)
+
+            # 3. Submit Login Form
+            if user_filled and pass_filled:
+                try:
+                    submit_btn = page.locator("button[type='submit'], button[data-id='sign-in-form__submit-btn'], button.btn__primary--large").first
+                    if await submit_btn.is_visible(timeout=2000):
+                        print("  [*] Submitting LinkedIn login credentials...")
+                        await submit_btn.click()
+                        await asyncio.sleep(2.5)
+                except Exception as e_sub:
+                    logger.debug("Notice clicking submit: %s", e_sub)
+
+            # 4. Polling for session completion / Feed arrival
             start_time = time.time()
             authenticated = False
+            notified_challenge = False
             while time.time() - start_time < timeout_seconds:
                 curr_url = (page.url or "").lower()
-                if "/feed" in curr_url or "/in/" in curr_url:
+
+                # Notice security checkpoint / 2FA
+                if ("/checkpoint" in curr_url or "/challenge" in curr_url) and not notified_challenge:
+                    print("  ⚠️ LinkedIn security verification or OTP required. Please complete verification in browser window...")
+                    notified_challenge = True
+
+                if (
+                    ("/feed" in curr_url or "/in/" in curr_url or "/mynetwork" in curr_url or "/jobs" in curr_url)
+                    and "/login" not in curr_url
+                    and "/checkpoint" not in curr_url
+                    and "/uas/login" not in curr_url
+                    and "/authwall" not in curr_url
+                ):
                     try:
-                        nav = page.locator(".global-nav, div.feed-identity-module, [data-test-global-nav]").first
-                        if nav.count() > 0 or "/feed" in curr_url:
+                        nav = page.locator(".global-nav, div.feed-identity-module, [data-test-global-nav], .feed-identity-module__actor-meta").first
+                        if (await nav.count() > 0) or ("/feed" in curr_url):
                             authenticated = True
                             break
                     except Exception:
                         if "/feed" in curr_url:
                             authenticated = True
                             break
-                time.sleep(1.5)
+                await asyncio.sleep(1.5)
 
             if not authenticated:
-                browser.close()
+                await browser.close()
                 return {
                     "status": "TIMEOUT",
                     "authenticated": False,
                     "detail": f"Timed out waiting for login after {timeout_seconds} seconds."
                 }
 
-            time.sleep(3)
-            raw_cookies = context.cookies(["https://www.linkedin.com", "https://linkedin.com"])
+            await asyncio.sleep(2.5)
+            raw_cookies = await context.cookies(["https://www.linkedin.com", "https://linkedin.com"])
             li_at_val = None
             jsessionid_val = None
             for c in raw_cookies:
@@ -1276,7 +1357,7 @@ class LinkedInSessionManager:
                     jsessionid_val = c.get("value")
 
             if not li_at_val:
-                browser.close()
+                await browser.close()
                 return {
                     "status": "FAILED_MISSING_LI_AT",
                     "authenticated": False,
@@ -1294,15 +1375,15 @@ class LinkedInSessionManager:
             try:
                 for sel in ["div.feed-identity-module__actor-meta a span", "div.feed-identity-module__actor-meta a", "div.profile-rail-card__actor-link"]:
                     loc = page.locator(sel).first
-                    if loc.count() > 0 and loc.is_visible():
-                        txt = loc.inner_text().strip()
+                    if (await loc.count() > 0) and (await loc.is_visible()):
+                        txt = (await loc.inner_text()).strip()
                         if txt:
                             cand_name = txt
                             break
             except Exception:
                 pass
 
-            browser.close()
+            await browser.close()
 
             print("\n" + "=" * 74)
             print("   [✓] SUCCESS: LINKEDIN SESSION AUTHENTICATED & PERSISTED!")
@@ -1321,6 +1402,19 @@ class LinkedInSessionManager:
                 "li_at": li_at_val,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
+
+    def interactive_login(self, timeout_seconds: int = 300, headless: bool = False) -> Dict[str, Any]:
+        """Synchronous wrapper for interactive_login_async."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(lambda: asyncio.run(self.interactive_login_async(timeout_seconds=timeout_seconds, headless=headless))).result()
+        else:
+            return asyncio.run(self.interactive_login_async(timeout_seconds=timeout_seconds, headless=headless))
 
     async def __aenter__(self):
         self.get_lock().acquire(blocking=True)
