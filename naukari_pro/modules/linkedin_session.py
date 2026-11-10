@@ -1329,25 +1329,33 @@ class LinkedInSessionManager:
             except Exception as e_pass:
                 logger.debug("Notice filling password: %s", e_pass)
 
-            # 3. Submit Login Form
+            # 3. Submit Login Form (Pressing Enter on password field triggers native React form submission)
             if user_filled and pass_filled:
                 try:
-                    loc_btn = page.locator("button:has-text('Sign in'), button[type='submit'], button[data-id='sign-in-form__submit-btn']")
-                    all_btn_res = loc_btn.all()
-                    all_btn = await all_btn_res if inspect.isawaitable(all_btn_res) else (all_btn_res if isinstance(all_btn_res, list) else [loc_btn.first])
-                    for loc in all_btn:
-                        vis_res = loc.is_visible()
-                        is_vis = await vis_res if inspect.isawaitable(vis_res) else vis_res
-                        if is_vis:
-                            print("  [*] Submitting LinkedIn login credentials...")
-                            sys.stdout.flush()
-                            clk_res = loc.click()
-                            if inspect.isawaitable(clk_res):
-                                await clk_res
-                            await asyncio.sleep(2.5)
-                            break
+                    print("  [*] Submitting LinkedIn login credentials...")
+                    sys.stdout.flush()
+                    if pass_loc:
+                        press_res = pass_loc.press("Enter")
+                        if inspect.isawaitable(press_res):
+                            await press_res
+                    await asyncio.sleep(2.5)
                 except Exception as e_sub:
-                    logger.debug("Notice clicking submit: %s", e_sub)
+                    logger.debug("Notice submitting via Enter: %s", e_sub)
+                    try:
+                        loc_btn = page.locator("button:has-text('Sign in'), button[type='submit'], button[data-id='sign-in-form__submit-btn']")
+                        all_btn_res = loc_btn.all()
+                        all_btn = await all_btn_res if inspect.isawaitable(all_btn_res) else (all_btn_res if isinstance(all_btn_res, list) else [loc_btn.first])
+                        for loc in all_btn:
+                            vis_res = loc.is_visible()
+                            is_vis = await vis_res if inspect.isawaitable(vis_res) else vis_res
+                            if is_vis:
+                                clk_res = loc.click()
+                                if inspect.isawaitable(clk_res):
+                                    await clk_res
+                                await asyncio.sleep(2.5)
+                                break
+                    except Exception:
+                        pass
 
             # 4. Polling for session completion / Feed arrival
             start_time = time.time()
@@ -1358,7 +1366,10 @@ class LinkedInSessionManager:
 
                 # Notice security checkpoint / 2FA
                 if ("/checkpoint" in curr_url or "/challenge" in curr_url) and not notified_challenge:
-                    print("  ⚠️ LinkedIn security verification or OTP required. Please complete verification in browser window...")
+                    print("\n  📲 [ACTION REQUIRED] LinkedIn Security Verification / 2FA Challenge active!")
+                    print("     • If prompt asks to check your LinkedIn App: Open your phone and tap 'YES'.")
+                    print("     • If prompt asks for an Email/SMS Code: Type the code in the browser window.")
+                    print("     • If a puzzle appears: Solve the puzzle in the browser window.")
                     sys.stdout.flush()
                     notified_challenge = True
 
