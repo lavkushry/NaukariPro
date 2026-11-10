@@ -116,7 +116,8 @@ TARGET_ROLE_KEYWORDS = (
 COMPETENCY_KEYWORDS = (
     "azure", "databricks", "spark", "pyspark", "delta lake", "lakehouse",
     "fabric", "synapse", "snowflake", "etl", "data pipeline", "kafka",
-    "devops", "mlops", "kubernetes", "docker", "terraform", "sql", "big data"
+    "devops", "mlops", "kubernetes", "docker", "terraform", "sql", "big data",
+    "ai/ml", "machine learning", "python"
 )
 
 
@@ -155,7 +156,11 @@ def is_strictly_data_or_cloud_role(
                 return False, f"Rejected: Non-data role detected in title ('{forbidden}')"
 
     # 2. Positive Target Role Check in title
-    has_target = any(target in title_clean for target in TARGET_ROLE_KEYWORDS) or bool(re.search(r"\bde\b", title_clean))
+    has_target = (
+        any(target in title_clean for target in TARGET_ROLE_KEYWORDS)
+        or bool(re.search(r"\bde\b", title_clean))
+        or (bool(re.search(r"\bcloud\b", title_clean)) and bool(re.search(r"\bengineer\b", title_clean)))
+    )
     if has_target:
         # Even with target title, zero-score check if score is explicitly 0.0 with empty text
         if score is not None and score <= 0.0 and not any(k in title_clean for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
@@ -169,7 +174,7 @@ def is_strictly_data_or_cloud_role(
     # 4. Secondary Evaluation for General Tech Titles (Strictly Software / Systems Engineer with Data Focus)
     general_tech_titles = (
         "software engineer", "software developer", "backend engineer",
-        "systems engineer", "member of technical staff", "mts", "member technical staff"
+        "systems engineer", "python developer", "member of technical staff", "mts", "member technical staff"
     )
 
     is_general_tech = any(gt in title_clean for gt in general_tech_titles)

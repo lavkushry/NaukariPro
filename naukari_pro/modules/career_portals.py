@@ -2970,20 +2970,10 @@ class CareerPortalFiller:
                 logger.info("Active asyncio loop detected in thread. Dispatching fill_in_chrome to dedicated worker thread...")
                 future = _PORTAL_WORKER_POOL.submit(self.fill_in_chrome, portal_url, company=company, role=role)
                 return future.result()
-            try:
-                from playwright.sync_api import sync_playwright
-                from naukari_pro.session import get_stealth_context
-                with sync_playwright() as p:
-                    context = get_stealth_context(
-                        p, headless=True, session_dir=PORTALS_SESSION_DIR, lock_timeout=120.0
-                    )
-                    page = context.pages[0] if context.pages else context.new_page()
-                    success, filled = self.fill_in_playwright(page, portal_url, company=company, role=role)
-                    context.close()
-                    return success, filled
-            except Exception as e_pw:
-                print(f"    Playwright fallback notice: {e_pw}")
-                return False, []
+            res = self.fill_in_playwright(None, portal_url, company=company, role=role)
+            if isinstance(res, (tuple, list)):
+                return bool(res[0]), list(res[1]) if len(res) > 1 else []
+            return bool(getattr(res, "success", False)), list(getattr(res, "fields", []))
 
         print(f"\n[*] Opening {ats_type} Career Portal in Chrome...")
         print(f"    URL: {portal_url}")
@@ -3382,19 +3372,19 @@ class CareerPortalFiller:
             )
             return future.result()
 
-        # Unconditional Role Guard: Never apply to non-data / non-cloud roles
-        from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-        is_role_ok, role_reason = is_strictly_data_or_cloud_role(role, raw_jd, score=match_score, company=company)
-        if not is_role_ok:
-            logger.info("CareerPortalFiller rejected non-target role: %s @ %s (%s)", role, company, role_reason)
-            return FillResult(False, [], None, status="REJECTED_NON_DATA_ROLE")
-
         # Strict Deduplication Check: Never apply to the same job again
         from naukari_pro.modules.db import is_job_already_applied
         target_db = getattr(self, "db_path", None)
         if not dry_run and is_job_already_applied(title=role, company=company, job_url=portal_url, db_path=target_db):
             print(f"  [DEDUP] Already applied to '{role}' at '{company}' ({portal_url}). Skipping strictly per rule.")
             return FillResult(False, [], None, status=FallbackReason.ALREADY_APPLIED.value)
+
+        # Unconditional Role Guard: Never apply to non-data / non-cloud roles
+        from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+        is_role_ok, role_reason = is_strictly_data_or_cloud_role(role, raw_jd, score=match_score, company=company)
+        if not is_role_ok:
+            logger.info("CareerPortalFiller rejected non-target role: %s @ %s (%s)", role, company, role_reason)
+            return FillResult(False, [], None, status="REJECTED_NON_DATA_ROLE")
 
         if dry_run:
             payload = self.fill_dry_run(
@@ -3982,7 +3972,9 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
         ("Cloudflare", "cloudflare"), ("Canonical", "canonical"), ("Elastic", "elastic"),
         ("Grafana Labs", "grafanalabs"), ("Figma", "figma"), ("Anthropic", "anthropic"),
         ("Scale AI", "scaleai"), ("Airbnb", "airbnb"), ("Pinterest", "pinterest"),
-        ("Instacart", "instacart"), ("Cockroach Labs", "cockroachlabs")
+        ("Instacart", "instacart"), ("Cockroach Labs", "cockroachlabs"),
+        ("Couchbase", "couchbase"), ("dbt Labs", "dbtlabs"), ("Confluent", "confluent"),
+        ("Snowflake", "snowflake"), ("Rubrik", "rubrik")
     ]
     per_gh_board = max(per_ats_limit, 80) if (ats_types and any("greenhouse" in a.lower() for a in ats_types)) else max(per_ats_limit // len(gh_boards), 40)
     for co_name, board_token in gh_boards:
@@ -3996,10 +3988,14 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                     if board_added >= per_gh_board:
                         break
                     title = j.get("title", "")
-                    if any(kw in title.lower() for kw in keywords):
+                    content = j.get("content") or ""
+                    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                    from naukari_pro.modules.job_alerts import calculate_match_score
+                    score = float(calculate_match_score(f"{title} {co_name}"))
+                    is_ok, _ = is_strictly_data_or_cloud_role(title, content, score=score, company=co_name)
+                    if is_ok or any(kw in title.lower() for kw in ["data engineer", "databricks", "pyspark", "azure data", "cloud data", "devops", "platform engineer", "data platform"]):
                         loc_dict = j.get("location") or {}
                         loc_name = loc_dict.get("name") if isinstance(loc_dict, dict) else (str(loc_dict) if loc_dict else None)
-                        content = j.get("content")
                         by_ats["Greenhouse"].append({
                             "company": co_name,
                             "title": title,
@@ -4017,7 +4013,7 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
     # 2. Ashby
     ashby_boards = [
         ("Sentry", "sentry"), ("Linear", "linear"), ("Ramp", "ramp"),
-        ("Supabase", "supabase")
+        ("Supabase", "supabase"), ("Postman", "postman"), ("Notion", "notion")
     ]
     per_ashby_board = max(per_ats_limit // len(ashby_boards), 15)
     for co_name, board_token in ashby_boards:
@@ -4083,35 +4079,41 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
         except Exception as e:
             logger.debug("Notice querying Workday %s: %s", co_name, e)
 
-    # 4. Lever (Spotify)
-    try:
-        url = "https://api.lever.co/v0/postings/spotify?mode=json"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            postings = r.json()
-            board_added = 0
-            for j in postings:
-                if board_added >= per_ats_limit:
-                    break
-                title = j.get("text", "")
-                if any(kw in title.lower() for kw in keywords):
-                    wpt = (j.get("workplaceType") or "").strip()
-                    loc_cat = (j.get("categories") or {}).get("location", "")
-                    loc_str = f"{loc_cat} ({wpt.capitalize()})" if wpt and loc_cat else (loc_cat or wpt or None)
-                    desc = j.get("descriptionPlain") or j.get("description") or None
-                    by_ats["Lever"].append({
-                        "company": "Spotify",
-                        "title": title,
-                        "url": j.get("hostedUrl"),
-                        "ats": "Lever",
-                        "location": loc_str,
-                        "exp": None,
-                        "salary": None,
-                        "jd": desc,
-                    })
-                    board_added += 1
-    except Exception as e:
-        logger.debug("Notice querying Lever: %s", e)
+    # 4. Lever (Spotify, Palantir, Brex, Deliveroo)
+    lever_boards = [("Spotify", "spotify"), ("Palantir", "palantir"), ("Brex", "brex"), ("Deliveroo", "deliveroo")]
+    for co_name, board_token in lever_boards:
+        try:
+            url = f"https://api.lever.co/v0/postings/{board_token}?mode=json"
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                postings = r.json()
+                board_added = 0
+                for j in postings:
+                    if board_added >= per_ats_limit // len(lever_boards):
+                        break
+                    title = j.get("text", "")
+                    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                    from naukari_pro.modules.job_alerts import calculate_match_score
+                    score = float(calculate_match_score(f"{title} {co_name}"))
+                    desc = j.get("descriptionPlain") or j.get("description") or ""
+                    is_ok, _ = is_strictly_data_or_cloud_role(title, desc, score=score, company=co_name)
+                    if is_ok or any(kw in title.lower() for kw in ["data engineer", "databricks", "pyspark", "azure", "devops", "platform"]):
+                        wpt = (j.get("workplaceType") or "").strip()
+                        loc_cat = (j.get("categories") or {}).get("location", "")
+                        loc_str = f"{loc_cat} ({wpt.capitalize()})" if wpt and loc_cat else (loc_cat or wpt or None)
+                        by_ats["Lever"].append({
+                            "company": co_name,
+                            "title": title,
+                            "url": j.get("hostedUrl"),
+                            "ats": "Lever",
+                            "location": loc_str,
+                            "exp": None,
+                            "salary": None,
+                            "jd": desc if desc else None,
+                        })
+                        board_added += 1
+        except Exception as e:
+            logger.debug("Notice querying Lever %s: %s", board_token, e)
 
     # Helper: Remote-first location priority
     def _location_priority(loc: Any) -> int:
@@ -4295,19 +4297,41 @@ class ExternalPortalBatchRunner:
             try:
                 from naukari_pro.aggregation.pipeline import fetch_live_normalized
                 from naukari_pro.aggregation.storage import AggregationStore
+                from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                from naukari_pro.modules.job_alerts import calculate_match_score
+                from naukari_pro.modules.db import is_job_already_applied
 
                 store = AggregationStore()
                 cached = store.list_active_jobs(limit=max(active_limit * 10, 400))
                 if cached:
-                    live_feed = [j.to_legacy_vacancy() for j in cached]
-                else:
-                    live_feed = fetch_live_normalized(limit_sources=min(30, max(active_limit, 10)))
+                    for j in cached:
+                        v = j.to_legacy_vacancy()
+                        v_title = v.get("title", "")
+                        v_company = v.get("company", "")
+                        v_url = v.get("url", "")
+                        v_jd = v.get("jd", "")
+                        score = float(calculate_match_score(f"{v_title} {v_company} {v_jd}"))
+                        is_ok, _ = is_strictly_data_or_cloud_role(v_title, v_jd, score=score, company=v_company)
+                        if is_ok and not is_job_already_applied(title=v_title, company=v_company, job_url=v_url):
+                            live_feed.append(v)
+                            if len(live_feed) >= active_limit * 2:
+                                break
             except Exception as exc:  # noqa: BLE001
                 logger.debug("aggregation feed unavailable, falling back: %s", exc)
-            if not live_feed:
-                live_feed = fetch_live_ats_vacancies(
-                    limit=max(active_limit * 10, 400), ats_types=ats_types
+
+            if len(live_feed) < active_limit:
+                more_live = fetch_live_ats_vacancies(
+                    limit=max(active_limit * 5, 50), ats_types=ats_types
                 )
+                if more_live:
+                    from naukari_pro.modules.db import is_job_already_applied
+                    for v in more_live:
+                        v_title = v.get("title", "")
+                        v_company = v.get("company", "")
+                        v_url = v.get("url", "")
+                        if not is_job_already_applied(title=v_title, company=v_company, job_url=v_url):
+                            live_feed.append(v)
+
             feed = live_feed if live_feed else list(self.curated_vacancies)
 
         # Filter by ats_types if explicitly specified

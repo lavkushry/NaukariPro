@@ -839,7 +839,7 @@ class TestAsyncioLoopWorkerIsolation:
             res2_success, res2_fields = cpm.fill(
                 portal_url="https://getambee.keka.com/careers/jobdetails/168788",
                 company="Ambee",
-                role="Sr Full Stack Engineer",
+                role="Sr Data Platform Engineer",
                 headless=True,
                 dry_run=False
             )
