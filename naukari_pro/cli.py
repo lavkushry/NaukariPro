@@ -988,11 +988,11 @@ def handle_linkedin_verify(args=None, headless: bool = True) -> int:
         print("=" * 72 + "\n")
         return 1
 
-def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min_score=70.0, keyword=None, location=None):
+def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min_score=60.0, keyword=None, location=None):
     """
     Executes autonomous LinkedIn Easy Apply workflow across target hubs and keywords.
     When dry_run=True, executes 100% offline without launching browser or opening network sockets.
-    Strictly gates jobs by score (>= 70.0%) and handles multi-step screening forms.
+    Strictly gates jobs by score (>= 60.0%) with Role Guard protection and handles multi-step screening forms.
     """
     if args:
         if hasattr(args, "limit") and args.limit is not None:
@@ -1955,7 +1955,7 @@ def main():
 
     apply_parser = subparsers.add_parser("linkedin-apply", help="Run autonomous LinkedIn Easy Apply engine across target vacancies", parents=[common_parser])
     apply_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
-    apply_parser.add_argument("--min-score", type=float, default=70.0, help="Minimum job match score cutoff (default: 70.0)")
+    apply_parser.add_argument("--min-score", type=float, default=60.0, help="Minimum job match score cutoff (default: 60.0)")
     apply_parser.add_argument("--keyword", "--keywords", dest="keyword", type=str, default=None, help="Override search keyword(s), comma-separated (e.g. 'Azure Data Engineer,Databricks')")
     apply_parser.add_argument("--location", "--locations", dest="location", type=str, default=None, help="Override search location(s), comma-separated (e.g. 'Bengaluru,Hyderabad')")
     apply_parser.set_defaults(limit=25)

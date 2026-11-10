@@ -196,6 +196,8 @@ def update_env_variable(key: str, value: str, env_path: Optional[str] = None) ->
     target_path = env_path or os.path.join(WORKSPACE_DIR, ".env")
     lines = []
     found = False
+    clean_val = str(value).strip().strip('"\'').strip()
+    val_to_write = f'"{clean_val}"'
     if os.path.exists(target_path):
         with open(target_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -206,7 +208,7 @@ def update_env_variable(key: str, value: str, env_path: Optional[str] = None) ->
     for line in lines:
         stripped = line.strip()
         if stripped.startswith(prefix1) or stripped.startswith(prefix2):
-            new_lines.append(f'{key}="{value}"\n')
+            new_lines.append(f'{key}={val_to_write}\n')
             found = True
         else:
             new_lines.append(line)
@@ -214,7 +216,7 @@ def update_env_variable(key: str, value: str, env_path: Optional[str] = None) ->
     if not found:
         if new_lines and not new_lines[-1].endswith("\n"):
             new_lines.append("\n")
-        new_lines.append(f'{key}="{value}"\n')
+        new_lines.append(f'{key}={val_to_write}\n')
 
     try:
         with open(target_path, "w", encoding="utf-8") as f:

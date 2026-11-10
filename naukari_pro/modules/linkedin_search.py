@@ -979,7 +979,8 @@ class JobMatchScorer:
         self,
         job_title: Any,
         job_description: Any,
-        candidate_skills: Optional[List[Any]] = None
+        candidate_skills: Optional[List[Any]] = None,
+        min_threshold: float = 60.0
     ) -> MatchScoreResult:
         """
         Evaluates match score for a job posting.
@@ -1117,7 +1118,7 @@ class JobMatchScorer:
         else:
             raw_total = title_score + tech_score + exp_score - penalty
             final_score = round(max(0.0, min(100.0, raw_total)), 1)
-            passed = (final_score >= 70.0)
+            passed = (final_score >= min_threshold)
 
         if not passed:
             reasons.append(f"GATE_REJECTED: Final score {final_score}% < 70.0% threshold")
@@ -1428,6 +1429,7 @@ class LinkedInJobCardParser:
         """
         Extracts full job description text from right pane or standalone job view page.
         Traverses prioritized selectors to eliminate the 55% snippet ceiling.
+        Supports both legacy ArtDeco and modern (2026) dynamic React layouts.
         """
         if not page or not hasattr(page, "locator"):
             return ""
@@ -1444,6 +1446,39 @@ class LinkedInJobCardParser:
             except Exception as e:
                 logger.debug("Error extracting JD with selector %s: %s", sel, e)
                 continue
+
+        # Modern (2026) dynamic React DOM fallback: extracts from 'About the job' container / sibling
+        if hasattr(page, "evaluate"):
+            try:
+                modern_text = await page.evaluate("""() => {
+                    const headings = Array.from(document.querySelectorAll('h2, h3, h4'));
+                    const aboutHdr = headings.find(el => {
+                        const t = (el.innerText || '').toLowerCase().trim();
+                        return t.includes('about the job') || t.includes('job description') || t.includes('about this role');
+                    });
+                    if (aboutHdr) {
+                        const parent = aboutHdr.parentElement;
+                        if (parent && parent.nextElementSibling && (parent.nextElementSibling.innerText || '').trim().length > 50) {
+                            return parent.nextElementSibling.innerText.trim();
+                        }
+                        if (parent && parent.parentElement && (parent.parentElement.innerText || '').trim().length > 50) {
+                            return parent.parentElement.innerText.trim();
+                        }
+                    }
+                    const mainEls = Array.from(document.querySelectorAll('main section, main article, div[data-view-name*="job"]'));
+                    for (const el of mainEls) {
+                        const t = (el.innerText || '').trim();
+                        if (t.length > 200 && (t.toLowerCase().includes('responsibilit') || t.toLowerCase().includes('requirement') || t.toLowerCase().includes('experience'))) {
+                            return t;
+                        }
+                    }
+                    return '';
+                }""")
+                if modern_text and len(modern_text.strip()) > 50:
+                    return modern_text.strip()
+            except Exception as e_mod:
+                logger.debug("Notice extracting modern full JD: %s", e_mod)
+
         return ""
 
     async def extract_job_id(self, card: Any, page: Optional[Any] = None) -> Optional[str]:
@@ -1675,7 +1710,7 @@ class LinkedInSearchEngine:
         card: Dict[str, Any],
         full_jd_text: str,
         candidate_skills: Optional[List[str]] = None,
-        min_match_score: float = 70.0,
+        min_match_score: float = 60.0,
     ) -> Tuple[bool, MatchScoreResult]:
         """
         Stage 2 full JD evaluation:
@@ -1686,7 +1721,8 @@ class LinkedInSearchEngine:
         res = self.scorer.evaluate(
             job_title=title,
             job_description=full_jd_text,
-            candidate_skills=candidate_skills
+            candidate_skills=candidate_skills,
+            min_threshold=min_match_score
         )
         card["full_description"] = full_jd_text
         card["stage2_match_score"] = res.score

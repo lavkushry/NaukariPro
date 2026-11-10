@@ -527,7 +527,7 @@ class LinkedInApplyEngine:
         navigator: Optional[LinkedInEasyApplyNavigator] = None,
         tracker: Optional[LinkedInApplicationTracker] = None,
         circuit_breaker: Optional[LinkedInCircuitBreaker] = None,
-        min_score: float = 70.0,
+        min_score: float = 60.0,
         universal_apply: Optional[bool] = None
     ):
         self.session_manager = session_manager or LinkedInSessionManager()
@@ -581,8 +581,8 @@ class LinkedInApplyEngine:
         }
 
         try:
-            target_keywords = keywords or DEFAULT_KEYWORDS[:3]
-            target_locations = locations or ["Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Remote"]
+            target_keywords = keywords or DEFAULT_KEYWORDS[:4]
+            target_locations = locations or ["India", "Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Remote"]
 
             async with async_playwright() as p:
                 context = await self.session_manager.create_stealth_context(p, headless=headless)
@@ -592,7 +592,13 @@ class LinkedInApplyEngine:
                     # 1. Verify session freshness
                     diag = await self.session_manager.verify_session(page, raise_for_status=False)
                     if diag.get("status") != "VALID":
-                        if diag.get("status") in ("EXPIRED", "COOKIE_REFRESH_REQUIRED", "COOKIE_MISSING", "UNKNOWN") and sys.platform == "darwin":
+                        is_interactive_env = (
+                            sys.platform == "darwin"
+                            and not dry_run
+                            and (sys.stdin.isatty() or os.getenv("INTERACTIVE_LOGIN") == "1")
+                            and not os.getenv("PYTEST_CURRENT_TEST")
+                        )
+                        if diag.get("status") in ("EXPIRED", "COOKIE_REFRESH_REQUIRED", "COOKIE_MISSING", "UNKNOWN") and is_interactive_env:
                             logger.info("LinkedIn session status '%s'. Launching interactive login & renewal...", diag.get("status"))
                             print(f"\n[!] LinkedIn session is {diag.get('status')}. Initiating browser login & session renewal...")
                             try:
@@ -772,30 +778,32 @@ class LinkedInApplyEngine:
                                             stage2_passed, score_res = self.search_engine.evaluate_stage2_jd(
                                                 job,
                                                 full_jd_text,
-                                                min_match_score=self.min_score
+                                                min_match_score=active_min_score
                                             )
                                         except Exception as e_eval:
                                             logger.debug("Notice evaluating stage2 JD via search_engine: %s", e_eval)
                                             score_res = self.scorer.evaluate(
                                                 job_title=job.get("title", ""),
-                                                job_description=full_jd_text or job.get("raw_snippet", "")
+                                                job_description=full_jd_text or job.get("raw_snippet", ""),
+                                                min_threshold=active_min_score
                                             )
-                                            stage2_passed = score_res.passed and score_res.score >= self.min_score
+                                            stage2_passed = score_res.score >= active_min_score
                                             job["stage2_passed"] = stage2_passed
                                             job["match_score"] = score_res.score
                                     else:
                                         score_res = self.scorer.evaluate(
                                             job_title=job.get("title", ""),
-                                            job_description=full_jd_text or job.get("raw_snippet", "")
+                                            job_description=full_jd_text or job.get("raw_snippet", ""),
+                                            min_threshold=active_min_score
                                         )
-                                        stage2_passed = score_res.passed and score_res.score >= self.min_score
+                                        stage2_passed = score_res.score >= active_min_score
                                         job["stage2_passed"] = stage2_passed
                                         job["match_score"] = score_res.score
 
                                     if not is_universal and not stage2_passed:
                                         logger.info(
                                             "Job %s ('%s') gated out at Stage 2: full JD score %.1f%% < %.1f%%",
-                                            job_id, job.get("title"), getattr(score_res, "score", 0.0), self.min_score
+                                            job_id, job.get("title"), getattr(score_res, "score", 0.0), active_min_score
                                         )
                                         stats["skipped"] += 1
                                         continue

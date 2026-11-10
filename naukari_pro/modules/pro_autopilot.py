@@ -272,7 +272,13 @@ class ProAutoPilotEngine:
                 print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (no li_at / residential proxy).")
                 li_stats = {"discovered": 0, "applied": 0, "status": "MAC_HOST_REQUIRED"}
             elif not li_session_valid:
-                if sys.platform == "darwin":
+                is_interactive_env = (
+                    sys.platform == "darwin"
+                    and not self.dry_run
+                    and (sys.stdin.isatty() or os.getenv("INTERACTIVE_LOGIN") == "1")
+                    and not os.getenv("PYTEST_CURRENT_TEST")
+                )
+                if is_interactive_env:
                     print("  [!] LinkedIn session expired or requires renewal. Triggering automatic login...")
                     auth_res = self.li_session_manager.interactive_login(timeout_seconds=180, headless=False)
                     if auth_res.get("status") == "VALID":
