@@ -3167,6 +3167,13 @@ class WorkdayHandler(BaseATSHandler):
                         if _auth_cleared() or _auth_cleared_early():
                             mgr.mark_verified(job_key_url)
                             return True
+                        # Many tenants land on /login/ok after verify — Sign In with vault password
+                        self.dismiss_workday_overlays(page, max_rounds=2)
+                        if self._workday_sign_in_ready(page) or "/login" in self._workday_url_path(page):
+                            for cand in pwd_candidates:
+                                if _try_sign_in_with_password(cand):
+                                    mgr.mark_verified(job_key_url)
+                                    return True
                     otp = fetch_ats_email_code(since_ts=t_verify - 5, timeout_sec=45.0)
                     if otp:
                         otp_loc = page.locator(
@@ -3534,6 +3541,11 @@ class WorkdayHandler(BaseATSHandler):
                     try:
                         if not inp.is_visible():
                             continue
+                        # Never fill Workday honeypot — filling beecatcher flags the session as a bot
+                        auto_id = (inp.get_attribute("data-automation-id") or "").lower()
+                        name = (inp.get_attribute("name") or "").lower()
+                        if "beecatcher" in auto_id or name == "website" or "honeypot" in auto_id:
+                            continue
                         val_cur = ""
                         if hasattr(inp, "input_value"):
                             try:
@@ -3647,16 +3659,25 @@ class WorkdayHandler(BaseATSHandler):
 
             # Advance to Next Step (Fractal uses pageFooterNextButton = Save and Continue)
             try:
-                next_btn = page.locator(
-                    "button[data-automation-id='pageFooterNextButton'], "
-                    "button[data-automation-id='bottom-navigation-next-button'], "
-                    "button[data-automation-id='saveAndContinue'], "
-                    "button:has-text('Save and Continue'), "
-                    "button:has-text('Save & Continue')"
-                ).first
-                if safe_count(next_btn) > 0 and next_btn.is_visible():
-                    btn_txt = (next_btn.inner_text() or "").strip().lower()
-                    if "submit" in btn_txt and "continue" not in btn_txt:
+                next_btn = None
+                for nsel in (
+                    "button[data-automation-id='pageFooterNextButton']",
+                    "button[data-automation-id='bottom-navigation-next-button']",
+                    "button[data-automation-id='saveAndContinue']",
+                    "div[data-automation-id='click_filter'][aria-label*='Save and Continue' i]",
+                    "div[data-automation-id='click_filter'][aria-label*='Next' i]",
+                    "button:has-text('Save and Continue')",
+                    "button:has-text('Save & Continue')",
+                    "button:has-text('Next')",
+                    "button:has-text('Continue')",
+                ):
+                    cand = page.locator(nsel).first
+                    if safe_count(cand) > 0 and cand.is_visible():
+                        next_btn = cand
+                        break
+                if next_btn is not None:
+                    btn_txt = (next_btn.inner_text() or next_btn.get_attribute("aria-label") or "").strip().lower()
+                    if "submit" in btn_txt and "continue" not in btn_txt and "next" not in btn_txt:
                         filled.append(f"Reached Final Review Step {wizard_step}")
                         break
                     next_btn.click(force=True)
