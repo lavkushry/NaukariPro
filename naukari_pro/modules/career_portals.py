@@ -3046,6 +3046,65 @@ class WorkdayHandler(BaseATSHandler):
                 except Exception:
                     return False
 
+            def _auth_cleared() -> bool:
+                try:
+                    path = self._workday_url_path(page)
+                    # Still on /login path even if redirect query contains /apply
+                    if "/login" in path:
+                        return False
+                    pwd = page.locator(
+                        "input[data-automation-id='password'], input[type='password']"
+                    ).first
+                    if safe_count(pwd) > 0 and pwd.is_visible():
+                        return False
+                    email = page.locator(
+                        "input[data-automation-id='email'], input[type='email']"
+                    ).first
+                    if safe_count(email) > 0 and email.is_visible():
+                        # Sign-in form still up (even under /apply shell)
+                        return False
+                    # Require wizard markers — bare /apply path falsely cleared auth
+                    app_field = page.locator(
+                        "input[data-automation-id='legalNameSection_firstName'], "
+                        "button[data-automation-id='bottom-navigation-next-button'], "
+                        "button[data-automation-id='pageFooterNextButton'], "
+                        "button[data-automation-id='submitButton']"
+                    ).first
+                    if safe_count(app_field) > 0 and app_field.is_visible():
+                        return True
+                    if any(tok in path for tok in ("userhome", "myapplications")):
+                        return True
+                    return False
+                except Exception:
+                    return False
+
+            def _try_sign_in_with_password(pwd: str) -> bool:
+                nonlocal acct_pwd, email_loc, pass_loc
+                acct_pwd = _normalize_pwd(pwd)
+                try:
+                    # Re-query locators — Create Account may have navigated to /login
+                    email_loc = page.locator(
+                        "input[data-automation-id='email'], input[type='email'], "
+                        "input[name='email'], input[autocomplete='username']"
+                    ).first
+                    pass_loc = page.locator(
+                        "input[data-automation-id='password'], input[type='password']"
+                    ).first
+                    if safe_count(email_loc) > 0 and email_loc.is_visible():
+                        email_loc.fill(str(acct_email), force=True)
+                    if safe_count(pass_loc) > 0 and pass_loc.is_visible():
+                        pass_loc.fill(str(acct_pwd), force=True)
+                    btn = self._locate_workday_sign_in_submit(page)
+                    if btn is not None:
+                        btn.click(force=True)
+                        time.sleep(3.0)
+                    if "/login" in self._workday_url_path(page):
+                        self._workday_follow_login_redirect(page)
+                        time.sleep(1.5)
+                    return _auth_cleared()
+                except Exception:
+                    return False
+
             def _wait_post_create_settle(timeout_sec: float = 25.0) -> None:
                 """Fractal shows a loading shell after Create Account — wait for wizard or verify UI."""
                 deadline = time.time() + timeout_sec
@@ -3056,6 +3115,9 @@ class WorkdayHandler(BaseATSHandler):
                             return
                         body = (page.inner_text("body") or "").lower()
                         if any(tok in body for tok in ("verify", "check your email", "confirmation", "one-time", "otp")):
+                            return
+                        # Landed on login after create — ready for post-create Sign-In
+                        if "/login" in self._workday_url_path(page) and self._workday_sign_in_ready(page):
                             return
                         # Still spinning?
                         spin = page.locator("[data-automation-id='loading'], [aria-busy='true'], .css-1hx9l44").first
@@ -3072,6 +3134,24 @@ class WorkdayHandler(BaseATSHandler):
                 if _auth_cleared() or _auth_cleared_early():
                     mgr.mark_verified(job_key_url)
                     return True
+                # Fractal often lands on /Careers/login after Create Account (no email gate).
+                # Sign in with vault / env passwords (create may have failed if email already exists).
+                try:
+                    if self._workday_sign_in_ready(page) or "/login" in self._workday_url_path(page):
+                        logger.info("[AUTH] Post-create Sign-In with vault password candidates...")
+                        for cand in pwd_candidates:
+                            if _try_sign_in_with_password(cand):
+                                mgr.mark_verified(job_key_url)
+                                return True
+                        # Re-open apply deep link after session cookie lands on bare /login
+                        if "/login" in self._workday_url_path(page):
+                            self._workday_follow_login_redirect(page)
+                            time.sleep(1.5)
+                        if _auth_cleared() or _auth_cleared_early():
+                            mgr.mark_verified(job_key_url)
+                            return True
+                except Exception as e_si:
+                    logger.debug("Post-create sign-in notice: %s", e_si)
                 # Autonomous email verification via Gmail IMAP (link or OTP)
                 try:
                     from naukari_pro.modules.autonomous_loop import (
@@ -3191,57 +3271,6 @@ class WorkdayHandler(BaseATSHandler):
                 )
                 sign_in_clicked = True
                 time.sleep(3)
-
-            def _auth_cleared() -> bool:
-                try:
-                    path = self._workday_url_path(page)
-                    # Still on /login path even if redirect query contains /apply
-                    if "/login" in path:
-                        return False
-                    pwd = page.locator(
-                        "input[data-automation-id='password'], input[type='password']"
-                    ).first
-                    if safe_count(pwd) > 0 and pwd.is_visible():
-                        return False
-                    email = page.locator(
-                        "input[data-automation-id='email'], input[type='email']"
-                    ).first
-                    if safe_count(email) > 0 and email.is_visible():
-                        # Sign-in form still up (even under /apply shell)
-                        return False
-                    # Require wizard markers — bare /apply path falsely cleared auth
-                    app_field = page.locator(
-                        "input[data-automation-id='legalNameSection_firstName'], "
-                        "button[data-automation-id='bottom-navigation-next-button'], "
-                        "button[data-automation-id='pageFooterNextButton'], "
-                        "button[data-automation-id='submitButton']"
-                    ).first
-                    if safe_count(app_field) > 0 and app_field.is_visible():
-                        return True
-                    if any(tok in path for tok in ("userhome", "myapplications")):
-                        return True
-                    return False
-                except Exception:
-                    return False
-
-            def _try_sign_in_with_password(pwd: str) -> bool:
-                nonlocal acct_pwd
-                acct_pwd = _normalize_pwd(pwd)
-                try:
-                    if safe_count(email_loc) > 0 and email_loc.is_visible():
-                        email_loc.fill(str(acct_email), force=True)
-                    if safe_count(pass_loc) > 0 and pass_loc.is_visible():
-                        pass_loc.fill(str(acct_pwd), force=True)
-                    btn = self._locate_workday_sign_in_submit(page)
-                    if btn is not None:
-                        btn.click(force=True)
-                        time.sleep(3.0)
-                    if "/login" in self._workday_url_path(page):
-                        self._workday_follow_login_redirect(page)
-                        time.sleep(1.5)
-                    return _auth_cleared()
-                except Exception:
-                    return False
 
             if sign_in_clicked:
                 time.sleep(2.5)
