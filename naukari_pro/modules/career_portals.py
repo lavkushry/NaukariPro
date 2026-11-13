@@ -3469,6 +3469,40 @@ class WorkdayHandler(BaseATSHandler):
             ("input[data-automation-id='addressSection_postalCode']", p.get("postalCode", "500081"), "Postal Code"),
             ("input[data-automation-id='addressSection_addressLine1']", p.get("address", "HITEC City, Madhapur"), "Address Line 1"),
         ]
+        # Embitel / some tenants strip data-automation-id — fall back to accessible labels
+        label_field_map = [
+            ("First Name", p.get("firstName", "Lavkush")),
+            ("Last Name", p.get("lastName", "Kumar")),
+            ("Email", p.get("email", "lav84095@gmail.com")),
+            ("Phone Number", (p.get("phone") or "+919122036484").lstrip("+91").lstrip("0") or "9122036484"),
+            ("Phone", (p.get("phone") or "+919122036484").lstrip("+91").lstrip("0") or "9122036484"),
+            ("Address Line 1", p.get("address", "HITEC City, Madhapur")),
+            ("City", p.get("city", "Hyderabad")),
+            ("Postal Code", p.get("postalCode", "500081")),
+        ]
+
+        def _fill_by_label(label: str, value: str) -> bool:
+            try:
+                loc = page.get_by_label(label, exact=False).first
+                if safe_count(loc) == 0 or not loc.is_visible():
+                    # Label text near input
+                    loc = page.locator(
+                        f"xpath=//label[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{label.lower()}')]/following::input[1]"
+                    ).first
+                if safe_count(loc) == 0 or not loc.is_visible():
+                    return False
+                cur = ""
+                try:
+                    cur = loc.input_value() or ""
+                except Exception:
+                    pass
+                if cur.strip():
+                    return True
+                loc.click(force=True)
+                loc.fill(str(value), force=True)
+                return True
+            except Exception:
+                return False
 
         # Multi-Step Wizard Engine (Loops up to 9 steps until Review/Submit)
         for wizard_step in range(1, 10):
@@ -3500,6 +3534,20 @@ class WorkdayHandler(BaseATSHandler):
             except Exception:
                 pass
 
+            # 0b. Uncheck "I have a preferred name" — checking it duplicates required name fields
+            try:
+                for pref in page.locator(
+                    "input[type='checkbox'][data-automation-id*='preferred' i], "
+                    "label:has-text('preferred name') input[type='checkbox']"
+                ).all():
+                    try:
+                        if pref.is_visible() and pref.is_checked():
+                            pref.uncheck(force=True)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
             # 1. Standard Contact / Identity Fields
             for selector, val, label in field_map:
                 try:
@@ -3528,16 +3576,52 @@ class WorkdayHandler(BaseATSHandler):
                 except Exception:
                     pass
 
+            # 1a. Label-based fills when automation ids are absent (Embitel)
+            for label, val in label_field_map:
+                if _fill_by_label(label, str(val)):
+                    if label not in filled:
+                        filled.append(f"Label:{label}")
+                        self.record_field(
+                            label=label,
+                            value=val,
+                            field_name=f"label:{label}",
+                            field_type="text",
+                            step=wizard_step,
+                            step_name=f"WIZARD_STEP_{wizard_step}",
+                            action_type="FILLED",
+                        )
+
+            # 1a2. Previously worked here? → No
+            try:
+                no_radio = page.get_by_role("radio", name=re.compile(r"^no$", re.I)).first
+                if safe_count(no_radio) == 0:
+                    no_radio = page.locator(
+                        "input[type='radio'][value='No'], label:has-text('No') input[type='radio']"
+                    ).first
+                if safe_count(no_radio) > 0 and no_radio.is_visible():
+                    no_radio.check(force=True)
+                    filled.append("Previously Worked: No")
+            except Exception:
+                pass
+
             # 1b. Workday 'How Did You Hear About Us?' multiselect searchBox
             try:
-                src_box = page.locator("div[data-automation-id='formField-sourcePrompt'] input, input[data-automation-id='searchBox']").first
+                src_box = page.locator(
+                    "div[data-automation-id='formField-sourcePrompt'] input, "
+                    "input[data-automation-id='searchBox'], "
+                    "label:has-text('How Did You Hear') ~ div input, "
+                    "xpath=//label[contains(., 'How Did You Hear')]/following::input[1]"
+                ).first
                 if safe_count(src_box) > 0 and src_box.is_visible():
                     src_box.click()
                     src_box.fill("LinkedIn")
                     if hasattr(page, "keyboard"):
                         page.keyboard.press("Enter")
                     time.sleep(1.0)
-                    prompt_opt = page.locator("div[data-automation-id='promptOption']:has-text('LinkedIn'), div[data-automation-id='promptOption']").first
+                    prompt_opt = page.locator(
+                        "div[data-automation-id='promptOption']:has-text('LinkedIn'), "
+                        "div[data-automation-id='promptOption'], [role='option']:has-text('LinkedIn')"
+                    ).first
                     if safe_count(prompt_opt) > 0 and prompt_opt.is_visible():
                         prompt_opt.click()
                         filled.append("Source: LinkedIn")
@@ -3645,22 +3729,32 @@ class WorkdayHandler(BaseATSHandler):
             except Exception as e_wdd:
                 logger.debug("Workday dropdown notice: %s", e_wdd)
 
-            # 4. Workday Checkboxes (Disclosures, Terms, Consent)
+            # 4. Workday Checkboxes (Disclosures, Terms, Consent) — never preferred-name / SMS opt-in
             try:
                 for cb in page.locator("input[data-automation-id='agreementCheckbox'], input[type='checkbox']").all():
                     try:
-                        if not cb.is_checked():
-                            cb.check(force=True)
-                            filled.append("Workday Agreement Checkbox")
-                            self.record_field(
-                                label="Workday Agreement Checkbox",
-                                value="Checked",
-                                field_name="checkbox",
-                                field_type="checkbox",
-                                step=wizard_step,
-                                step_name=f"WIZARD_STEP_{wizard_step}",
-                                action_type="CHECKED"
-                            )
+                        if not cb.is_visible() or cb.is_checked():
+                            continue
+                        auto = (cb.get_attribute("data-automation-id") or "").lower()
+                        # Nearby label text
+                        lab = ""
+                        try:
+                            lab = (cb.evaluate("el => (el.labels && el.labels[0] && el.labels[0].innerText) || ''") or "").lower()
+                        except Exception:
+                            lab = ""
+                        if any(tok in auto or tok in lab for tok in ("preferred", "sms", "opt-in", "marketing", "beecatcher")):
+                            continue
+                        cb.check(force=True)
+                        filled.append("Workday Agreement Checkbox")
+                        self.record_field(
+                            label="Workday Agreement Checkbox",
+                            value="Checked",
+                            field_name="checkbox",
+                            field_type="checkbox",
+                            step=wizard_step,
+                            step_name=f"WIZARD_STEP_{wizard_step}",
+                            action_type="CHECKED"
+                        )
                     except Exception:
                         pass
             except Exception:
