@@ -839,8 +839,6 @@ def is_job_already_applied(
         "SKIPPED_ALREADY_APPLIED",
         "REJECTED_NON_DATA_ROLE",
         "REJECTED_BELOW_THRESHOLD",
-        "Form Auto-Filled",
-        "Form Auto-Filled (Ready for Review)",
         "FALLBACK (SUBMIT_NOT_FOUND)",
         "FALLBACK (CLICKED_NO_CONFIRMATION)",
         "FALLBACK (SIGNIN_WALL)",
@@ -848,6 +846,11 @@ def is_job_already_applied(
         "FALLBACK (VALIDATION_ERRORS)",
         "FALLBACK (TIMEOUT_240S)",
         "FALLBACK (OTP_NOT_FOUND)",
+        # Incomplete fills / barriers — drainable by Always-on Beast
+        "Form Auto-Filled (Ready for Review)",
+        "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)",
+        "Workday Account / Sign-In Barrier — still on login after vault",
+        "Workday Account / Sign-In Barrier",
     }
     
     def _is_applied_row(r_status: Optional[str]) -> bool:

@@ -4262,7 +4262,8 @@ class CareerPortalFiller:
         portal_url: str,
         company: str = "Company",
         role: str = "Azure Data Engineer",
-        auto_submit: bool = True
+        auto_submit: bool = True,
+        allow_retry: bool = False,
     ) -> FillResult:
         """
         Architecture Rules A1–A5 Unified State Machine Executor.
@@ -4281,8 +4282,8 @@ class CareerPortalFiller:
         # ── STATE 1: DETECT ──
         checkpoint_portal_state(cand_job_id, PortalState.DETECT, company, role, target_db)
 
-        # A5 Idempotency Check 1
-        if is_job_already_applied(title=role, company=company, job_url=portal_url, job_id=cand_job_id, db_path=target_db):
+        # A5 Idempotency Check 1 (skip when Always-on Beast drains incomplete applies)
+        if not allow_retry and is_job_already_applied(title=role, company=company, job_url=portal_url, job_id=cand_job_id, db_path=target_db):
             print(f"    [DEDUP] Already applied to '{role}' at '{company}' ({portal_url}). Skipping strictly per rule.")
             return FillResult(False, [], None, status=FallbackReason.ALREADY_APPLIED.value)
 
@@ -4539,8 +4540,8 @@ class CareerPortalFiller:
         # ── STATE 5: SUBMIT ──
         checkpoint_portal_state(cand_job_id, PortalState.SUBMIT, company, role, target_db)
 
-        # A5 Idempotency Check 2: Immediately before submit
-        if is_job_already_applied(title=role, company=company, job_url=portal_url, job_id=cand_job_id, db_path=target_db):
+        # A5 Idempotency Check 2: Immediately before submit (respect allow_retry drains)
+        if not allow_retry and is_job_already_applied(title=role, company=company, job_url=portal_url, job_id=cand_job_id, db_path=target_db):
             print(f"    [DEDUP] Pre-submit check confirmed job already applied. Halting submit.")
             return FillResult(False, filled_fields, None, field_records=list(handler.field_records), status=FallbackReason.ALREADY_APPLIED.value)
 
@@ -4754,7 +4755,9 @@ class CareerPortalFiller:
             return True, payload
 
         if page is not None:
-            return self.fill_in_playwright(page, portal_url, company=company, role=role, auto_submit=auto_submit)
+            return self.fill_in_playwright(
+                page, portal_url, company=company, role=role, auto_submit=auto_submit, allow_retry=allow_retry
+            )
         elif sys.platform == "darwin" and not headless:
             return self.fill_in_chrome(portal_url, company=company, role=role)
         else:
@@ -4766,7 +4769,14 @@ class CareerPortalFiller:
                         p, headless=headless, session_dir=PORTALS_SESSION_DIR, lock_timeout=120.0
                     )
                     page_ctx = context.pages[0] if context.pages else context.new_page()
-                    res = self.fill_in_playwright(page_ctx, portal_url, company=company, role=role, auto_submit=auto_submit)
+                    res = self.fill_in_playwright(
+                        page_ctx,
+                        portal_url,
+                        company=company,
+                        role=role,
+                        auto_submit=auto_submit,
+                        allow_retry=allow_retry,
+                    )
                     context.close()
                     return res
             except Exception as e:
