@@ -2828,12 +2828,32 @@ class WorkdayHandler(BaseATSHandler):
 
     def _fill_workday_create_account(self, page: Any, acct_email: str, acct_pwd: str) -> bool:
         """Completes Workday tenant account registration when tenant does not recognize candidate."""
+        from naukari_pro.modules.portal_accounts import harden_password
+
+        acct_pwd = harden_password(acct_pwd or "")
         email_loc = page.locator("input[data-automation-id='email']").first
         pass_loc = page.locator("input[data-automation-id='password']").first
         verify_pass_loc = page.locator("input[data-automation-id='verifyPassword']").first
+        # Fractal Create Account also requires legal name for post-join email ID
+        for sel, val, label, fname in (
+            ("input[data-automation-id='legalNameSection_firstName'], input[name*='firstName' i], input[id*='firstName' i]",
+             self.profile.get("first_name") or self.profile.get("firstName") or "Lavkush", "Create First Name", "firstName"),
+            ("input[data-automation-id='legalNameSection_lastName'], input[name*='lastName' i], input[id*='lastName' i]",
+             self.profile.get("last_name") or self.profile.get("lastName") or "Kumar", "Create Last Name", "lastName"),
+        ):
+            try:
+                loc = page.locator(sel).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    loc.fill(str(val), force=True)
+                    self.record_field(
+                        label=label, value=str(val), field_name=fname, field_type="text",
+                        step=1, step_name="VAULT_AUTH", action_type="FILLED",
+                    )
+            except Exception:
+                pass
 
         if safe_count(email_loc) > 0 and email_loc.is_visible():
-            email_loc.fill(str(acct_email))
+            email_loc.fill(str(acct_email), force=True)
             self.record_field(
                 label="Account Email",
                 value=acct_email,
@@ -2844,7 +2864,7 @@ class WorkdayHandler(BaseATSHandler):
                 action_type="FILLED"
             )
         if safe_count(pass_loc) > 0 and pass_loc.is_visible():
-            pass_loc.fill(str(acct_pwd))
+            pass_loc.fill(str(acct_pwd), force=True)
             self.record_field(
                 label="Account Password",
                 value="********",
@@ -2855,7 +2875,7 @@ class WorkdayHandler(BaseATSHandler):
                 action_type="FILLED"
             )
         if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
-            verify_pass_loc.fill(str(acct_pwd))
+            verify_pass_loc.fill(str(acct_pwd), force=True)
             self.record_field(
                 label="Verify Password",
                 value="********",
@@ -2925,30 +2945,36 @@ class WorkdayHandler(BaseATSHandler):
                 logger.warning("Workday vault auth blocked: sign-in fields never appeared")
                 return False
 
+            from naukari_pro.modules.portal_accounts import harden_password
+
             mgr = PortalAccountManager()
-            acct = mgr.ensure_account(job_url or (page.url if page else ""), email=self.profile.get("email", "lav84095@gmail.com"))
+            job_key_url = job_url or (page.url if page else "")
+            acct = mgr.ensure_account(job_key_url, email=self.profile.get("email", "lav84095@gmail.com"))
             acct_email = acct.get("email") or self.profile.get("email", "lav84095@gmail.com")
             # Prefer per-tenant vault password (Fractal was created with vault secret).
             # Global PORTAL_PASSWORD is only a fallback / secondary retry — overriding vault
             # caused silent wrong-password sign-in and endless Create Account loops.
-            vault_pwd = (acct.get("password") or "").strip()
-            env_pwd = (os.getenv("PORTAL_PASSWORD") or "").strip()
+            vault_pwd = harden_password((acct.get("password") or "").strip())
+            # Persist healed password so Create Account + Sign-In stay in sync
+            if vault_pwd != (acct.get("password") or ""):
+                try:
+                    data = mgr._load()
+                    key = acct.get("tenant_key")
+                    if key and key in data.get("tenants", {}):
+                        data["tenants"][key]["password"] = vault_pwd
+                        data["tenants"][key]["verified"] = False
+                        mgr._save(data)
+                        acct["password"] = vault_pwd
+                except Exception:
+                    pass
+            env_pwd = harden_password((os.getenv("PORTAL_PASSWORD") or "").strip()) if (os.getenv("PORTAL_PASSWORD") or "").strip() else ""
             pwd_candidates: List[str] = []
             for cand in (vault_pwd, env_pwd, "PortalSecure@2026!"):
                 if cand and cand not in pwd_candidates:
                     pwd_candidates.append(cand)
 
             def _normalize_pwd(raw: str) -> str:
-                p = raw
-                if not any(c.isupper() for c in p):
-                    p += "A"
-                if not any(c.islower() for c in p):
-                    p += "a"
-                if not any(c.isdigit() for c in p):
-                    p += "1"
-                if not any(c in "!@#$%^&*" for c in p):
-                    p += "!"
-                return p
+                return harden_password(raw)
 
             acct_pwd = _normalize_pwd(pwd_candidates[0])
 
@@ -3020,11 +3046,92 @@ class WorkdayHandler(BaseATSHandler):
                 except Exception:
                     return False
 
-            # Already on Create Account page
-            if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
+            def _wait_post_create_settle(timeout_sec: float = 25.0) -> None:
+                """Fractal shows a loading shell after Create Account — wait for wizard or verify UI."""
+                deadline = time.time() + timeout_sec
+                while time.time() < deadline:
+                    try:
+                        # My Information / Next = account created and session live
+                        if _auth_cleared() or _auth_cleared_early():
+                            return
+                        body = (page.inner_text("body") or "").lower()
+                        if any(tok in body for tok in ("verify", "check your email", "confirmation", "one-time", "otp")):
+                            return
+                        # Still spinning?
+                        spin = page.locator("[data-automation-id='loading'], [aria-busy='true'], .css-1hx9l44").first
+                        if safe_count(spin) > 0 and spin.is_visible():
+                            time.sleep(0.6)
+                            continue
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
+
+            def _create_account_and_verify() -> bool:
                 self._fill_workday_create_account(page, acct_email, acct_pwd)
-                time.sleep(2.5)
-                return _auth_cleared_early()
+                _wait_post_create_settle(25.0)
+                if _auth_cleared() or _auth_cleared_early():
+                    mgr.mark_verified(job_key_url)
+                    return True
+                # Autonomous email verification via Gmail IMAP (link or OTP)
+                try:
+                    from naukari_pro.modules.autonomous_loop import (
+                        fetch_ats_email_code,
+                        fetch_ats_verification_link,
+                    )
+                    t_verify = time.time()
+                    verify_link = fetch_ats_verification_link(since_ts=t_verify - 5, timeout_sec=75.0)
+                    if verify_link:
+                        print("    ✉️ [Workday] Opening verification link from Gmail...")
+                        page.goto(verify_link, wait_until="domcontentloaded", timeout=30000)
+                        time.sleep(2)
+                        if _auth_cleared() or _auth_cleared_early():
+                            mgr.mark_verified(job_key_url)
+                            return True
+                    otp = fetch_ats_email_code(since_ts=t_verify - 5, timeout_sec=45.0)
+                    if otp:
+                        otp_loc = page.locator(
+                            "input[data-automation-id*='verification' i], input[name*='code' i], "
+                            "input[autocomplete='one-time-code'], input[placeholder*='code' i]"
+                        ).first
+                        if safe_count(otp_loc) > 0 and otp_loc.is_visible():
+                            otp_loc.fill(str(otp), force=True)
+                            submit_otp = page.locator(
+                                "button:has-text('Verify'), button:has-text('Submit'), "
+                                "button[data-automation-id='signInSubmitButton']"
+                            ).first
+                            if safe_count(submit_otp) > 0:
+                                submit_otp.click(force=True)
+                                time.sleep(2)
+                            if _auth_cleared() or _auth_cleared_early():
+                                mgr.mark_verified(job_key_url)
+                                return True
+                except Exception as e_ver:
+                    logger.debug("Workday IMAP verify notice: %s", e_ver)
+                if _auth_cleared() or _auth_cleared_early():
+                    mgr.mark_verified(job_key_url)
+                    return True
+                return False
+
+            # Already on Create Account page — must verify email, not return early
+            if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
+                return _create_account_and_verify()
+
+            # Unverified vault → Create Account first (Sign-In with healed password just burns time)
+            if not bool(acct.get("verified")):
+                create_first = page.locator(
+                    "button[data-automation-id='createAccountLink'], a[data-automation-id='createAccountLink'], "
+                    "button:has-text('Create Account'), a:has-text('Create Account')"
+                ).first
+                if safe_count(create_first) > 0 and create_first.is_visible():
+                    logger.info("[AUTH] Vault unverified — Create Account first on Workday tenant")
+                    create_first.click(force=True)
+                    try:
+                        page.wait_for_selector("input[data-automation-id='verifyPassword']", timeout=6000)
+                    except Exception:
+                        time.sleep(1.5)
+                    verify_pass_loc = page.locator("input[data-automation-id='verifyPassword']").first
+                    if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
+                        return _create_account_and_verify()
 
             # Sign-In page -> Try Sign In first, verify it succeeded, otherwise click Create Account
             # Dismiss Workday click-outside / error toast layers that intercept clicks
@@ -3154,7 +3261,10 @@ class WorkdayHandler(BaseATSHandler):
                 logger.info("[AUTH] Workday Sign-In failed/unregistered on tenant; attempting Create Account fallback...")
 
             # Create Account fallback path
-            create_btn = page.locator("button[data-automation-id='createAccountLink'], a[data-automation-id='createAccountLink'], button:has-text('Create Account'), a:has-text('Create Account')").first
+            create_btn = page.locator(
+                "button[data-automation-id='createAccountLink'], a[data-automation-id='createAccountLink'], "
+                "button:has-text('Create Account'), a:has-text('Create Account')"
+            ).first
             if safe_count(create_btn) > 0 and create_btn.is_visible():
                 create_btn.click(force=True)
                 self.record_field(
@@ -3170,47 +3280,7 @@ class WorkdayHandler(BaseATSHandler):
                     page.wait_for_selector("input[data-automation-id='verifyPassword']", timeout=5000)
                 except Exception:
                     time.sleep(2)
-                self._fill_workday_create_account(page, acct_email, acct_pwd)
-                time.sleep(2.5)
-                # Autonomous email verification via Gmail IMAP (link or OTP)
-                try:
-                    from naukari_pro.modules.autonomous_loop import (
-                        fetch_ats_email_code,
-                        fetch_ats_verification_link,
-                    )
-                    t_verify = time.time()
-                    verify_link = fetch_ats_verification_link(since_ts=t_verify - 5, timeout_sec=75.0)
-                    if verify_link:
-                        print(f"    ✉️ [Workday] Opening verification link from Gmail...")
-                        page.goto(verify_link, wait_until="domcontentloaded", timeout=30000)
-                        time.sleep(2)
-                        if _auth_cleared():
-                            mgr.mark_verified(job_url or (page.url if page else ""))
-                            return True
-                    otp = fetch_ats_email_code(since_ts=t_verify - 5, timeout_sec=45.0)
-                    if otp:
-                        otp_loc = page.locator(
-                            "input[data-automation-id*='verification' i], input[name*='code' i], "
-                            "input[autocomplete='one-time-code'], input[placeholder*='code' i]"
-                        ).first
-                        if safe_count(otp_loc) > 0 and otp_loc.is_visible():
-                            otp_loc.fill(str(otp))
-                            submit_otp = page.locator(
-                                "button:has-text('Verify'), button:has-text('Submit'), "
-                                "button[data-automation-id='signInSubmitButton']"
-                            ).first
-                            if safe_count(submit_otp) > 0:
-                                submit_otp.click()
-                                time.sleep(2)
-                            if _auth_cleared():
-                                mgr.mark_verified(job_url or (page.url if page else ""))
-                                return True
-                except Exception as e_ver:
-                    logger.debug("Workday IMAP verify notice: %s", e_ver)
-                if _auth_cleared():
-                    mgr.mark_verified(job_url or (page.url if page else ""))
-                    return True
-                return False
+                return _create_account_and_verify()
             cleared = _auth_cleared()
             # Never report success while URL path is still /login
             if cleared and "/login" in self._workday_url_path(page):
@@ -4848,7 +4918,12 @@ class CareerPortalFiller:
 
         if page is not None:
             return self.fill_in_playwright(
-                page, portal_url, company=company, role=role, auto_submit=auto_submit, allow_retry=allow_retry
+                page,
+                portal_url,
+                company=company,
+                role=role,
+                auto_submit=auto_submit,
+                **({"allow_retry": True} if allow_retry else {}),
             )
         elif sys.platform == "darwin" and not headless:
             return self.fill_in_chrome(portal_url, company=company, role=role)
@@ -4867,7 +4942,7 @@ class CareerPortalFiller:
                         company=company,
                         role=role,
                         auto_submit=auto_submit,
-                        allow_retry=allow_retry,
+                        **({"allow_retry": True} if allow_retry else {}),
                     )
                     context.close()
                     return res

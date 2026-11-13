@@ -42,8 +42,51 @@ def _tenant_key_from_url(url: str) -> str:
 
 
 def _gen_password(length: int = 16) -> str:
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+    """Workday tenants (e.g. Fractal) require upper+lower+digit+special — guarantee all four."""
+    length = max(12, int(length or 16))
+    specials = "!@#$%^&*"
+    # Ensure one of each class, then fill the rest from the full alphabet.
+    required = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice(specials),
+    ]
+    alphabet = string.ascii_letters + string.digits + specials
+    rest = [secrets.choice(alphabet) for _ in range(length - len(required))]
+    chars = required + rest
+    # Shuffle so required chars are not always prefix-positioned
+    for i in range(len(chars) - 1, 0, -1):
+        j = secrets.randbelow(i + 1)
+        chars[i], chars[j] = chars[j], chars[i]
+    return "".join(chars)
+
+
+def _meets_workday_password_policy(password: str) -> bool:
+    p = password or ""
+    return (
+        len(p) >= 8
+        and any(c.isupper() for c in p)
+        and any(c.islower() for c in p)
+        and any(c.isdigit() for c in p)
+        and any(c in "!@#$%^&*" for c in p)
+    )
+
+
+def harden_password(password: str) -> str:
+    """Append missing Workday policy classes; regenerate if still weak."""
+    p = password or ""
+    if not any(c.isupper() for c in p):
+        p += "A"
+    if not any(c.islower() for c in p):
+        p += "a"
+    if not any(c.isdigit() for c in p):
+        p += "1"
+    if not any(c in "!@#$%^&*" for c in p):
+        p += "!"
+    if len(p) < 8 or not _meets_workday_password_policy(p):
+        return _gen_password(16)
+    return p
 
 
 class PortalAccountManager:
@@ -87,7 +130,15 @@ class PortalAccountManager:
         data = self._load()
         tenants = data.setdefault("tenants", {})
         if key in tenants:
-            return tenants[key]
+            acct = tenants[key]
+            # Self-heal vault passwords that predate Workday complexity guarantees
+            raw = acct.get("password") or ""
+            fixed = harden_password(raw)
+            if fixed != raw:
+                acct["password"] = fixed
+                acct["verified"] = False  # old password may not match tenant
+                self._save(data)
+            return acct
 
         profile = load_hybrid_profile()
         acct = {
