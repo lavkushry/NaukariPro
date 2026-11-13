@@ -3675,11 +3675,27 @@ class WorkdayHandler(BaseATSHandler):
                     if safe_count(cand) > 0 and cand.is_visible():
                         next_btn = cand
                         break
+                if next_btn is None:
+                    # Last resort: any visible button/link whose label advances the wizard
+                    try:
+                        for b in page.locator("button, a[role='button'], div[role='button']").all():
+                            if not b.is_visible():
+                                continue
+                            t = ((b.inner_text() or "") + " " + (b.get_attribute("aria-label") or "")).strip().lower()
+                            if any(k in t for k in ("save and continue", "save & continue", "next", "continue")) and "submit" not in t:
+                                next_btn = b
+                                break
+                    except Exception:
+                        pass
                 if next_btn is not None:
                     btn_txt = (next_btn.inner_text() or next_btn.get_attribute("aria-label") or "").strip().lower()
                     if "submit" in btn_txt and "continue" not in btn_txt and "next" not in btn_txt:
                         filled.append(f"Reached Final Review Step {wizard_step}")
                         break
+                    try:
+                        next_btn.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
                     next_btn.click(force=True)
                     self.record_field(
                         label=f"Next Step Navigation (Step {wizard_step})",
