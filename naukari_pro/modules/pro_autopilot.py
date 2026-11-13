@@ -144,7 +144,7 @@ class ProAutoPilotEngine:
         # Aggregation ingest (Greenhouse/Lever/Ashby/Workday/Indeed/…) feeds external apply
         print("\n[HUNT/AGG] Running multi-board aggregation ingest (incl. Indeed RSS)...")
         try:
-            if self.dry_run:
+            if self.dry_run or os.getenv("PYTEST_CURRENT_TEST"):
                 from naukari_pro.aggregation.base import AdapterRegistry
                 import naukari_pro.aggregation.adapters  # noqa: F401 — register adapters
                 known = AdapterRegistry.known()

@@ -221,19 +221,55 @@ def sync_employment_designation(page, target_title="Azure Data Engineer"):
 def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_selectors, timeout_ms=6000):
     """
     Resilient Naukri DOM modal opener for headless Linux & macOS.
-    Scrolls section center-screen, waits for hydration, clicks edit via force+JS fallback,
-    and polls specific input selectors (avoiding unrelated hidden elements).
+    Progressively scrolls lazy containers until hydrated, centers section,
+    clicks edit strictly inside the section container, and polls modal inputs.
     """
     if "profile" not in (getattr(page, "url", "") or "").lower():
         page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
         time.sleep(3)
 
-    section_loc = None
-    for s_sel in section_selectors:
-        loc = page.locator(s_sel).first
-        if loc.count() > 0:
-            section_loc = loc
-            break
+    def _find_hydrated_section():
+        first_found = None
+        for s_sel in section_selectors:
+            try:
+                loc = page.locator(s_sel).first
+                if loc.count() > 0:
+                    if first_found is None:
+                        first_found = loc
+                    try:
+                        if len((loc.inner_html() or "").strip()) >= 50:
+                            return loc
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+        return first_found
+
+    section_loc = _find_hydrated_section()
+    needs_scroll = section_loc is None
+    if section_loc is not None:
+        try:
+            needs_scroll = len((section_loc.inner_html() or "").strip()) < 50
+        except Exception:
+            needs_scroll = True
+
+    if needs_scroll:
+        for y in range(400, 4500, 450):
+            try:
+                page.evaluate(f"window.scrollTo(0, {y})")
+                time.sleep(0.25)
+            except Exception:
+                break
+        hydrate_deadline = time.time() + 4.0
+        while time.time() < hydrate_deadline:
+            section_loc = _find_hydrated_section()
+            if section_loc is not None:
+                try:
+                    if len((section_loc.inner_html() or "").strip()) >= 50:
+                        break
+                except Exception:
+                    pass
+            time.sleep(0.3)
 
     if section_loc is not None:
         try:
@@ -242,7 +278,7 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
                 "(el) => el && el.scrollIntoView({behavior: 'instant', block: 'center'})",
                 section_loc.element_handle(),
             )
-            time.sleep(1.0)
+            time.sleep(0.8)
         except Exception:
             pass
 
@@ -260,19 +296,16 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
         return None
 
     edit_loc = None
-    search_root = section_loc if section_loc is not None else page
-    for e_sel in edit_selectors:
-        try:
-            cand = search_root.locator(e_sel).first
-            if cand.count() > 0:
-                edit_loc = cand
-                break
-        except Exception:
-            continue
-    if edit_loc is None:
-        for e_sel in edit_selectors:
+    if section_loc is not None:
+        combined_edits = list(edit_selectors) + [
+            "span.edit",
+            ".edit.icon",
+            "[aria-label*='Edit' i]",
+            ".icon-edit",
+        ]
+        for e_sel in combined_edits:
             try:
-                cand = page.locator(e_sel).first
+                cand = section_loc.locator(e_sel).first
                 if cand.count() > 0:
                     edit_loc = cand
                     break
@@ -584,7 +617,10 @@ def sync_resume_headline(page, target_headline=None, mutator=None):
 
         if textarea is not None and textarea.is_visible():
             curr_val = textarea.input_value().strip()
-            if curr_val.rstrip(".") != hl.rstrip("."):
+            if curr_val.rstrip(".") == hl.rstrip("."):
+                # Toggle trailing period so Save triggers Resdex recency update and logs mutation
+                hl = hl.rstrip(".") if curr_val.endswith(".") else (hl.rstrip(".") + ".")
+            if curr_val != hl:
                 textarea.click()
                 textarea.fill("")
                 time.sleep(0.2)
@@ -749,15 +785,13 @@ def sync_preferred_locations(page, locations=None):
 
     loc_input = _open_naukri_section_editor(
         page,
-        section_selectors=['#lazyCareerProfile', '.desiredProfile'],
-        edit_selectors=['.editOneTheme', 'span.edit', '.desiredProfile .edit'],
+        section_selectors=['#lazyDesiredProfile', '#lazyCareerProfile', '.desiredProfile'],
+        edit_selectors=['span.edit', '.edit.icon', '[aria-label*="Edit" i]', '.desiredProfile .edit'],
         input_selectors=[
             '#locationSugg',
             '#preferredLocation',
-            'input[id*="location" i]',
+            '.desiredProfileForm input[id*="location" i]',
             '.locationPref input',
-            'input[placeholder*="location" i]',
-            '.ltCont.open input[placeholder*="city" i]',
         ],
     )
     if loc_input is None:
@@ -993,15 +1027,6 @@ def dismiss_open_modals(page):
                     time.sleep(0.3)
             except Exception:
                 continue
-        # Last resort: detach lightbox layers so subsequent clicks are not intercepted
-        page.evaluate(
-            """() => {
-                document.querySelectorAll('.ltLayer.open, .ltCont, .lightbox, .modal-backdrop').forEach(el => {
-                    try { el.remove(); } catch (e) {}
-                });
-                document.body && document.body.classList.remove('modal-open');
-            }"""
-        )
     except Exception:
         pass
 

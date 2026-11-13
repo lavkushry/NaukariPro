@@ -200,7 +200,7 @@ def test_error_isolation_linkedin_cookie_missing(capsys):
     - LinkedIn apply gracefully pauses with COOKIE_REFRESH_REQUIRED status.
     - No exception is raised; summary reports linkedin_status=COOKIE_REFRESH_REQUIRED.
     """
-    engine = ProAutoPilotEngine(limit=5, headless=True, dry_run=False, force=False)
+    engine = ProAutoPilotEngine(limit=5, headless=True, dry_run=False, force=False, drain_pending=False)
 
     mock_ctx = MagicMock()
     mock_ctx.pages = [MagicMock()]
@@ -211,6 +211,8 @@ def test_error_isolation_linkedin_cookie_missing(capsys):
          patch.object(engine.li_session_manager, "get_li_at_cookie", return_value=None), \
          patch.object(engine.perf_engine, "display_report"), \
          patch.object(engine.search_engine, "search_hacker_news", return_value=[]), \
+         patch.object(engine.portal_runner, "run_batch", return_value={"submitted": 0, "skipped": 0}), \
+         patch.object(engine.portal_filler, "process_external_redirects", return_value={"processed": 0, "submitted": 0, "skipped": 0, "items": []}), \
          patch("naukari_pro.session.get_stealth_context", return_value=mock_ctx), \
          patch("naukari_pro.session.ensure_authenticated", return_value=True), \
          patch("scripts.sync_naukri_live_profile.sync_full_naukri_profile"), \
@@ -233,7 +235,7 @@ def test_error_isolation_linkedin_apply_exception(capsys):
     Simulates an unexpected runtime error inside LinkedIn apply engine.
     Verifies the error is caught, isolated, and does NOT crash the pipeline.
     """
-    engine = ProAutoPilotEngine(limit=5, headless=True, dry_run=False, force=False)
+    engine = ProAutoPilotEngine(limit=5, headless=True, dry_run=False, force=False, drain_pending=False)
 
     mock_ctx = MagicMock()
     mock_ctx.pages = [MagicMock()]
@@ -245,6 +247,8 @@ def test_error_isolation_linkedin_apply_exception(capsys):
          patch.object(engine.li_apply_engine, "run_apply_cycle", AsyncMock(side_effect=RuntimeError("Simulated LinkedIn DOM failure"))), \
          patch.object(engine.perf_engine, "display_report"), \
          patch.object(engine.search_engine, "search_hacker_news", return_value=[]), \
+         patch.object(engine.portal_runner, "run_batch", return_value={"submitted": 0, "skipped": 0}), \
+         patch.object(engine.portal_filler, "process_external_redirects", return_value={"processed": 0, "submitted": 0, "skipped": 0, "items": []}), \
          patch("naukari_pro.session.get_stealth_context", return_value=mock_ctx), \
          patch("naukari_pro.session.ensure_authenticated", return_value=True), \
          patch("scripts.sync_naukri_live_profile.sync_full_naukri_profile"), \
@@ -304,6 +308,7 @@ def test_cli_pro_command_parsing():
             force=True,
             block=None,
             execute_outreach_live=False,
+            drain_pending=True,
         )
 
 

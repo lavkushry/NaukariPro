@@ -846,8 +846,7 @@ def is_job_already_applied(
         "FALLBACK (VALIDATION_ERRORS)",
         "FALLBACK (TIMEOUT_240S)",
         "FALLBACK (OTP_NOT_FOUND)",
-        # Incomplete fills / barriers — drainable by Always-on Beast
-        "Form Auto-Filled (Ready for Review)",
+        # Incomplete / barrier statuses — drainable by Always-on Beast via allow_retry=True
         "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)",
         "Workday Account / Sign-In Barrier — still on login after vault",
         "Workday Account / Sign-In Barrier",
