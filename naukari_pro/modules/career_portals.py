@@ -3483,12 +3483,29 @@ class WorkdayHandler(BaseATSHandler):
 
         def _fill_by_label(label: str, value: str) -> bool:
             try:
-                loc = page.get_by_label(label, exact=False).first
-                if safe_count(loc) == 0 or not loc.is_visible():
-                    # Label text near input
+                loc = None
+                # Prefer textbox role — get_by_label("Email") can hit a section group div
+                try:
+                    cand = page.get_by_role("textbox", name=re.compile(label, re.I)).first
+                    if safe_count(cand) > 0 and cand.is_visible():
+                        loc = cand
+                except Exception:
+                    loc = None
+                if loc is None:
+                    try:
+                        cand = page.get_by_label(label, exact=True).first
+                        tag = (cand.evaluate("el => el.tagName") or "").lower()
+                        if tag in ("input", "textarea") and cand.is_visible():
+                            loc = cand
+                    except Exception:
+                        pass
+                if loc is None:
                     loc = page.locator(
-                        f"xpath=//label[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{label.lower()}')]/following::input[1]"
+                        f"xpath=//label[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{label.lower()}')]"
+                        f"/following::input[not(@type='hidden') and not(@type='checkbox') and not(@type='radio')][1]"
                     ).first
+                if label.lower().startswith("email") and (loc is None or safe_count(loc) == 0 or not loc.is_visible()):
+                    loc = page.locator("input[type='email'], input[id*='email' i], input[name*='email' i]").first
                 if safe_count(loc) == 0 or not loc.is_visible():
                     return False
                 cur = ""
@@ -3604,27 +3621,57 @@ class WorkdayHandler(BaseATSHandler):
             except Exception:
                 pass
 
-            # 1b. Workday 'How Did You Hear About Us?' multiselect searchBox
+            # 1b. Workday 'How Did You Hear About Us?' multiselect (Embitel has no automation id)
             try:
-                src_box = page.locator(
-                    "div[data-automation-id='formField-sourcePrompt'] input, "
-                    "input[data-automation-id='searchBox'], "
-                    "label:has-text('How Did You Hear') ~ div input, "
-                    "xpath=//label[contains(., 'How Did You Hear')]/following::input[1]"
-                ).first
-                if safe_count(src_box) > 0 and src_box.is_visible():
-                    src_box.click()
-                    src_box.fill("LinkedIn")
-                    if hasattr(page, "keyboard"):
-                        page.keyboard.press("Enter")
-                    time.sleep(1.0)
-                    prompt_opt = page.locator(
-                        "div[data-automation-id='promptOption']:has-text('LinkedIn'), "
-                        "div[data-automation-id='promptOption'], [role='option']:has-text('LinkedIn')"
-                    ).first
-                    if safe_count(prompt_opt) > 0 and prompt_opt.is_visible():
-                        prompt_opt.click()
-                        filled.append("Source: LinkedIn")
+                src_filled = False
+                # Jump via validation error button when present
+                err_src = page.locator("button:has-text('How Did You Hear'), a:has-text('How Did You Hear')").first
+                if safe_count(err_src) > 0 and err_src.is_visible():
+                    try:
+                        err_src.click(force=True)
+                        time.sleep(0.3)
+                    except Exception:
+                        pass
+                for opener in (
+                    "div[data-automation-id='formField-sourcePrompt'] input",
+                    "div[data-automation-id='formField-sourcePrompt'] button",
+                    "input[data-automation-id='searchBox']",
+                    "xpath=//*[contains(., 'How Did You Hear About Us')]/following::input[1]",
+                    "xpath=//*[contains(., 'How Did You Hear About Us')]/following::button[1]",
+                    "[data-automation-id='multiSelectContainer']",
+                ):
+                    try:
+                        src_box = page.locator(opener).first
+                        if safe_count(src_box) == 0 or not src_box.is_visible():
+                            continue
+                        src_box.click(force=True)
+                        time.sleep(0.4)
+                        typed = page.locator(
+                            "input[data-automation-id='searchBox'], input[placeholder*='Search' i]"
+                        ).first
+                        if safe_count(typed) > 0 and typed.is_visible():
+                            typed.fill("LinkedIn")
+                            time.sleep(0.45)
+                        prompt_opt = page.get_by_role("option").filter(has_text="LinkedIn").first
+                        if safe_count(prompt_opt) == 0:
+                            prompt_opt = page.locator(
+                                "div[data-automation-id='promptOption']:has-text('LinkedIn'), "
+                                "[role='option']:has-text('LinkedIn')"
+                            ).first
+                        if safe_count(prompt_opt) > 0 and prompt_opt.is_visible():
+                            prompt_opt.click(force=True)
+                            filled.append("Source: LinkedIn")
+                            src_filled = True
+                            # close multiselect
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                            break
+                    except Exception:
+                        continue
+                if not src_filled:
+                    logger.debug("Workday source prompt not filled this step")
             except Exception:
                 pass
 
