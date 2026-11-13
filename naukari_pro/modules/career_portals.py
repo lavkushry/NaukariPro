@@ -2615,13 +2615,22 @@ class WorkdayHandler(BaseATSHandler):
                 time.sleep(0.3)
                 continue
             try:
-                # Require real wizard controls — applyFlowPage alone is not enough
-                form = page.locator(
-                    "button[data-automation-id='pageFooterNextButton'], "
+                # Require real fields — Embitel empty My Information shows Next without auth
+                real = page.locator(
                     "input[data-automation-id='legalNameSection_firstName'], "
-                    "button[data-automation-id='bottom-navigation-next-button']"
-                ).first
-                if safe_count(form) > 0 and form.is_visible():
+                    "input[data-automation-id='addressSection_addressLine1'], "
+                    "input[type='email'], input[type='tel']"
+                )
+                visible_inputs = 0
+                try:
+                    for inp in page.locator("input[type='text'], input[type='email'], input[type='tel']").all():
+                        if inp.is_visible():
+                            auto = (inp.get_attribute("data-automation-id") or "").lower()
+                            if "beecatcher" not in auto:
+                                visible_inputs += 1
+                except Exception:
+                    pass
+                if (safe_count(real) > 0 and real.first.is_visible()) or visible_inputs >= 2:
                     return "form"
                 if self._workday_sign_in_ready(page):
                     return "signin"
@@ -2634,11 +2643,17 @@ class WorkdayHandler(BaseATSHandler):
         if self._workday_sign_in_ready(page):
             return "signin"
         try:
+            visible_inputs = 0
+            for inp in page.locator("input[type='text'], input[type='email'], input[type='tel']").all():
+                if inp.is_visible():
+                    auto = (inp.get_attribute("data-automation-id") or "").lower()
+                    if "beecatcher" not in auto:
+                        visible_inputs += 1
             form = page.locator(
-                "button[data-automation-id='pageFooterNextButton'], "
-                "input[data-automation-id='legalNameSection_firstName']"
+                "input[data-automation-id='legalNameSection_firstName'], "
+                "input[type='email']"
             ).first
-            if safe_count(form) > 0 and form.is_visible():
+            if (safe_count(form) > 0 and form.is_visible()) or visible_inputs >= 2:
                 return "form"
         except Exception:
             pass
@@ -3022,29 +3037,8 @@ class WorkdayHandler(BaseATSHandler):
             verify_pass_loc = page.locator("input[data-automation-id='verifyPassword']").first
 
             def _auth_cleared_early() -> bool:
-                try:
-                    path = self._workday_url_path(page)
-                    if "/login" in path:
-                        return False
-                    pwd = page.locator(
-                        "input[data-automation-id='password'], input[type='password']"
-                    ).first
-                    if safe_count(pwd) > 0 and pwd.is_visible():
-                        return False
-                    # /apply URL alone is NOT enough — SPA often parks on applyManually
-                    # then bounces to login; require real wizard controls.
-                    app_field = page.locator(
-                        "input[data-automation-id='legalNameSection_firstName'], "
-                        "button[data-automation-id='bottom-navigation-next-button'], "
-                        "button[data-automation-id='pageFooterNextButton']"
-                    ).first
-                    if safe_count(app_field) > 0 and app_field.is_visible():
-                        return True
-                    if any(tok in path for tok in ("userhome", "myapplications")):
-                        return True
-                    return False
-                except Exception:
-                    return False
+                # Same bar as _auth_cleared — Next on empty My Information is not success
+                return _auth_cleared()
 
             def _auth_cleared() -> bool:
                 try:
@@ -3057,20 +3051,52 @@ class WorkdayHandler(BaseATSHandler):
                     ).first
                     if safe_count(pwd) > 0 and pwd.is_visible():
                         return False
-                    email = page.locator(
-                        "input[data-automation-id='email'], input[type='email']"
+                    # Login email on auth card (not application Email Address section)
+                    login_email = page.locator(
+                        "input[data-automation-id='email'][type='text'], "
+                        "input[data-automation-id='email'][type='email']"
                     ).first
-                    if safe_count(email) > 0 and email.is_visible():
-                        # Sign-in form still up (even under /apply shell)
-                        return False
-                    # Require wizard markers — bare /apply path falsely cleared auth
-                    app_field = page.locator(
+                    if safe_count(login_email) > 0 and login_email.is_visible():
+                        # Distinguish auth email vs application email via nearby Sign In submit
+                        sign_sub = page.locator(
+                            "button[data-automation-id='signInSubmitButton'], "
+                            "button[data-automation-id='createAccountSubmitButton']"
+                        ).first
+                        if safe_count(sign_sub) > 0 and sign_sub.is_visible():
+                            return False
+                    # Embitel empty My Information shell shows Next + header Sign In with NO fields
+                    util_sign = page.locator("button[data-automation-id='utilityButtonSignIn']").first
+                    real_fields = page.locator(
                         "input[data-automation-id='legalNameSection_firstName'], "
-                        "button[data-automation-id='bottom-navigation-next-button'], "
-                        "button[data-automation-id='pageFooterNextButton'], "
-                        "button[data-automation-id='submitButton']"
-                    ).first
-                    if safe_count(app_field) > 0 and app_field.is_visible():
+                        "input[data-automation-id='addressSection_addressLine1'], "
+                        "input[type='email'], "
+                        "textarea[data-automation-id], "
+                        "input[data-automation-id='phone-number']"
+                    )
+                    # Label-based apps (no automation ids): any visible text input beyond honeypot
+                    visible_text_inputs = 0
+                    try:
+                        for inp in page.locator("input[type='text'], input[type='email'], input[type='tel']").all():
+                            if not inp.is_visible():
+                                continue
+                            auto = (inp.get_attribute("data-automation-id") or "").lower()
+                            name = (inp.get_attribute("name") or "").lower()
+                            if "beecatcher" in auto or name == "website":
+                                continue
+                            visible_text_inputs += 1
+                    except Exception:
+                        visible_text_inputs = 0
+                    has_real = (
+                        (safe_count(real_fields) > 0 and real_fields.first.is_visible())
+                        or visible_text_inputs >= 2
+                    )
+                    if safe_count(util_sign) > 0 and util_sign.is_visible() and not has_real:
+                        return False
+                    # Require real wizard content — Next alone on empty shell is NOT auth success
+                    if has_real:
+                        return True
+                    submit = page.locator("button[data-automation-id='submitButton']").first
+                    if safe_count(submit) > 0 and submit.is_visible() and has_real:
                         return True
                     if any(tok in path for tok in ("userhome", "myapplications")):
                         return True
