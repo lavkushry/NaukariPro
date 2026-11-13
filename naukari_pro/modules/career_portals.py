@@ -3675,7 +3675,10 @@ class WorkdayHandler(BaseATSHandler):
 
             # 3. Workday Custom Dropdowns (Country, Source, Phone Type, Questions, Disclosures)
             try:
-                wd_dropdowns = page.locator("button[data-automation-id*='Dropdown' i], button[data-automation-id*='prompt' i], button[aria-haspopup='listbox']").all()
+                wd_dropdowns = page.locator(
+                    "button[data-automation-id*='Dropdown' i], button[data-automation-id*='prompt' i], "
+                    "button[aria-haspopup='listbox'], button:has-text('Select One'), button:has-text('Select')"
+                ).all()
                 for dd_idx, dd_btn in enumerate(wd_dropdowns):
                     try:
                         if not dd_btn.is_visible():
@@ -3685,20 +3688,43 @@ class WorkdayHandler(BaseATSHandler):
                         if dd_text and dd_text not in ["select", "select one", "select...", ""]:
                             continue
 
-                        parent_ff = dd_btn.locator("xpath=ancestor::div[contains(@data-automation-id,'formField')][1]").first
+                        parent_ff = dd_btn.locator(
+                            "xpath=ancestor::div[contains(@data-automation-id,'formField')][1] | "
+                            "xpath=ancestor::div[contains(@class,'form')][1]"
+                        ).first
                         q_label = parent_ff.inner_text().strip().split("\n")[0] if safe_count(parent_ff) > 0 else dd_id
+                        q_l = q_label.lower()
 
                         dd_btn.click()
                         time.sleep(0.5)
-                        opts_loc = page.locator("div[data-automation-id='promptOption'], div[role='option'], li[role='option']")
+                        opts_loc = page.locator(
+                            "div[data-automation-id='promptOption'], div[role='option'], li[role='option']"
+                        )
                         opts = [o.strip() for o in opts_loc.all_inner_texts() if o.strip()]
 
+                        def _pick_india(options: List[str]) -> Optional[str]:
+                            # Avoid "British Indian Ocean Territory" / Indiana false positives
+                            for o in options:
+                                ol = o.lower().strip()
+                                if ol in ("india", "india (+91)", "+91", "+91 india") or re.search(r"^\+?91\b.*india|india.*\+?91", ol):
+                                    return o
+                            for o in options:
+                                ol = o.lower()
+                                if "india" in ol and "ocean" not in ol and "indiana" not in ol and "indian ocean" not in ol:
+                                    return o
+                            return None
+
                         chosen = None
-                        if "country" in dd_id.lower() or "country" in q_label.lower():
-                            chosen = next((o for o in opts if "india" in o.lower()), None)
-                        elif "source" in dd_id.lower() or "hear" in q_label.lower():
+                        if any(k in q_l or k in dd_id.lower() for k in ("country", "phone code", "country phone")):
+                            chosen = _pick_india(opts)
+                        elif "state" in q_l or "province" in q_l:
+                            for pref in ("karnataka", "telangana", "andhra pradesh", "maharashtra"):
+                                chosen = next((o for o in opts if pref in o.lower()), None)
+                                if chosen:
+                                    break
+                        elif "source" in dd_id.lower() or "hear" in q_l:
                             chosen = next((o for o in opts if "linkedin" in o.lower() or "career site" in o.lower()), None)
-                        elif "phone" in dd_id.lower() or "device" in dd_id.lower():
+                        elif "phone" in dd_id.lower() or "device" in dd_id.lower() or "device type" in q_l:
                             chosen = next((o for o in opts if "mobile" in o.lower()), None)
                         elif any("prefer not" in o.lower() or "decline" in o.lower() or "do not wish" in o.lower() for o in opts):
                             chosen = next((o for o in opts if any(x in o.lower() for x in ("prefer not", "decline", "do not wish"))), None)
@@ -3708,9 +3734,22 @@ class WorkdayHandler(BaseATSHandler):
                             chosen = opts[0]
 
                         if chosen:
-                            opt_match = page.locator(f"div[data-automation-id='promptOption']:has-text('{chosen}'), div[role='option']:has-text('{chosen}'), li[role='option']:has-text('{chosen}')").first
-                            if safe_count(opt_match) > 0:
-                                opt_match.click()
+                            # Prefer exact option click by index to avoid :has-text apostrophe issues
+                            clicked = False
+                            for oi, ot in enumerate(opts):
+                                if ot == chosen:
+                                    try:
+                                        opts_loc.nth(oi).click(force=True)
+                                        clicked = True
+                                        break
+                                    except Exception:
+                                        pass
+                            if not clicked:
+                                opt_match = page.get_by_role("option", name=chosen, exact=False).first
+                                if safe_count(opt_match) > 0:
+                                    opt_match.click(force=True)
+                                    clicked = True
+                            if clicked:
                                 filled.append(f"Workday Dropdown: {chosen}")
                                 self.record_field(
                                     label=q_label,
