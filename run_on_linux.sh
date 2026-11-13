@@ -30,8 +30,8 @@ if [ "$1" = "agy-schedule" ]; then
     SUB_CMD="${2:-status}"
     case "$SUB_CMD" in
         install)
-            echo "[*] Installing AGY autonomous scheduler on Linux ($REMOTE_HOST)..."
-            ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE_HOST" "cd $REMOTE_DIR && git pull origin main 2>/dev/null || true; ./install_linux_schedule.sh"
+            echo "[*] Installing Always-on Beast scheduler on Linux ($REMOTE_HOST)..."
+            ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE_HOST" "cd $REMOTE_DIR && git fetch origin main && git checkout main && git reset --hard origin/main && chmod +x install_schedule.sh install_linux_schedule.sh agy_schedule_runner.sh naukariPro && ./install_schedule.sh"
             ;;
         run)
             echo "[*] Triggering immediate AGY autonomous cycle on Linux..."
