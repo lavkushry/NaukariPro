@@ -756,26 +756,39 @@ class GreenhouseHandler(BaseATSHandler):
             # Degree / Discipline are often required React-Select dropdowns (not free text)
             def _select_edu_dropdown(label: str, preferred: List[str], record_name: str) -> bool:
                 try:
-                    # Open control adjacent to label
-                    lab = page.locator(f"label:has-text('{label}')").first
+                    # Open control adjacent to label (Databricks: .select__container > label.select__label)
+                    lab = page.locator(
+                        f"label[id*='{label.lower()}' i], label.select__label:has-text('{label}'), "
+                        f"label:has-text('{label}')"
+                    ).first
                     if safe_count(lab) == 0:
                         lab = page.locator(f"div:text-is('{label}'), span:text-is('{label}')").first
                     container = lab.locator(
-                        "xpath=ancestor::div[contains(@class,'field') or contains(@class,'education') "
-                        "or contains(@class,'question') or contains(@class,'select')][1]"
+                        "xpath=ancestor::div[contains(@class,'select__container') or contains(@class,'field') "
+                        "or contains(@class,'education') or contains(@class,'question') or contains(@class,'select')][1]"
                     ).first
                     control = container.locator(
-                        ".select__control, [class*='select__control'], div[role='combobox'], button"
+                        ".select__control, [class*='select__control'], div[role='combobox'], "
+                        ".select__value-container, button"
                     ).first
                     if safe_count(control) == 0:
                         control = page.locator(
+                            f"div.select__container:has(label:has-text('{label}')) .select__control, "
                             f"div:has(> label:has-text('{label}')) .select__control, "
                             f"div:has(label:has-text('{label}')) .select__control"
                         ).first
                     if safe_count(control) == 0 or not control.is_visible():
                         return False
-                    control.click()
+                    control.click(force=True)
                     time.sleep(0.5)
+                    # Type filter for long option lists
+                    typed = container.locator("input.select__input, input").first
+                    if safe_count(typed) > 0:
+                        try:
+                            typed.fill(preferred[0].split()[0] if preferred else "Bachelor")
+                            time.sleep(0.35)
+                        except Exception:
+                            pass
                     opts = page.locator(".select__option, [role='option'], li[role='option']")
                     texts = []
                     try:
@@ -797,7 +810,25 @@ class GreenhouseHandler(BaseATSHandler):
                                 chosen = t
                                 break
                     if chosen:
-                        page.locator(f".select__option:has-text('{chosen}'), [role='option']:has-text('{chosen}')").first.click()
+                        # get_by_role — apostrophes in "Bachelor's Degree" break :has-text quotes
+                        clicked = False
+                        try:
+                            page.get_by_role("option", name=chosen, exact=True).first.click(force=True, timeout=3000)
+                            clicked = True
+                        except Exception:
+                            pass
+                        if not clicked:
+                            try:
+                                page.get_by_role("option").filter(has_text=chosen).first.click(force=True, timeout=3000)
+                                clicked = True
+                            except Exception:
+                                pass
+                        if not clicked:
+                            for idx, t in enumerate(texts):
+                                if t == chosen:
+                                    opts.nth(idx).click(force=True)
+                                    clicked = True
+                                    break
                         filled.append(record_name)
                         self.record_field(
                             label=record_name,
@@ -815,9 +846,10 @@ class GreenhouseHandler(BaseATSHandler):
                     return False
                 return False
 
+            # Prefer exact Databricks option label first
             _select_edu_dropdown(
                 "Degree",
-                ["Bachelor of Technology", "Bachelor of Science", "Bachelor's Degree", "Bachelor", "B.Tech", "Bachelors"],
+                ["Bachelor's Degree", "Bachelor of Technology", "Bachelor of Science", "Bachelor", "B.Tech", "Bachelors"],
                 "Education Degree",
             )
             _select_edu_dropdown(
@@ -1257,9 +1289,157 @@ class GreenhouseHandler(BaseATSHandler):
             logger.debug("Greenhouse resume upload notice: %s", e)
         return False
 
+    def _repair_greenhouse_degree(self, page: Any) -> bool:
+        """Fill empty Degree React-Select when 'Degree is required' blocks submit (Databricks)."""
+        if not page:
+            return False
+        try:
+            # Do NOT call fill_education_fields here (would recurse via education path)
+            prefs = [
+                "Bachelor of Technology",
+                "Bachelor's Degree",
+                "Bachelor of Science",
+                "Bachelor",
+                "B.Tech",
+                "Bachelors",
+            ]
+
+            def _pick_from_open_menu() -> Optional[str]:
+                # Use get_by_role — apostrophes in "Bachelor's Degree" break CSS :has-text('...')
+                roles = page.get_by_role("option")
+                texts: List[str] = []
+                try:
+                    n = roles.count()
+                    texts = [roles.nth(i).inner_text().strip() for i in range(n)]
+                except Exception:
+                    texts = []
+                def _click_text(want: str) -> bool:
+                    try:
+                        page.get_by_role("option", name=want, exact=True).first.click(force=True, timeout=3000)
+                        return True
+                    except Exception:
+                        pass
+                    try:
+                        page.get_by_role("option").filter(has_text=want).first.click(force=True, timeout=3000)
+                        return True
+                    except Exception:
+                        for idx, t in enumerate(texts):
+                            if t == want or want.lower() in t.lower():
+                                try:
+                                    roles.nth(idx).click(force=True, timeout=3000)
+                                    return True
+                                except Exception:
+                                    return False
+                    return False
+                for pref in prefs:
+                    for t in texts:
+                        if pref.lower() in t.lower():
+                            if _click_text(t):
+                                return t
+                for t in texts:
+                    if t.lower() not in ("select...", "select", "choose..."):
+                        if _click_text(t):
+                            return t
+                return None
+
+            # Databricks uses label#degree--0-label inside .select__container (not .field)
+            # Do NOT use bare label.select__label — that matches Country/School too.
+            targets = [
+                "label[id*='degree' i]",
+                "label[for*='degree' i]",
+                "label.select__label:has-text('Degree')",
+                "#degree--0",
+                "input[id*='degree' i]",
+            ]
+            for tsel in targets:
+                try:
+                    lab = page.locator(tsel).first
+                    if safe_count(lab) == 0:
+                        continue
+                    root = lab.locator(
+                        "xpath=ancestor::div[contains(@class,'select__container') or "
+                        "contains(@class,'field') or contains(@class,'education') or "
+                        "contains(@class,'question')][1]"
+                    ).first
+                    if safe_count(root) == 0:
+                        root = lab.locator("xpath=..")
+                    control = root.locator(
+                        ".select__control, [class*='select__control'], div[role='combobox'], "
+                        "input, .select__value-container"
+                    ).first
+                    if safe_count(control) == 0:
+                        # Click the label itself to focus the select
+                        lab.click(force=True)
+                    else:
+                        shown = (control.inner_text() or "").strip().lower()
+                        if shown and "select" not in shown and len(shown) > 2:
+                            return True  # already filled
+                        control.click(force=True)
+                    time.sleep(0.5)
+                    typed = root.locator("input.select__input, input").first
+                    if safe_count(typed) > 0:
+                        try:
+                            typed.fill("Bachelor")
+                            time.sleep(0.4)
+                        except Exception:
+                            pass
+                    chosen = _pick_from_open_menu()
+                    if chosen:
+                        self.record_field(
+                            label="Education Degree (pre-submit repair)",
+                            value=chosen,
+                            field_name="education_degree",
+                            field_type="select",
+                            step=1,
+                            step_name="EDUCATION",
+                            action_type="SELECTED",
+                        )
+                        time.sleep(0.3)
+                        return True
+                    if hasattr(page, "keyboard"):
+                        page.keyboard.press("Escape")
+                except Exception:
+                    continue
+
+            # Last resort: open any education select still showing Select...
+            try:
+                for ctrl in page.locator(".select__container .select__control").all()[:8]:
+                    txt = (ctrl.inner_text() or "").strip().lower()
+                    if "select" not in txt:
+                        continue
+                    parent_txt = ""
+                    try:
+                        parent_txt = ctrl.locator("xpath=ancestor::div[contains(@class,'select__container')][1]").inner_text().lower()
+                    except Exception:
+                        pass
+                    if "degree" not in parent_txt:
+                        continue
+                    ctrl.click(force=True)
+                    time.sleep(0.45)
+                    chosen = _pick_from_open_menu()
+                    if chosen:
+                        self.record_field(
+                            label="Education Degree (container repair)",
+                            value=chosen,
+                            field_name="education_degree",
+                            field_type="select",
+                            step=1,
+                            step_name="EDUCATION",
+                            action_type="SELECTED",
+                        )
+                        return True
+            except Exception:
+                pass
+        except Exception as e_deg:
+            logger.debug("Greenhouse degree repair notice: %s", e_deg)
+        return False
+
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+
+        # Degree/education must be valid before submit (Databricks: Degree is required)
+        self._repair_greenhouse_degree(page)
 
         # Pre-submit: Remove any residual required constraint from empty non-file inputs so HTML5 validation does not block submit
         try:
@@ -1316,6 +1496,29 @@ class GreenhouseHandler(BaseATSHandler):
 
         if not submit_clicked:
             return False
+
+        # If validation errors remain (e.g. Degree), repair and click Submit once more
+        try:
+            time.sleep(1.2)
+            deg_needed = page.locator(
+                ".field-error:has-text('Degree'), li.error:has-text('Degree'), "
+                "div:has-text('Degree is required')"
+            )
+            if safe_count(deg_needed) > 0 and deg_needed.first.is_visible():
+                print("    🎓 Degree validation failed — repairing and resubmitting...")
+                self._repair_greenhouse_degree(page)
+                time.sleep(0.6)
+                for sel in submit_selectors:
+                    try:
+                        btn = page.locator(sel).first
+                        if safe_count(btn) > 0 and btn.is_visible():
+                            btn.click(timeout=5000)
+                            t_click = time.time()
+                            break
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
         # Greenhouse Email Verification Prompt Handler (.email-verification)
         try:
@@ -2628,15 +2831,29 @@ class WorkdayHandler(BaseATSHandler):
             mgr = PortalAccountManager()
             acct = mgr.ensure_account(job_url or (page.url if page else ""), email=self.profile.get("email", "lav84095@gmail.com"))
             acct_email = acct.get("email") or self.profile.get("email", "lav84095@gmail.com")
-            acct_pwd = os.getenv("PORTAL_PASSWORD") or acct.get("password") or "PortalSecure@2026!"
-            if not any(c.isupper() for c in acct_pwd):
-                acct_pwd += "A"
-            if not any(c.islower() for c in acct_pwd):
-                acct_pwd += "a"
-            if not any(c.isdigit() for c in acct_pwd):
-                acct_pwd += "1"
-            if not any(c in "!@#$%^&*" for c in acct_pwd):
-                acct_pwd += "!"
+            # Prefer per-tenant vault password (Fractal was created with vault secret).
+            # Global PORTAL_PASSWORD is only a fallback / secondary retry — overriding vault
+            # caused silent wrong-password sign-in and endless Create Account loops.
+            vault_pwd = (acct.get("password") or "").strip()
+            env_pwd = (os.getenv("PORTAL_PASSWORD") or "").strip()
+            pwd_candidates: List[str] = []
+            for cand in (vault_pwd, env_pwd, "PortalSecure@2026!"):
+                if cand and cand not in pwd_candidates:
+                    pwd_candidates.append(cand)
+
+            def _normalize_pwd(raw: str) -> str:
+                p = raw
+                if not any(c.isupper() for c in p):
+                    p += "A"
+                if not any(c.islower() for c in p):
+                    p += "a"
+                if not any(c.isdigit() for c in p):
+                    p += "1"
+                if not any(c in "!@#$%^&*" for c in p):
+                    p += "!"
+                return p
+
+            acct_pwd = _normalize_pwd(pwd_candidates[0])
 
             # If SignInWithEmailButton or 'Sign in with email' is visible
             email_btn_sel = (
@@ -2686,17 +2903,23 @@ class WorkdayHandler(BaseATSHandler):
                     path = self._workday_url_path(page)
                     if "/login" in path:
                         return False
-                    pwd = page.locator("input[data-automation-id='password']").first
+                    pwd = page.locator(
+                        "input[data-automation-id='password'], input[type='password']"
+                    ).first
                     if safe_count(pwd) > 0 and pwd.is_visible():
                         return False
-                    if any(tok in path for tok in ("/apply", "userhome", "myapplications")):
-                        return True
+                    # /apply URL alone is NOT enough — SPA often parks on applyManually
+                    # then bounces to login; require real wizard controls.
                     app_field = page.locator(
                         "input[data-automation-id='legalNameSection_firstName'], "
                         "button[data-automation-id='bottom-navigation-next-button'], "
                         "button[data-automation-id='pageFooterNextButton']"
                     ).first
-                    return safe_count(app_field) > 0 and app_field.is_visible()
+                    if safe_count(app_field) > 0 and app_field.is_visible():
+                        return True
+                    if any(tok in path for tok in ("userhome", "myapplications")):
+                        return True
+                    return False
                 except Exception:
                     return False
 
@@ -2707,8 +2930,23 @@ class WorkdayHandler(BaseATSHandler):
                 return _auth_cleared_early()
 
             # Sign-In page -> Try Sign In first, verify it succeeded, otherwise click Create Account
+            # Dismiss Workday click-outside / error toast layers that intercept clicks
+            try:
+                if hasattr(page, "keyboard"):
+                    page.keyboard.press("Escape")
+                overlay = page.locator("[data-behavior-click-outside-close='topmost']").first
+                if safe_count(overlay) > 0 and overlay.is_visible():
+                    page.keyboard.press("Escape")
+                    time.sleep(0.3)
+            except Exception:
+                pass
+
             if safe_count(email_loc) > 0 and email_loc.is_visible():
-                email_loc.fill(str(acct_email))
+                try:
+                    email_loc.click(force=True, timeout=3000)
+                except Exception:
+                    pass
+                email_loc.fill(str(acct_email), force=True)
                 self.record_field(
                     label="Account Email",
                     value=acct_email,
@@ -2719,7 +2957,11 @@ class WorkdayHandler(BaseATSHandler):
                     action_type="FILLED"
                 )
             if safe_count(pass_loc) > 0 and pass_loc.is_visible():
-                pass_loc.fill(str(acct_pwd))
+                try:
+                    pass_loc.click(force=True, timeout=3000)
+                except Exception:
+                    pass
+                pass_loc.fill(str(acct_pwd), force=True)
                 self.record_field(
                     label="Account Password",
                     value="********",
@@ -2757,23 +2999,52 @@ class WorkdayHandler(BaseATSHandler):
                     # Still on /login path even if redirect query contains /apply
                     if "/login" in path:
                         return False
-                    pwd = page.locator("input[data-automation-id='password']").first
+                    pwd = page.locator(
+                        "input[data-automation-id='password'], input[type='password']"
+                    ).first
                     if safe_count(pwd) > 0 and pwd.is_visible():
                         return False
-                    email = page.locator("input[data-automation-id='email']").first
-                    if safe_count(email) > 0 and email.is_visible() and "/apply" not in path:
+                    email = page.locator(
+                        "input[data-automation-id='email'], input[type='email']"
+                    ).first
+                    if safe_count(email) > 0 and email.is_visible():
+                        # Sign-in form still up (even under /apply shell)
                         return False
-                    # Progressed into apply wizard / My Applications (path only)
-                    if any(tok in path for tok in ("/apply", "userhome", "myapplications")):
-                        return True
-                    # Form fields from application present
+                    # Require wizard markers — bare /apply path falsely cleared auth
                     app_field = page.locator(
                         "input[data-automation-id='legalNameSection_firstName'], "
                         "button[data-automation-id='bottom-navigation-next-button'], "
                         "button[data-automation-id='pageFooterNextButton'], "
                         "button[data-automation-id='submitButton']"
                     ).first
-                    return safe_count(app_field) > 0 and app_field.is_visible()
+                    if safe_count(app_field) > 0 and app_field.is_visible():
+                        return True
+                    if any(tok in path for tok in ("userhome", "myapplications")):
+                        return True
+                    return False
+                except Exception:
+                    return False
+
+            def _try_sign_in_with_password(pwd: str) -> bool:
+                nonlocal acct_pwd
+                acct_pwd = _normalize_pwd(pwd)
+                try:
+                    if safe_count(email_loc) > 0 and email_loc.is_visible():
+                        email_loc.fill(str(acct_email))
+                    if safe_count(pass_loc) > 0 and pass_loc.is_visible():
+                        pass_loc.fill(str(acct_pwd))
+                    btn = page.locator(
+                        "div[data-automation-id='click_filter'][aria-label='Sign In'], "
+                        "button[data-automation-id='signInSubmitButton'], "
+                        "button:has-text('Sign In'), button[type='submit']"
+                    ).first
+                    if safe_count(btn) > 0 and btn.is_visible():
+                        btn.click(force=True)
+                        time.sleep(3.0)
+                    if "/login" in self._workday_url_path(page):
+                        self._workday_follow_login_redirect(page)
+                        time.sleep(1.5)
+                    return _auth_cleared()
                 except Exception:
                     return False
 
@@ -2786,6 +3057,12 @@ class WorkdayHandler(BaseATSHandler):
                 if _auth_cleared():
                     mgr.mark_verified(job_url or (page.url if page else ""))
                     return True
+                # Retry remaining password candidates before Create Account
+                for alt in pwd_candidates[1:]:
+                    logger.info("[AUTH] Workday Sign-In retry with alternate password candidate...")
+                    if _try_sign_in_with_password(alt):
+                        mgr.mark_verified(job_url or (page.url if page else ""))
+                        return True
                 logger.info("[AUTH] Workday Sign-In failed/unregistered on tenant; attempting Create Account fallback...")
 
             # Create Account fallback path
@@ -4419,7 +4696,8 @@ class CareerPortalFiller:
         salary: str = "25 LPA",
         page=None,
         match_score: Optional[int] = None,
-        auto_submit: bool = True
+        auto_submit: bool = True,
+        allow_retry: bool = False,
     ):
         """Unified entrypoint supporting both live submission and offline dry-run."""
         # P0-1: If called from inside an active asyncio event loop thread (e.g. from
@@ -4439,14 +4717,15 @@ class CareerPortalFiller:
                 salary=salary,
                 page=None,
                 match_score=match_score,
-                auto_submit=auto_submit
+                auto_submit=auto_submit,
+                allow_retry=allow_retry,
             )
             return future.result()
 
         # Strict Deduplication Check: Never apply to the same job again
         from naukari_pro.modules.db import is_job_already_applied
         target_db = getattr(self, "db_path", None)
-        if not dry_run and is_job_already_applied(title=role, company=company, job_url=portal_url, db_path=target_db):
+        if not dry_run and not allow_retry and is_job_already_applied(title=role, company=company, job_url=portal_url, db_path=target_db):
             print(f"  [DEDUP] Already applied to '{role}' at '{company}' ({portal_url}). Skipping strictly per rule.")
             return FillResult(False, [], None, status=FallbackReason.ALREADY_APPLIED.value)
 

@@ -344,6 +344,7 @@ def drain_incomplete_portal_applies(
                 dry_run=dry_run,
                 match_score=score_i,
                 auto_submit=True,
+                allow_retry=True,
             )
             if isinstance(fill_res, FillResult):
                 status = fill_res.status or ("Submitted (Confirmed)" if fill_res.success else "UNKNOWN")

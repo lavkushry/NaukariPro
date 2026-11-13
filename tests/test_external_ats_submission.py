@@ -1151,7 +1151,7 @@ class TestExternalSitesAndReachFixes:
             elif "verifyPassword" in sel:
                 loc.count.return_value = 1 if (state["created_view"] and not state["submitted_create"]) else 0
                 loc.is_visible.return_value = state["created_view"] and not state["submitted_create"]
-                loc.fill.side_effect = lambda v: state.update({"filled_verify": True})
+                loc.fill.side_effect = lambda v, **kw: state.update({"filled_verify": True})
             elif "errorMessage" in sel:
                 loc.count.return_value = 0 if state["submitted_create"] else 1
                 loc.is_visible.return_value = not state["submitted_create"]
@@ -1233,7 +1233,7 @@ class TestExternalSitesAndReachFixes:
                 ready = (not state["banner"]) and (not state["signed_in"])
                 loc.count.return_value = 1 if ready else 0
                 loc.is_visible.return_value = ready
-                loc.fill.side_effect = lambda v: state.update({"email_filled": True})
+                loc.fill.side_effect = lambda v, **kw: state.update({"email_filled": True})
             elif "SignInWithEmailButton" in sel or "Sign in with email" in sel:
                 loc.count.return_value = 0
                 loc.is_visible.return_value = False
