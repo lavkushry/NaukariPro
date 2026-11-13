@@ -2401,6 +2401,93 @@ class WorkdayHandler(BaseATSHandler):
             return False
         return False
 
+    def _locate_workday_sign_in_submit(self, page: Any) -> Any:
+        """Form Sign In submit only — never the header utilityButtonSignIn (reloads empty login)."""
+        if not page:
+            return None
+        preferred = [
+            "button[data-automation-id='signInSubmitButton']",
+            "div[data-automation-id='click_filter'][aria-label='Sign In']",
+            "[data-automation-id='authContainer'] button[type='submit']",
+            "[data-automation-id='authContainer'] button:has-text('Sign In')",
+            "[data-automation-id='loginPanel'] button:has-text('Sign In')",
+            "form button[type='submit']",
+        ]
+        for sel in preferred:
+            try:
+                loc = page.locator(sel).first
+                if safe_count(loc) == 0 or not loc.is_visible():
+                    continue
+                aid = (loc.get_attribute("data-automation-id") or "").strip()
+                if aid == "utilityButtonSignIn":
+                    continue
+                return loc
+            except Exception:
+                continue
+        try:
+            buttons = page.locator("button:has-text('Sign In'), button[type='submit']")
+            n = buttons.count()
+            for i in range(n):
+                b = buttons.nth(i)
+                try:
+                    if not b.is_visible():
+                        continue
+                    aid = (b.get_attribute("data-automation-id") or "").strip()
+                    if aid == "utilityButtonSignIn":
+                        continue
+                    return b
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return None
+
+    def _ensure_workday_login_surface(self, page: Any) -> bool:
+        """
+        Fractal often parks on empty /apply/applyManually without redirecting to /login.
+        Surface the email/password Sign In card before vault fill.
+        """
+        if not page:
+            return False
+        if self._workday_sign_in_ready(page):
+            return True
+        path = self._workday_url_path(page)
+        # Click header Sign In to open auth (this is the one place utility button is correct)
+        try:
+            util = page.locator("button[data-automation-id='utilityButtonSignIn']").first
+            if safe_count(util) > 0 and util.is_visible():
+                util.click(force=True)
+                time.sleep(1.2)
+                self.dismiss_workday_overlays(page, max_rounds=2)
+                if self.wait_for_workday_sign_in_fields(page, timeout_sec=8.0):
+                    return True
+        except Exception:
+            pass
+        # Hard navigate to tenant login with redirect back to current apply URL
+        try:
+            cur = page.url or ""
+            if "myworkdayjobs.com" in cur and "/login" not in path:
+                # Build https://tenant.wdN.myworkdayjobs.com/.../login?redirect=...
+                from urllib.parse import quote
+                base = cur.split("/job/")[0] if "/job/" in cur else cur.rstrip("/")
+                # Careers site root before /job/
+                if "/Careers" in cur:
+                    base = cur.split("/job/")[0] if "/job/" in cur else cur.split("?")[0]
+                    if base.endswith("/apply") or "/apply/" in base:
+                        base = base.split("/apply")[0]
+                login_url = f"{base}/login?redirect={quote(cur, safe='')}"
+                # Prefer site Careers/login
+                if "/Careers" in cur:
+                    root = cur.split("/Careers")[0] + "/Careers"
+                    login_url = f"{root}/login?redirect={quote(cur, safe='')}"
+                page.goto(login_url, wait_until="domcontentloaded", timeout=30000)
+                time.sleep(1.0)
+                self.dismiss_workday_overlays(page, max_rounds=3)
+                return self.wait_for_workday_sign_in_fields(page, timeout_sec=10.0)
+        except Exception:
+            pass
+        return self._workday_sign_in_ready(page)
+
     def _workday_overlay_present(self, page: Any) -> bool:
         """True when Fractal/Workday legal-notice / cookie banner is still blocking UI."""
         if not page:
@@ -2820,12 +2907,22 @@ class WorkdayHandler(BaseATSHandler):
             from naukari_pro.modules.portal_accounts import PortalAccountManager
             # ORDER MATTERS: cookie/legal banner first — otherwise email fields stay hidden
             self.dismiss_workday_overlays(page, max_rounds=4)
+            # Empty /apply/applyManually shell → surface login before fill
+            if not self._workday_sign_in_ready(page):
+                self._ensure_workday_login_surface(page)
             fields_ready = self.wait_for_workday_sign_in_fields(page, timeout_sec=10.0)
             if not fields_ready:
                 self.dismiss_workday_overlays(page, max_rounds=3)
                 fields_ready = self._workday_sign_in_ready(page)
             if not fields_ready and self._workday_overlay_present(page):
                 logger.warning("Workday vault auth blocked: legalNotice/cookie banner still present")
+                return False
+            if not fields_ready:
+                # Last chance: force login surface then re-check
+                self._ensure_workday_login_surface(page)
+                fields_ready = self._workday_sign_in_ready(page)
+            if not fields_ready:
+                logger.warning("Workday vault auth blocked: sign-in fields never appeared")
                 return False
 
             mgr = PortalAccountManager()
@@ -2973,13 +3070,8 @@ class WorkdayHandler(BaseATSHandler):
                 )
 
             sign_in_clicked = False
-            cf_sign = page.locator(
-                "div[data-automation-id='click_filter'][aria-label='Sign In'], "
-                "div[data-automation-id='click_filter'][aria-label='Submit'], "
-                "button[data-automation-id='signInSubmitButton'], "
-                "button:has-text('Sign In'), button[type='submit']"
-            ).first
-            if safe_count(cf_sign) > 0 and cf_sign.is_visible():
+            cf_sign = self._locate_workday_sign_in_submit(page)
+            if cf_sign is not None:
                 cf_sign.click(force=True)
                 self.record_field(
                     label="Sign In Submit",
@@ -3030,15 +3122,11 @@ class WorkdayHandler(BaseATSHandler):
                 acct_pwd = _normalize_pwd(pwd)
                 try:
                     if safe_count(email_loc) > 0 and email_loc.is_visible():
-                        email_loc.fill(str(acct_email))
+                        email_loc.fill(str(acct_email), force=True)
                     if safe_count(pass_loc) > 0 and pass_loc.is_visible():
-                        pass_loc.fill(str(acct_pwd))
-                    btn = page.locator(
-                        "div[data-automation-id='click_filter'][aria-label='Sign In'], "
-                        "button[data-automation-id='signInSubmitButton'], "
-                        "button:has-text('Sign In'), button[type='submit']"
-                    ).first
-                    if safe_count(btn) > 0 and btn.is_visible():
+                        pass_loc.fill(str(acct_pwd), force=True)
+                    btn = self._locate_workday_sign_in_submit(page)
+                    if btn is not None:
                         btn.click(force=True)
                         time.sleep(3.0)
                     if "/login" in self._workday_url_path(page):
@@ -3155,13 +3243,17 @@ class WorkdayHandler(BaseATSHandler):
                 return None
             if stage == "form":
                 return None
-            # empty after wait — still try vault if login path
-            if "/login" in self._workday_url_path(page):
+            # empty after wait — Fractal parks on /apply/applyManually; surface login then vault
+            path_now = self._workday_url_path(page)
+            if "/login" in path_now or "/apply" in path_now or stage == "empty":
+                if not self._workday_sign_in_ready(page):
+                    self._ensure_workday_login_surface(page)
                 signed = self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
                 if not signed or "/login" in self._workday_url_path(page):
                     if signed:
                         self._workday_follow_login_redirect(page)
-                    if "/login" in self._workday_url_path(page):
+                    post = self.wait_for_workday_auth_or_form(page, timeout_sec=10.0)
+                    if post != "form" or "/login" in self._workday_url_path(page):
                         return "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)"
                 return None
         parent_barrier = super().detect_barriers(page)
