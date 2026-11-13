@@ -1,8 +1,26 @@
 #!/bin/bash
-# Installs Always-on Beast LaunchAgents: Block 1 (09:15), Block 2 (14:31), Block 3 (18:00)
+# Installs Always-on Beast schedule on macOS (LaunchAgents) or Linux (systemd / cron).
+# Blocks: 1 (~09:15 IST), 2 (~14:31 IST + outreach), 3 (~18:00 IST)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OS="$(uname -s 2>/dev/null || echo unknown)"
+
+# ── Linux: systemd user timers (authoritative) or crontab fallback ──────────
+if [ "$OS" = "Linux" ]; then
+  echo "========================================================================"
+  echo "  NaukariPro Always-on Beast schedule → Linux (systemd / cron)"
+  echo "========================================================================"
+  exec "$SCRIPT_DIR/install_linux_schedule.sh" "$@"
+fi
+
+# ── macOS: LaunchAgents ────────────────────────────────────────────────────
+if [ "$OS" != "Darwin" ]; then
+  echo "[!] Unsupported OS: $OS (expected Darwin or Linux)"
+  echo "    On Linux run: ./install_linux_schedule.sh"
+  exit 1
+fi
+
 TARGET_DIR="$HOME/Library/LaunchAgents"
 
 mkdir -p "$TARGET_DIR"
@@ -59,8 +77,7 @@ do
   fi
 done
 
-# Ensure morning agent runs beast-autonomous style (pro --force --drain-pending)
-# block1 uses daily historically — upgrade ProgramArguments if still 'daily'
+# Ensure morning agent runs beast-autonomous
 MORNING="$TARGET_DIR/com.lavkush.naukaripro.plist"
 if [ -f "$MORNING" ]; then
   /usr/bin/python3 - "$MORNING" "$SCRIPT_DIR" <<'PY'
@@ -86,8 +103,9 @@ PY
 fi
 
 echo
-echo "[✓] Always-on Beast schedule installed."
+echo "[✓] Always-on Beast schedule installed (macOS)."
 echo "    Block 1 ~09:15  |  Block 2 ~14:31 (+outreach)  |  Block 3 ~18:00"
 echo "    Manual run:  ./naukariPro beast-autonomous --block 1"
+echo "    Linux host:  ./run_on_linux.sh agy-schedule install"
 echo "    CAPTCHA: set CAPTCHA_MODE=human (default) or vendor,vendor_allowlist + keys"
 echo "    Logs: ~/naukaripro_*.log and $SCRIPT_DIR/logs/"

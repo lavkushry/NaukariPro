@@ -9,7 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "========================================================================"
-echo "    NaukariPro AGY Autonomous Linux Scheduler Installer"
+echo "    NaukariPro Always-on Beast — Linux Scheduler (systemd / cron)"
+echo "    Runner: agy_schedule_runner.sh → beast-autonomous (blocks 1/2/3)"
 echo "========================================================================"
 
 ACTION="${1:-install}"
@@ -105,25 +106,28 @@ else
     echo "[!] systemd --user is not available on this host. Falling back to crontab..."
     purge_crontab_entries
 
-    # Install properly calibrated 3x daily crontab fallback:
-    # 09:15 AM IST (03:45 UTC), 02:30 PM IST (09:00 UTC), 06:00 PM IST (12:30 UTC)
+    # Crontab fallback (UTC ≈ IST−5:30): 09:15, 12:00, 14:31, 18:00 IST
     TMP_CRON="$(mktemp)"
     crontab -l 2>/dev/null > "$TMP_CRON" || true
     echo "" >> "$TMP_CRON"
-    echo "# NaukariPro AGY Autonomous Scheduler Fallback (09:15, 14:30, 18:00 IST)" >> "$TMP_CRON"
+    echo "# NaukariPro Always-on Beast Fallback (09:15, 12:00, 14:31, 18:00 IST)" >> "$TMP_CRON"
     echo "45 3 * * * /bin/bash $SCRIPT_DIR/agy_schedule_runner.sh >> $SCRIPT_DIR/logs/cron_fallback.log 2>&1" >> "$TMP_CRON"
-    echo "0 9 * * * /bin/bash $SCRIPT_DIR/agy_schedule_runner.sh >> $SCRIPT_DIR/logs/cron_fallback.log 2>&1" >> "$TMP_CRON"
+    echo "30 6 * * * /bin/bash $SCRIPT_DIR/agy_schedule_runner.sh >> $SCRIPT_DIR/logs/cron_fallback.log 2>&1" >> "$TMP_CRON"
+    echo "1 9 * * * /bin/bash $SCRIPT_DIR/agy_schedule_runner.sh >> $SCRIPT_DIR/logs/cron_fallback.log 2>&1" >> "$TMP_CRON"
     echo "30 12 * * * /bin/bash $SCRIPT_DIR/agy_schedule_runner.sh >> $SCRIPT_DIR/logs/cron_fallback.log 2>&1" >> "$TMP_CRON"
     crontab "$TMP_CRON"
     rm -f "$TMP_CRON"
-    echo "[✓] Crontab fallback schedule installed with 3 distinct IST peak triggers."
+    echo "[✓] Crontab fallback schedule installed (4 IST peak triggers → beast-autonomous)."
 fi
 
 echo ""
-echo "[✓] NaukariPro scheduled successfully!"
-echo "[*] Recruiter Peak Schedule:"
-echo "    - 09:15 AM IST (03:45 UTC) [Morning opening queue]"
-echo "    - 02:30 PM IST (09:00 UTC) [Post-lunch search batch]"
-echo "    - 06:00 PM IST (12:30 UTC) [Evening shortlisting review]"
-echo "[*] Logs recorded to: $SCRIPT_DIR/logs/"
+echo "[✓] Always-on Beast scheduled successfully on Linux!"
+echo "[*] Recruiter Peak Schedule (Asia/Kolkata via systemd timer):"
+echo "    - 09:15 IST  Block 1  (beast-autonomous)"
+echo "    - 12:00 IST  Mid-day catch-up"
+echo "    - 14:31 IST  Block 2  (+ outreach when hour maps to block 2)"
+echo "    - 18:00 IST  Block 3"
+echo "[*] Manual:  ./agy_schedule_runner.sh   or   ./naukariPro beast-autonomous --block 1"
+echo "[*] Remote:  ./run_on_linux.sh agy-schedule install|run|status|logs"
+echo "[*] Logs:    $SCRIPT_DIR/logs/"
 echo "========================================================================"

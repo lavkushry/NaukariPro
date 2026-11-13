@@ -193,14 +193,25 @@ EOF
 
 ---
 
-## ⏰ Automated Daily Scheduling
+## ⏰ Automated Daily Scheduling (Always-on Beast)
 
-### macOS LaunchAgent:
-Install the included background agent to run `./naukariPro daily` automatically every morning at 09:15 AM IST:
+`./install_schedule.sh` detects the OS:
+
+| Host | Mechanism | Blocks (IST) |
+|:---|:---|:---|
+| **macOS** | LaunchAgents | 09:15 / 14:31 (+outreach) / 18:00 |
+| **Linux** | systemd user timers (`naukaripro-agy`) + cron fallback | 09:15 / 12:00 / 14:31 / 18:00 |
 
 ```bash
+# Local (macOS or Linux checkout)
 ./install_schedule.sh
+
+# Remote Linux VM (pull + install systemd)
+./run_on_linux.sh agy-schedule install
+./run_on_linux.sh agy-schedule status
 ```
+
+Manual cycle: `./naukariPro beast-autonomous --block 1` or `./agy_schedule_runner.sh`.
 
 ---
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=NaukariPro Autonomous AI Career Agent (via agy CLI)
+Description=NaukariPro Always-on Beast (agy_schedule_runner → beast-autonomous)
 After=network-online.target
 Wants=network-online.target
 
