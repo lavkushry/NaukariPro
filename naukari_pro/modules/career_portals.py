@@ -3162,18 +3162,27 @@ class WorkdayHandler(BaseATSHandler):
                     verify_link = fetch_ats_verification_link(since_ts=t_verify - 5, timeout_sec=75.0)
                     if verify_link:
                         print("    ✉️ [Workday] Opening verification link from Gmail...")
+                        # Account exists once Workday sends verify mail — prefer Sign-In next runs
+                        try:
+                            mgr.mark_verified(job_key_url)
+                            acct["verified"] = True
+                        except Exception:
+                            pass
                         page.goto(verify_link, wait_until="domcontentloaded", timeout=30000)
                         time.sleep(2)
                         if _auth_cleared() or _auth_cleared_early():
-                            mgr.mark_verified(job_key_url)
                             return True
                         # Many tenants land on /login/ok after verify — Sign In with vault password
                         self.dismiss_workday_overlays(page, max_rounds=2)
                         if self._workday_sign_in_ready(page) or "/login" in self._workday_url_path(page):
                             for cand in pwd_candidates:
                                 if _try_sign_in_with_password(cand):
-                                    mgr.mark_verified(job_key_url)
                                     return True
+                            # Follow redirect query back to apply after cookie set
+                            self._workday_follow_login_redirect(page)
+                            time.sleep(1.5)
+                            if _auth_cleared() or _auth_cleared_early():
+                                return True
                     otp = fetch_ats_email_code(since_ts=t_verify - 5, timeout_sec=45.0)
                     if otp:
                         otp_loc = page.locator(
