@@ -66,17 +66,17 @@ fi
 
 echo "[*] Beast Block: $BLOCK" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 
-# Single brain — no duplicate linkedin-apply / portal-apply / goal-5calls chain
-# 20,20,20,20 targets: Naukri (20), LinkedIn (20), External ATS (20), Redirects (20)
+# Single brain — Always-on autonomous loop (drain incomplete + multi-channel apply)
+# Targets: Naukri (20), LinkedIn (20), External ATS (25), Redirects (25)
 set +e
-./naukariPro pro --headless --limit 20 --limit-naukri 20 --limit-linkedin 20 --limit-external 20 --limit-redirects 20 --force --block "$BLOCK" 2>&1 | tee -a "$RUN_LOG"
+./naukariPro beast-autonomous --headless --limit 20 --limit-naukri 20 --limit-linkedin 20 --limit-external 25 --limit-redirects 25 --block "$BLOCK" 2>&1 | tee -a "$RUN_LOG"
 PRO_STATUS=${PIPESTATUS[0]}
 set -e
 
 if [ "$PRO_STATUS" -eq 0 ]; then
-    echo "[✓] Beast pro cycle completed successfully." | tee -a "$RUN_LOG" "$HISTORY_LOG"
+    echo "[✓] Beast autonomous cycle completed successfully." | tee -a "$RUN_LOG" "$HISTORY_LOG"
 else
-    echo "[!] Beast pro cycle exited with status $PRO_STATUS." | tee -a "$RUN_LOG" "$HISTORY_LOG"
+    echo "[!] Beast autonomous cycle exited with status $PRO_STATUS." | tee -a "$RUN_LOG" "$HISTORY_LOG"
 fi
 
 # Closed-loop keyword mining after every cycle

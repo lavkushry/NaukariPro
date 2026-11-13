@@ -91,19 +91,42 @@ class ProfileEnhancerEngine:
             return False
 
         try:
+            hl_section = page.locator('#lazyResumeHead, .resumeHeadline').first
+            if hl_section.count() > 0:
+                try:
+                    hl_section.scroll_into_view_if_needed()
+                except Exception:
+                    pass
+                time.sleep(0.5)
+
             headline_edit = page.locator(
+                '#lazyResumeHead .editOneTheme, #lazyResumeHead span.edit, '
                 'span[aria-label*="Edit resume headline"], span[aria-label*="resume headline" i], .resumeHeadline .edit'
             ).first
 
             if headline_edit.count() > 0:
-                headline_edit.click()
+                try:
+                    headline_edit.click(force=True)
+                except Exception:
+                    eh = headline_edit.element_handle()
+                    if eh:
+                        page.evaluate("(el) => el && el.click()", eh)
                 time.sleep(2)
 
-                textarea = page.locator(
-                    "textarea#resumeHeadlineTxt, form[name='resumeHeadline'] textarea, .resumeHeadline textarea, textarea"
-                ).first
+                textarea = None
+                for ta_sel in [
+                    "textarea#resumeHeadlineTxt",
+                    "form[name='resumeHeadline'] textarea",
+                    ".resumeHeadlineEdit textarea",
+                    ".resumeHeadline textarea",
+                    ".ltCont.open textarea",
+                ]:
+                    cand = page.locator(ta_sel).first
+                    if cand.count() > 0 and cand.is_visible():
+                        textarea = cand
+                        break
 
-                if not textarea.is_visible():
+                if textarea is None or not textarea.is_visible():
                     logger.warning("Headline textarea did not open.")
                     return False
 
@@ -122,6 +145,17 @@ class ProfileEnhancerEngine:
 
                 can_kw = self.mutator.can_mutate("naukri")
 
+                # Rotate across high-converting Resdex variations when permitted
+                rotations = [template.rstrip(".")]
+                try:
+                    from naukari_pro.modules.visibility_growth import PROFILE_VARIATIONS
+                    for v_key in ("Variation_A_Lakehouse_Scale", "Variation_B_Enterprise_GCC_Ingestion", "Variation_C_DataOps_Governance"):
+                        hl_v = (PROFILE_VARIATIONS.get(v_key) or {}).get("naukri_headline", "").strip()
+                        if hl_v and hl_v not in rotations:
+                            rotations.append(hl_v[:248])
+                except Exception:
+                    pass
+
                 if not is_complete:
                     logger.info("Headline missing or truncated (current len: %d). Overwriting with full %d-char Azure Data Engineer headline.", len(curr_val), len(template))
                     new_val = template.rstrip(".")
@@ -136,12 +170,14 @@ class ProfileEnhancerEngine:
                         rationale = proposal.rationale
                         expected_effect = proposal.expected_effect
                     except Exception:
-                        new_val = template.rstrip(".")
+                        idx = (int(state.get("variation_index", 0) or 0) + 1) % len(rotations)
+                        state["variation_index"] = idx
+                        new_val = rotations[idx]
                         is_kw = True
-                        rationale = "resdex_seo_headline_saturation"
+                        rationale = f"resdex_seo_headline_rotation_{idx}"
                         expected_effect = "boost_search_appearances"
                 else:
-                    # Micro-toggle trailing period to create an authentic edit event without keyword drift
+                    # Rotate subtle punctuation cadence when weekly keyword mutation cap reached
                     if curr_val.endswith("."):
                         new_val = template.rstrip(".")
                     else:
@@ -160,7 +196,7 @@ class ProfileEnhancerEngine:
                 time.sleep(1)
 
                 save_btn = page.locator(
-                    '.resumeHeadline button:has-text("Save"), button.btn-dark-ot:has-text("Save"), button:has-text("Save")'
+                    '.resumeHeadlineEdit button:has-text("Save"), .resumeHeadline button:has-text("Save"), .ltCont.open button:has-text("Save"), button.btn-dark-ot:has-text("Save"), button:has-text("Save")'
                 ).first
                 if save_btn.count() == 0 or not save_btn.is_visible():
                     save_btn = page.get_by_role("button", name="Save", exact=True)
@@ -187,6 +223,13 @@ class ProfileEnhancerEngine:
                         )
                     except Exception as le:
                         logger.warning("Could not record profile mutation ledger entry: %s", le)
+
+                    # Also re-upload fresh Resume PDF when due to trigger Naukri "CV Updated Today" rank multiplier
+                    if force and os.path.exists(RESUME_PDF_PATH):
+                        try:
+                            self.upload_resume_pdf(page, RESUME_PDF_PATH)
+                        except Exception:
+                            pass
 
                     logger.info("SUCCESS: Profile timestamp touched! Status is 'Last updated today'. Headline len: %d", len(new_val))
                     return True

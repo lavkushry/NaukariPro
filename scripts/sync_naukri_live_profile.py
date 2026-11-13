@@ -218,6 +218,95 @@ def sync_employment_designation(page, target_title="Azure Data Engineer"):
     logger.info("Successfully updated CGI current designation.")
     return True
 
+def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_selectors, timeout_ms=6000):
+    """
+    Resilient Naukri DOM modal opener for headless Linux & macOS.
+    Scrolls section center-screen, waits for hydration, clicks edit via force+JS fallback,
+    and polls specific input selectors (avoiding unrelated hidden elements).
+    """
+    if "profile" not in (getattr(page, "url", "") or "").lower():
+        page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
+        time.sleep(3)
+
+    section_loc = None
+    for s_sel in section_selectors:
+        loc = page.locator(s_sel).first
+        if loc.count() > 0:
+            section_loc = loc
+            break
+
+    if section_loc is not None:
+        try:
+            section_loc.scroll_into_view_if_needed()
+            page.evaluate(
+                "(el) => el && el.scrollIntoView({behavior: 'instant', block: 'center'})",
+                section_loc.element_handle(),
+            )
+            time.sleep(1.0)
+        except Exception:
+            pass
+
+    def _find_visible_input():
+        for i_sel in input_selectors:
+            try:
+                loc = page.locator(i_sel)
+                cnt = loc.count()
+                for idx in range(min(cnt, 5)):
+                    cand = loc.nth(idx)
+                    if cand.is_visible():
+                        return cand
+            except Exception:
+                continue
+        return None
+
+    edit_loc = None
+    search_root = section_loc if section_loc is not None else page
+    for e_sel in edit_selectors:
+        try:
+            cand = search_root.locator(e_sel).first
+            if cand.count() > 0:
+                edit_loc = cand
+                break
+        except Exception:
+            continue
+    if edit_loc is None:
+        for e_sel in edit_selectors:
+            try:
+                cand = page.locator(e_sel).first
+                if cand.count() > 0:
+                    edit_loc = cand
+                    break
+            except Exception:
+                continue
+
+    if edit_loc is None:
+        return None
+
+    try:
+        edit_loc.scroll_into_view_if_needed()
+        edit_loc.click(force=True, timeout=3000)
+    except Exception:
+        pass
+
+    deadline = time.time() + (timeout_ms / 1000.0)
+    while time.time() < deadline:
+        found = _find_visible_input()
+        if found is not None:
+            return found
+        time.sleep(0.4)
+
+    # JS click fallback in case lightbox trigger blocked pointer event
+    try:
+        eh = edit_loc.element_handle()
+        if eh:
+            page.evaluate("(el) => el && el.click()", eh)
+            time.sleep(2.0)
+            return _find_visible_input()
+    except Exception:
+        pass
+    return None
+
+
 def sync_profile_summary(page, summary_text, mutator=None):
     if not summary_text:
         return False
@@ -227,23 +316,19 @@ def sync_profile_summary(page, summary_text, mutator=None):
         page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
         time.sleep(3)
 
-    for i in range(1, 8):
-        page.evaluate(f'window.scrollTo(0, {i * 600})')
-        time.sleep(0.2)
-    time.sleep(1)
-
-    sum_section = page.locator('#lazyProfileSummary')
-    edit_btn = sum_section.locator('.editOneTheme, span.edit').first
-    if edit_btn.count() == 0 or not edit_btn.is_visible():
-        logger.warning("Profile Summary edit button not found.")
-        return False
-
-    edit_btn.scroll_into_view_if_needed()
-    edit_btn.click()
-    time.sleep(2)
-
-    ta = page.locator('#profileSummaryTxt, textarea[name="profileSummary"]').first
-    if ta.count() == 0 or not ta.is_visible():
+    ta = _open_naukri_section_editor(
+        page,
+        section_selectors=['#lazyProfileSummary', '.profileSummary'],
+        edit_selectors=['.editOneTheme', 'span.edit', 'span[aria-label*="profile summary" i]'],
+        input_selectors=[
+            '#profileSummaryTxt',
+            'textarea[name="profileSummary"]',
+            'textarea[id*="profileSummary" i]',
+            '.profileSummaryEdit textarea',
+            '.ltCont.open textarea',
+        ],
+    )
+    if ta is None:
         logger.warning("Profile Summary textarea did not open.")
         return False
 
@@ -254,7 +339,7 @@ def sync_profile_summary(page, summary_text, mutator=None):
     ta.fill(summary_text)
     time.sleep(0.5)
 
-    save_btn = page.locator('.profileSummaryEdit button:has-text("Save"), button.btn-dark-ot:has-text("Save")').last
+    save_btn = page.locator('.profileSummaryEdit button:has-text("Save"), .ltCont.open button:has-text("Save"), button.btn-dark-ot:has-text("Save")').last
     if save_btn.count() > 0 and save_btn.is_visible():
         save_btn.click()
         time.sleep(4)
@@ -484,70 +569,70 @@ def sync_resume_headline(page, target_headline=None, mutator=None):
         time.sleep(3)
 
     try:
-        headline_edit = page.locator(
-            'span[aria-label*="Edit resume headline"], span[aria-label*="resume headline" i], .resumeHeadline .edit'
-        ).first
+        textarea = _open_naukri_section_editor(
+            page,
+            section_selectors=['#lazyResumeHead', '.resumeHeadline'],
+            edit_selectors=['.editOneTheme', 'span.edit', 'span[aria-label*="Edit resume headline"]', 'span[aria-label*="resume headline" i]'],
+            input_selectors=[
+                'textarea#resumeHeadlineTxt',
+                'form[name="resumeHeadline"] textarea',
+                '.resumeHeadlineEdit textarea',
+                '.resumeHeadline textarea',
+                '.ltCont.open textarea',
+            ],
+        )
 
-        if headline_edit.count() > 0 and headline_edit.is_visible():
-            headline_edit.scroll_into_view_if_needed()
-            headline_edit.click()
-            time.sleep(2)
+        if textarea is not None and textarea.is_visible():
+            curr_val = textarea.input_value().strip()
+            if curr_val.rstrip(".") != hl.rstrip("."):
+                textarea.click()
+                textarea.fill("")
+                time.sleep(0.2)
+                textarea.fill(hl)
+                time.sleep(0.5)
 
-            textarea = page.locator(
-                "textarea#resumeHeadlineTxt, form[name='resumeHeadline'] textarea, .resumeHeadline textarea, textarea"
-            ).first
+                save_btn = page.locator(
+                    '.resumeHeadlineEdit button:has-text("Save"), .resumeHeadline button:has-text("Save"), .ltCont.open button:has-text("Save"), button.btn-dark-ot:has-text("Save")'
+                ).first
+                if save_btn.count() == 0 or not save_btn.is_visible():
+                    save_btn = page.get_by_role("button", name="Save", exact=True)
 
-            if textarea.is_visible():
-                curr_val = textarea.input_value().strip()
-                if curr_val.rstrip(".") != hl.rstrip("."):
-                    textarea.click()
-                    textarea.fill("")
-                    time.sleep(0.2)
-                    textarea.fill(hl)
-                    time.sleep(0.5)
+                if save_btn.count() > 0 and save_btn.is_visible():
+                    save_btn.click()
+                    time.sleep(3)
 
-                    save_btn = page.locator(
-                        '.resumeHeadline button:has-text("Save"), button.btn-dark-ot:has-text("Save"), button:has-text("Save")'
-                    ).first
-                    if save_btn.count() == 0 or not save_btn.is_visible():
-                        save_btn = page.get_by_role("button", name="Save", exact=True)
-
-                    if save_btn.count() > 0 and save_btn.is_visible():
-                        save_btn.click()
-                        time.sleep(3)
-
-                        try:
-                            db_p = mutator.db_path if mutator else None
-                            record_profile_mutation(
-                                platform="naukri",
-                                field="headline",
-                                old_value=curr_val,
-                                new_value=hl,
-                                is_keyword_mutation=True,
-                                rationale="resdex_headline_sync",
-                                expected_effect="boost_resdex_recruiter_appearances",
-                                approved_by="sync_naukri_live_profile",
-                                db_path=db_p
-                            )
-                        except Exception as le:
-                            logger.warning("Could not record headline mutation: %s", le)
-
-                        logger.info("Successfully updated Resume Headline on live profile.")
-                        return True
-                else:
-                    logger.info("Resume Headline already matches target headline on live profile.")
                     try:
-                        cancel_btn = page.locator('.resumeHeadline button:has-text("Cancel"), .resumeHeadline a:has-text("Cancel"), .crossIcon').first
-                        if cancel_btn.count() > 0 and cancel_btn.is_visible():
-                            cancel_btn.click()
-                        else:
-                            page.keyboard.press("Escape")
-                        time.sleep(1)
-                    except Exception:
-                        pass
+                        db_p = mutator.db_path if mutator else None
+                        record_profile_mutation(
+                            platform="naukri",
+                            field="headline",
+                            old_value=curr_val,
+                            new_value=hl,
+                            is_keyword_mutation=True,
+                            rationale="resdex_headline_sync",
+                            expected_effect="boost_resdex_recruiter_appearances",
+                            approved_by="sync_naukri_live_profile",
+                            db_path=db_p
+                        )
+                    except Exception as le:
+                        logger.warning("Could not record headline mutation: %s", le)
+
+                    logger.info("Successfully updated Resume Headline on live profile.")
                     return True
             else:
-                logger.warning("Headline textarea not visible.")
+                logger.info("Resume Headline already matches target headline on live profile.")
+                try:
+                    cancel_btn = page.locator('.resumeHeadline button:has-text("Cancel"), .resumeHeadline a:has-text("Cancel"), .crossIcon').first
+                    if cancel_btn.count() > 0 and cancel_btn.is_visible():
+                        cancel_btn.click()
+                    else:
+                        page.keyboard.press("Escape")
+                    time.sleep(1)
+                except Exception:
+                    pass
+                return True
+        else:
+            logger.warning("Headline textarea not visible.")
     except Exception as e:
         logger.warning("Notice updating Resume Headline: %s", e)
     return False
@@ -662,24 +747,20 @@ def sync_preferred_locations(page, locations=None):
         time.sleep(0.2)
     time.sleep(1)
 
-    cp_section = page.locator('#lazyCareerProfile, .desiredProfile').first
-    if cp_section.count() == 0:
-        logger.warning("#lazyCareerProfile section not found.")
-        return False
-
-    cp_section.scroll_into_view_if_needed()
-    time.sleep(1)
-
-    edit_btn = cp_section.locator('.editOneTheme, span.edit, .desiredProfile .edit').first
-    if edit_btn.count() == 0 or not edit_btn.is_visible():
-        logger.warning("Career Profile edit button not found.")
-        return False
-
-    edit_btn.click()
-    time.sleep(2.5)
-
-    loc_input = page.locator('#locationSugg, #preferredLocation, input[placeholder*="location" i]').first
-    if loc_input.count() == 0 or not loc_input.is_visible():
+    loc_input = _open_naukri_section_editor(
+        page,
+        section_selectors=['#lazyCareerProfile', '.desiredProfile'],
+        edit_selectors=['.editOneTheme', 'span.edit', '.desiredProfile .edit'],
+        input_selectors=[
+            '#locationSugg',
+            '#preferredLocation',
+            'input[id*="location" i]',
+            '.locationPref input',
+            'input[placeholder*="location" i]',
+            '.ltCont.open input[placeholder*="city" i]',
+        ],
+    )
+    if loc_input is None:
         logger.warning("Location input in Career Profile not visible.")
         return False
 
@@ -732,24 +813,21 @@ def sync_key_skills(page, keywords=None, mutator=None):
         time.sleep(0.2)
     time.sleep(1)
 
-    ks_section = page.locator('#lazyKeySkills, .keySkills')
-    if ks_section.count() == 0:
-        logger.warning("#lazyKeySkills section not found.")
-        return False
-
-    ks_section.scroll_into_view_if_needed()
-    time.sleep(0.5)
-
-    edit_btn = ks_section.locator('.editOneTheme, span.edit, .keySkills .edit').first
-    if edit_btn.count() == 0 or not edit_btn.is_visible():
-        logger.warning("Key Skills edit button not found.")
-        return False
-
-    edit_btn.click()
-    time.sleep(2.5)
-
-    skill_input = page.locator('#keySkillSugg, input[placeholder*="skill" i], #keySkillsTxt').first
-    if skill_input.count() == 0 or not skill_input.is_visible():
+    skill_input = _open_naukri_section_editor(
+        page,
+        section_selectors=['#lazyKeySkills', '.keySkills'],
+        edit_selectors=['.editOneTheme', 'span.edit', '.keySkills .edit'],
+        input_selectors=[
+            '#keySkillSugg',
+            'input[id*="keySkill" i]',
+            '.keySkillsEdit input[type="text"]',
+            '.chipsInput input',
+            'input[placeholder*="skill" i]',
+            '#keySkillsTxt',
+            '.ltCont.open input[type="text"]',
+        ],
+    )
+    if skill_input is None:
         logger.warning("Key skill input field not visible.")
         return False
 

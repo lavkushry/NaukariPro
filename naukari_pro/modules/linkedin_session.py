@@ -516,7 +516,28 @@ class LinkedInSessionManager:
                 with open(self.cookie_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        cookies = [c for c in data if isinstance(c, dict) and "name" in c and "value" in c]
+                        for raw_c in data:
+                            if not isinstance(raw_c, dict) or "name" not in raw_c or "value" not in raw_c:
+                                continue
+                            clean_c: Dict[str, Any] = {
+                                "name": str(raw_c["name"]),
+                                "value": str(raw_c["value"]),
+                                "domain": str(raw_c.get("domain") or ".linkedin.com"),
+                                "path": str(raw_c.get("path") or "/"),
+                                "secure": bool(raw_c.get("secure", True)),
+                                "httpOnly": bool(raw_c.get("httpOnly", False)),
+                            }
+                            ss = str(raw_c.get("sameSite") or "Lax").capitalize()
+                            if ss == "No_restriction":
+                                ss = "None"
+                            elif ss not in ("Strict", "Lax", "None"):
+                                ss = "Lax"
+                            clean_c["sameSite"] = ss
+                            if isinstance(raw_c.get("expires"), (int, float)) and raw_c["expires"] > 0:
+                                clean_c["expires"] = raw_c["expires"]
+                            elif isinstance(raw_c.get("expirationDate"), (int, float)) and raw_c["expirationDate"] > 0:
+                                clean_c["expires"] = raw_c["expirationDate"]
+                            cookies.append(clean_c)
             except Exception as e:
                 logger.debug("Notice loading companion cookies from %s: %s", self.cookie_path, e)
 

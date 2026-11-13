@@ -103,6 +103,7 @@ def handle_pro(
     force=False,
     block=None,
     execute_outreach_live=False,
+    drain_pending=True,
 ):
     engine = ProAutoPilotEngine(
         limit=limit,
@@ -115,6 +116,7 @@ def handle_pro(
         force=force,
         block=block,
         execute_outreach_live=execute_outreach_live,
+        drain_pending=drain_pending,
     )
     return engine.run_full_pipeline()
 
@@ -1894,6 +1896,21 @@ def main():
     pro_parser.add_argument("--limit-linkedin", type=int, default=None, help="LinkedIn Easy Apply target per cycle (default: 20)")
     pro_parser.add_argument("--limit-external", type=int, default=None, help="External ATS apply target per cycle (default: 20)")
     pro_parser.add_argument("--limit-redirects", type=int, default=None, help="External redirects target per cycle (default: 20)")
+    pro_parser.add_argument(
+        "--drain-pending",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Re-submit incomplete Ready-for-Review / SUBMIT_NOT_FOUND / SIGNIN / CAPTCHA portal rows (default: on)",
+    )
+    beast_parser = subparsers.add_parser(
+        "beast-autonomous",
+        help="Always-on Beast: force full cycle + drain incomplete external ATS queue",
+        parents=[common_parser],
+    )
+    beast_parser.add_argument("--block", type=int, choices=[1, 2, 3], default=None)
+    beast_parser.add_argument("--live-outreach", action="store_true", default=False)
+    beast_parser.add_argument("--limit-external", type=int, default=25)
+    beast_parser.add_argument("--limit-redirects", type=int, default=25)
 
     for cmd, hlp in [
         ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),
@@ -2196,14 +2213,15 @@ def main():
         handle_monday_digest(output=getattr(args, "output", None), send_email=getattr(args, "send_email", False))
     elif args.command == "mail-test":
         sys.exit(handle_mail_test())
-    elif args.command == "pro":
+    elif args.command in ("pro", "beast-autonomous"):
         pro_kwargs = {
             "limit": args.limit,
             "headless": args.headless,
             "dry_run": args.dry_run,
-            "force": getattr(args, "force", False),
+            "force": True if args.command == "beast-autonomous" else getattr(args, "force", False),
             "block": getattr(args, "block", None),
             "execute_outreach_live": getattr(args, "live_outreach", False),
+            "drain_pending": True if args.command == "beast-autonomous" else getattr(args, "drain_pending", True),
         }
         for attr in ("limit_naukri", "limit_linkedin", "limit_external", "limit_redirects"):
             val = getattr(args, attr, None)

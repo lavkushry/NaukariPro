@@ -540,24 +540,38 @@ class BaseATSHandler:
         })
 
     def detect_barriers(self, page: Any) -> Optional[str]:
-        """Detects barriers such as CAPTCHAs, MFA, or login walls."""
+        """Detects active blocking barriers (visible CAPTCHAs, MFA, login walls), ignoring passive reCAPTCHA v3 badges."""
         if not page:
             return None
         try:
-            captcha_selectors = [
-                "iframe[src*='recaptcha']",
-                "iframe[src*='hcaptcha']",
-                "iframe[src*='turnstile']",
-                "div.g-recaptcha",
-                "div.h-captcha",
-                "div.cf-turnstile",
+            active_challenge_selectors = [
+                "iframe[src*='recaptcha/api2/bframe']",
+                "iframe[src*='recaptcha/enterprise/bframe']",
+                "iframe[src*='hcaptcha.com'][src*='challenge']",
+                "iframe[src*='challenges.cloudflare.com']",
+                "iframe[src*='arkose']",
+                "div#px-captcha",
+                "div.cf-turnstile:not([data-appearance='interaction-only'])",
                 "#cf-turnstile",
-                "[data-sitekey]"
             ]
-            for sel in captcha_selectors:
+            for sel in active_challenge_selectors:
                 try:
                     loc = page.locator(sel)
-                    if safe_count(loc) > 0 and loc.first.is_visible():
+                    cnt = safe_count(loc)
+                    for idx in range(min(cnt, 5)):
+                        item = loc.first if idx == 0 else loc.nth(idx)
+                        if not item.is_visible():
+                            continue
+                        if hasattr(item, "bounding_box"):
+                            box = item.bounding_box()
+                            if isinstance(box, dict):
+                                w = float(box.get("width", 0) or 0)
+                                h = float(box.get("height", 0) or 0)
+                                # Ignore hidden/offscreen preloaded frames or tiny passive corner badges
+                                if "bframe" in sel and (w < 200 or h < 200):
+                                    continue
+                                if w < 100 or h < 40:
+                                    continue
                         return f"CAPTCHA Challenge detected ({sel})"
                 except Exception:
                     pass
@@ -664,6 +678,210 @@ class GreenhouseHandler(BaseATSHandler):
 
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
         super().__init__(profile, solver, ats_type="Greenhouse")
+
+
+    def fill_education_fields(self, page: Any) -> List[str]:
+        """Fill Greenhouse education controls from FACT_MATRIX education (post-resume safe)."""
+        filled: List[str] = []
+        p = self.profile
+        if not page:
+            return filled
+        try:
+            edu = (p.get("education") or [{}])[0] if isinstance(p.get("education"), list) else {}
+            school = edu.get("institution") or edu.get("school") or "Maharishi Dayanand University (MDU), Rohtak"
+            degree = edu.get("degree") or "B.Tech in Computer Science and Engineering"
+            field = edu.get("field") or "Computer Science and Engineering"
+            start_y = (edu.get("startDate") or "2020-06")[:4]
+            end_y = (edu.get("endDate") or "2023-05")[:4]
+
+            def _fill_labeled_input(labels: tuple, value: str, name: str) -> bool:
+                for lab in labels:
+                    try:
+                        # label association
+                        loc = page.get_by_label(lab, exact=False).first
+                        if safe_count(loc) > 0 and loc.is_visible():
+                            cur = ""
+                            try:
+                                cur = loc.input_value() if hasattr(loc, "input_value") else ""
+                            except Exception:
+                                cur = ""
+                            if not cur or cur.lower() in ("aalborg university", "select...", "select"):
+                                loc.fill(str(value))
+                                filled.append(name)
+                                self.record_field(
+                                    label=name,
+                                    value=value,
+                                    field_name=name.lower().replace(" ", "_"),
+                                    field_type="text",
+                                    step=1,
+                                    step_name="EDUCATION",
+                                    action_type="FILLED",
+                                )
+                                return True
+                    except Exception:
+                        pass
+                    try:
+                        # react-select / custom dropdowns next to label text
+                        lab_el = page.locator(f"label:has-text('{lab}'), div:has-text('{lab}')").first
+                        if safe_count(lab_el) == 0:
+                            continue
+                        container = lab_el.locator("xpath=ancestor::div[contains(@class,'field') or contains(@class,'education') or contains(@class,'question')][1]").first
+                        inp = container.locator("input, textarea, .select__input").first
+                        if safe_count(inp) > 0 and inp.is_visible():
+                            inp.click()
+                            inp.fill(str(value))
+                            time.sleep(0.4)
+                            opt = page.locator(f".select__option:has-text('{value.split()[0]}'), li:has-text('{value.split()[0]}')").first
+                            if safe_count(opt) > 0 and opt.is_visible():
+                                opt.click()
+                            else:
+                                if hasattr(page, "keyboard"):
+                                    page.keyboard.press("Enter")
+                            filled.append(name)
+                            self.record_field(
+                                label=name,
+                                value=value,
+                                field_name=name.lower().replace(" ", "_"),
+                                field_type="select",
+                                step=1,
+                                step_name="EDUCATION",
+                                action_type="FILLED",
+                            )
+                            return True
+                    except Exception:
+                        continue
+                return False
+
+            _fill_labeled_input(("School", "University", "College", "Institution"), school, "Education School")
+            # Degree / Discipline are often required React-Select dropdowns (not free text)
+            def _select_edu_dropdown(label: str, preferred: List[str], record_name: str) -> bool:
+                try:
+                    # Open control adjacent to label
+                    lab = page.locator(f"label:has-text('{label}')").first
+                    if safe_count(lab) == 0:
+                        lab = page.locator(f"div:text-is('{label}'), span:text-is('{label}')").first
+                    container = lab.locator(
+                        "xpath=ancestor::div[contains(@class,'field') or contains(@class,'education') "
+                        "or contains(@class,'question') or contains(@class,'select')][1]"
+                    ).first
+                    control = container.locator(
+                        ".select__control, [class*='select__control'], div[role='combobox'], button"
+                    ).first
+                    if safe_count(control) == 0:
+                        control = page.locator(
+                            f"div:has(> label:has-text('{label}')) .select__control, "
+                            f"div:has(label:has-text('{label}')) .select__control"
+                        ).first
+                    if safe_count(control) == 0 or not control.is_visible():
+                        return False
+                    control.click()
+                    time.sleep(0.5)
+                    opts = page.locator(".select__option, [role='option'], li[role='option']")
+                    texts = []
+                    try:
+                        texts = [t.strip() for t in opts.all_inner_texts() if t and t.strip()]
+                    except Exception:
+                        texts = []
+                    chosen = None
+                    for pref in preferred:
+                        for t in texts:
+                            if pref.lower() in t.lower():
+                                chosen = t
+                                break
+                        if chosen:
+                            break
+                    if not chosen and texts:
+                        # skip placeholder
+                        for t in texts:
+                            if t.lower() not in ("select...", "select", "choose..."):
+                                chosen = t
+                                break
+                    if chosen:
+                        page.locator(f".select__option:has-text('{chosen}'), [role='option']:has-text('{chosen}')").first.click()
+                        filled.append(record_name)
+                        self.record_field(
+                            label=record_name,
+                            value=chosen,
+                            field_name=record_name.lower().replace(" ", "_"),
+                            field_type="select",
+                            step=1,
+                            step_name="EDUCATION",
+                            action_type="SELECTED",
+                        )
+                        return True
+                    if hasattr(page, "keyboard"):
+                        page.keyboard.press("Escape")
+                except Exception:
+                    return False
+                return False
+
+            _select_edu_dropdown(
+                "Degree",
+                ["Bachelor of Technology", "Bachelor of Science", "Bachelor's Degree", "Bachelor", "B.Tech", "Bachelors"],
+                "Education Degree",
+            )
+            _select_edu_dropdown(
+                "Discipline",
+                ["Computer Science", "Computer Engineering", "Information Technology", "Software", field.split()[0] if field else "Computer"],
+                "Education Discipline",
+            )
+            # Fallback: any education-area React-Select still showing "Select..."
+            try:
+                edu_root = page.locator("#education, [id*='education' i], section:has-text('Education'), div:has-text('Education')").first
+                controls = edu_root.locator(".select__control").all() if safe_count(edu_root) > 0 else page.locator(".select__control").all()
+                for ctrl in controls[:6]:
+                    try:
+                        txt = (ctrl.inner_text() or "").strip().lower()
+                        if "select" not in txt and txt:
+                            continue
+                        # Infer which dropdown by nearby label text
+                        parent_txt = ""
+                        try:
+                            parent_txt = ctrl.locator("xpath=ancestor::div[3]").inner_text().lower()
+                        except Exception:
+                            parent_txt = ""
+                        prefs = ["Bachelor", "B.Tech", "Bachelor's"]
+                        if "discipline" in parent_txt or "field" in parent_txt or "major" in parent_txt:
+                            prefs = ["Computer Science", "Computer Engineering", "Information Technology"]
+                        elif "degree" in parent_txt:
+                            prefs = ["Bachelor of Technology", "Bachelor of Science", "Bachelor's Degree", "Bachelor", "B.Tech"]
+                        elif "year" in parent_txt or "start" in parent_txt or "end" in parent_txt:
+                            continue
+                        ctrl.click()
+                        time.sleep(0.4)
+                        opts = page.locator(".select__option")
+                        texts = [t.strip() for t in opts.all_inner_texts() if t and t.strip()]
+                        chosen = None
+                        for pref in prefs:
+                            for t in texts:
+                                if pref.lower() in t.lower():
+                                    chosen = t
+                                    break
+                            if chosen:
+                                break
+                        if not chosen:
+                            for t in texts:
+                                if t.lower() not in ("select...", "select"):
+                                    chosen = t
+                                    break
+                        if chosen:
+                            page.locator(f".select__option:has-text('{chosen}')").first.click()
+                            filled.append(f"Education Dropdown:{chosen[:24]}")
+                            time.sleep(0.2)
+                        else:
+                            if hasattr(page, "keyboard"):
+                                page.keyboard.press("Escape")
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            _fill_labeled_input(("Degree", "Degree type"), degree, "Education Degree Text")
+            _fill_labeled_input(("Discipline", "Field of study", "Major", "Area of study"), field, "Education Discipline Text")
+            _fill_labeled_input(("Start date year", "Start year", "From year"), start_y, "Education Start Year")
+            _fill_labeled_input(("End date year", "End year", "To year", "Graduation year"), end_y, "Education End Year")
+        except Exception as e_edu:
+            logger.debug("Greenhouse education fill notice: %s", e_edu)
+
 
     def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
@@ -918,7 +1136,13 @@ class GreenhouseHandler(BaseATSHandler):
         except Exception as e_rs:
             logger.debug("Greenhouse React-Select controls notice: %s", e_rs)
 
-        # 5. Checkbox agreements & consent (GDPR, Background Check, Privacy Policy)
+        # 5. Education
+        try:
+            filled.extend(self.fill_education_fields(page))
+        except Exception as e_edu:
+            logger.debug("Greenhouse education fill notice: %s", e_edu)
+
+        # 6. Checkbox agreements & consent (GDPR, Background Check, Privacy Policy)
         try:
             for cb in page.locator("input[type='checkbox']").all():
                 try:
@@ -942,7 +1166,7 @@ class GreenhouseHandler(BaseATSHandler):
         except Exception as e_cb:
             logger.debug("Greenhouse checkbox notice: %s", e_cb)
 
-        # 6. Standard HTML <select> elements (for native Greenhouse boards)
+        # 7. Standard HTML <select> elements (for native Greenhouse boards)
         try:
             native_selects = page.locator("select").all()
             for s_idx, sel_el in enumerate(native_selects):
@@ -1491,11 +1715,18 @@ class AshbyHandler(BaseATSHandler):
         if not page:
             return None
         try:
-            # Check for visual recaptcha/hcaptcha challenge frames
+            # Check for active visual recaptcha/hcaptcha/arkose challenge frames (ignore passive v3 anchor badge)
             iframes = page.locator("iframe[src*='recaptcha'], iframe[src*='hcaptcha'], iframe[src*='arkose']").all()
             for frame in iframes:
-                if frame.is_visible() and any(c in (frame.get_attribute("src") or "") for c in ("bframe", "challenge", "checkpoint")):
-                    return "Ashby Bot Detection / Visual reCAPTCHA Challenge active"
+                if not frame.is_visible():
+                    continue
+                src = (frame.get_attribute("src") or "").lower()
+                if "anchor" in src:
+                    continue
+                if any(c in src for c in ("bframe", "challenge", "checkpoint", "arkose")):
+                    box = frame.bounding_box() if hasattr(frame, "bounding_box") else None
+                    if not box or (float(box.get("width", 0) or 0) >= 200 and float(box.get("height", 0) or 0) >= 150):
+                        return "Ashby Bot Detection / Visual reCAPTCHA Challenge active"
         except Exception:
             pass
         return None
@@ -1928,11 +2159,472 @@ class WorkdayHandler(BaseATSHandler):
 
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None):
         super().__init__(profile, solver, ats_type="Workday")
+        self._apply_opened = False
+
+    def _workday_sign_in_ready(self, page: Any) -> bool:
+        """True when vault auth can fill email / click Sign-in-with-email (banner no longer blocking)."""
+        if not page:
+            return False
+        try:
+            email = page.locator(
+                "input[data-automation-id='email'], "
+                "input[type='email'], "
+                "input[name='email'], "
+                "input[id='email'], "
+                "input[autocomplete='username']"
+            ).first
+            if safe_count(email) > 0 and email.is_visible():
+                # Prefer pages that also look like Sign-In (avoid newsletter widgets)
+                path = self._workday_url_path(page)
+                if "/login" in path or "/apply" in path:
+                    return True
+                pwd = page.locator(
+                    "input[data-automation-id='password'], input[type='password']"
+                ).first
+                if safe_count(pwd) > 0 and pwd.is_visible():
+                    return True
+            email_btn = page.locator(
+                "[data-automation-id='SignInWithEmailButton'], "
+                "button:has-text('Sign in with email'), button:has-text('Sign In with Email')"
+            ).first
+            if safe_count(email_btn) > 0 and email_btn.is_visible():
+                return True
+            # Heading + password is enough (Fractal Sign In card)
+            sign_h = page.locator("h2:has-text('Sign In'), h1:has-text('Sign In')").first
+            pwd = page.locator("input[type='password'], input[data-automation-id='password']").first
+            if safe_count(sign_h) > 0 and sign_h.is_visible() and safe_count(pwd) > 0 and pwd.is_visible():
+                return True
+        except Exception:
+            return False
+        return False
+
+    def _workday_overlay_present(self, page: Any) -> bool:
+        """True when Fractal/Workday legal-notice / cookie banner is still blocking UI."""
+        if not page:
+            return False
+        try:
+            # Prefer automation ids — generic Accept text matches too many CTAs
+            for sel in (
+                "button[data-automation-id='legalNoticeAcceptButton']",
+                "[data-automation-id='legalNoticeAcceptButton']",
+                "[data-automation-id='legalNoticeDeclineButton']",
+                "[data-automation-id='legalNotice']",
+                "button:has-text('Accept Cookies')",
+            ):
+                loc = page.locator(sel).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    return True
+        except Exception:
+            return False
+        return False
+
+    def _click_workday_cookie_accept(self, page: Any) -> str:
+        """Click Accept Cookies / legalNoticeAcceptButton. Returns selector used, or ''."""
+        accept_selectors = (
+            "button[data-automation-id='legalNoticeAcceptButton']",
+            "[data-automation-id='legalNoticeAcceptButton']",
+            "button:has-text('Accept Cookies')",
+            "button:has-text('Accept All Cookies')",
+        )
+        for sel in accept_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) == 0:
+                    continue
+                try:
+                    btn.click(force=True, timeout=3000)
+                    return sel
+                except Exception:
+                    pass
+            except Exception:
+                continue
+        # DOM click when Playwright hit-target is covered by the same banner
+        if hasattr(page, "evaluate"):
+            try:
+                if page.evaluate(
+                    """() => {
+                        const el = document.querySelector("[data-automation-id='legalNoticeAcceptButton']")
+                            || [...document.querySelectorAll('button')]
+                                .find(b => /accept\\s*cookies/i.test((b.innerText || '').trim()));
+                        if (!el) return false;
+                        el.click();
+                        return true;
+                    }"""
+                ):
+                    return "js:legalNoticeAcceptButton"
+            except Exception:
+                pass
+        return ""
+
+    def dismiss_workday_overlays(self, page: Any, *, max_rounds: int = 4) -> bool:
+        """
+        Accept cookies / legal notice until Sign-In email fields (or Apply CTA) are usable.
+
+        Root cause: Fractal Workday sticky legalNotice covers auth_container; vault auth
+        never saw email/password until Accept Cookies was clicked and the banner tore down.
+        """
+        if not page:
+            return False
+        dismissed = False
+        for _ in range(max(1, int(max_rounds))):
+            if not self._workday_overlay_present(page):
+                return True
+            used = self._click_workday_cookie_accept(page)
+            if used:
+                dismissed = True
+                self.record_field(
+                    label="Workday Cookie/Legal Accept",
+                    value=used,
+                    field_name="legalNoticeAcceptButton",
+                    field_type="button",
+                    step=0,
+                    step_name="OVERLAY",
+                    action_type="CLICKED",
+                )
+            for _wait in range(12):
+                time.sleep(0.25)
+                if not self._workday_overlay_present(page):
+                    return True
+                # Banner may linger in DOM while auth fields are already interactable
+                if self._workday_sign_in_ready(page):
+                    return True
+            if self._workday_sign_in_ready(page):
+                return True
+            time.sleep(0.3)
+        return (not self._workday_overlay_present(page)) or (
+            dismissed and self._workday_sign_in_ready(page)
+        )
+
+    def wait_for_workday_sign_in_fields(self, page: Any, timeout_sec: float = 12.0) -> bool:
+        """Cookie accept first, then wait until email/password (or Sign-in-with-email) is visible."""
+        if not page:
+            return False
+        deadline = time.time() + max(3.0, float(timeout_sec))
+        while time.time() < deadline:
+            self.dismiss_workday_overlays(page, max_rounds=2)
+            if self._workday_sign_in_ready(page):
+                return True
+            time.sleep(0.35)
+        return self._workday_sign_in_ready(page)
+
+    def wait_for_workday_auth_or_form(self, page: Any, timeout_sec: float = 18.0) -> str:
+        """
+        After Apply/deep-link, Fractal SPA lags: URL may be /apply while DOM is empty,
+        then /login with email fields. Wait until sign-in OR apply wizard is real.
+        Returns: 'form' | 'signin' | 'empty'
+        """
+        if not page:
+            return "empty"
+        deadline = time.time() + max(4.0, float(timeout_sec))
+        while time.time() < deadline:
+            self.dismiss_workday_overlays(page, max_rounds=2)
+            path = self._workday_url_path(page)
+            # autofillWithResume is a trap shell — not a fillable form
+            if "autofillwithresume" in path:
+                self._workday_goto_apply_manually(page)
+                time.sleep(0.3)
+                continue
+            try:
+                # Require real wizard controls — applyFlowPage alone is not enough
+                form = page.locator(
+                    "button[data-automation-id='pageFooterNextButton'], "
+                    "input[data-automation-id='legalNameSection_firstName'], "
+                    "button[data-automation-id='bottom-navigation-next-button']"
+                ).first
+                if safe_count(form) > 0 and form.is_visible():
+                    return "form"
+                if self._workday_sign_in_ready(page):
+                    return "signin"
+            except Exception:
+                pass
+            # Follow login redirect if cookie session already valid
+            if "/login" in path:
+                self._workday_follow_login_redirect(page)
+            time.sleep(0.45)
+        if self._workday_sign_in_ready(page):
+            return "signin"
+        try:
+            form = page.locator(
+                "button[data-automation-id='pageFooterNextButton'], "
+                "input[data-automation-id='legalNameSection_firstName']"
+            ).first
+            if safe_count(form) > 0 and form.is_visible():
+                return "form"
+        except Exception:
+            pass
+        return "empty"
+
+    def _workday_url_path(self, page: Any) -> str:
+        """Path-only URL (ignore redirect= query — login?redirect=.../apply must not look like apply)."""
+        try:
+            from urllib.parse import urlsplit
+            return (urlsplit(getattr(page, "url", "") or "").path or "").lower()
+        except Exception:
+            return (getattr(page, "url", "") or "").lower()
+
+    def _workday_follow_login_redirect(self, page: Any) -> bool:
+        """If stuck on /login?redirect=..., navigate to the decoded apply target."""
+        if not page:
+            return False
+        try:
+            from urllib.parse import urlsplit, parse_qs, unquote, urljoin
+            raw = getattr(page, "url", "") or ""
+            parts = urlsplit(raw)
+            if "/login" not in (parts.path or "").lower():
+                return False
+            redir = (parse_qs(parts.query).get("redirect") or [None])[0]
+            if not redir:
+                return False
+            target = urljoin(f"{parts.scheme}://{parts.netloc}", unquote(redir))
+            page.goto(target, wait_until="domcontentloaded", timeout=45000)
+            time.sleep(2.0)
+            self.dismiss_workday_overlays(page, max_rounds=3)
+            return "/login" not in self._workday_url_path(page)
+        except Exception as e_redir:
+            logger.debug("Workday login redirect follow notice: %s", e_redir)
+            return False
+
+    def _workday_on_apply_flow(self, page: Any) -> bool:
+        """True when already inside apply wizard / login / applyManually."""
+        if not page:
+            return False
+        try:
+            path = self._workday_url_path(page)
+            # Path only — do NOT match /apply inside ?redirect= on /login
+            if "/login" in path or "/apply" in path or path.endswith("applymanually"):
+                return True
+            markers = page.locator(
+                "button[data-automation-id='pageFooterNextButton'], "
+                "input[data-automation-id='legalNameSection_firstName'], "
+                "input[data-automation-id='email'], "
+                "button[data-automation-id='signInSubmitButton'], "
+                "[data-automation-id='applyFlowPage']"
+            ).first
+            return safe_count(markers) > 0 and markers.is_visible()
+        except Exception:
+            return False
+
+    def _workday_goto_apply_manually(self, page: Any) -> bool:
+        """Force /apply/applyManually when CTA click fails (query-param job URLs)."""
+        if not page:
+            return False
+        try:
+            from urllib.parse import urlsplit, urlunsplit
+            raw = getattr(page, "url", "") or ""
+            parts = urlsplit(raw)
+            path = parts.path.rstrip("/")
+            # Strip location filters — they break apply deep links on Fractal
+            if "/apply" in path:
+                base_path = path.split("/apply")[0]
+            else:
+                base_path = path
+            if not base_path:
+                return False
+            target = urlunsplit(
+                (parts.scheme, parts.netloc, base_path + "/apply/applyManually", "", "")
+            )
+            page.goto(target, wait_until="domcontentloaded", timeout=45000)
+            time.sleep(2.0)
+            self.dismiss_workday_overlays(page, max_rounds=4)
+            # Wait for login shell OR apply wizard — applyManually often redirects to /login first
+            try:
+                page.wait_for_selector(
+                    "input[data-automation-id='email'], "
+                    "button[data-automation-id='pageFooterNextButton'], "
+                    "input[data-automation-id='legalNameSection_firstName'], "
+                    "[data-automation-id='applyFlowPage']",
+                    timeout=12000,
+                )
+            except Exception:
+                pass
+            self.dismiss_workday_overlays(page, max_rounds=3)
+            self.record_field(
+                label="Apply Manually Deep Link",
+                value=target,
+                field_name="apply_manually_url",
+                field_type="navigation",
+                step=1,
+                step_name="NAVIGATION",
+                action_type="NAVIGATED",
+            )
+            return self._workday_on_apply_flow(page)
+        except Exception as e_nav:
+            logger.debug("Workday applyManually deep-link notice: %s", e_nav)
+            return False
+
+    def open_apply_modal_if_needed(self, page: Any) -> None:
+        """Navigates from Workday job description page through Apply -> Autofill/Apply Manually."""
+        if not page or self._apply_opened:
+            return
+        try:
+            self.dismiss_workday_overlays(page, max_rounds=4)
+            if self._workday_on_apply_flow(page):
+                self._apply_opened = True
+                self.dismiss_workday_overlays(page, max_rounds=3)
+                return
+
+            # 1. If still on job landing page, click primary Apply CTA
+            apply_sel = (
+                "a[data-automation-id='adventureButton'], "
+                "button[data-automation-id='adventureButton'], "
+                "a[data-automation-id='applyButton'], "
+                "button[data-automation-id='applyButton'], "
+                "button[data-automation-id='startApplication'], "
+                "a:has-text('Apply'), button:has-text('Apply')"
+            )
+            start_btn = page.locator(apply_sel).first
+            if safe_count(start_btn) > 0 and start_btn.is_visible():
+                start_btn.click(force=True)
+                self.record_field(
+                    label="Apply Navigation Button",
+                    value="CLICKED",
+                    field_name="apply_button",
+                    field_type="button",
+                    step=1,
+                    step_name="NAVIGATION",
+                    action_type="CLICKED"
+                )
+                time.sleep(2)
+                self.dismiss_workday_overlays(page, max_rounds=3)
+
+            # 2. Prefer Apply Manually — Autofill with Resume lands on empty autofillWithResume shell
+            manual_sel = (
+                "[data-automation-id='applyManually'], "
+                "a:has-text('Apply Manually'), button:has-text('Apply Manually')"
+            )
+            try:
+                page.wait_for_selector(
+                    manual_sel + ", [data-automation-id='autofillWithResume']",
+                    timeout=3500,
+                )
+            except Exception:
+                pass
+            manual_btn = page.locator(manual_sel).first
+            if safe_count(manual_btn) > 0 and manual_btn.is_visible():
+                choice_label = manual_btn.inner_text().strip() or "Apply Manually"
+                manual_btn.click(force=True)
+                self.record_field(
+                    label="Apply Option Selection",
+                    value=choice_label,
+                    field_name="apply_option",
+                    field_type="button",
+                    step=1,
+                    step_name="NAVIGATION",
+                    action_type="CLICKED"
+                )
+                time.sleep(3)
+                self._apply_opened = True
+
+            # 3. Fallback: deep-link applyManually (query-param job URLs / Autofill trap)
+            path = self._workday_url_path(page)
+            if (
+                not self._workday_on_apply_flow(page)
+                or "autofillwithresume" in path
+                or (
+                    "/apply" in path
+                    and "applymanually" not in path
+                    and not self._workday_sign_in_ready(page)
+                )
+            ):
+                if self._workday_goto_apply_manually(page):
+                    self._apply_opened = True
+
+            if self._workday_on_apply_flow(page):
+                self._apply_opened = True
+            # Apply → login often re-shows legalNotice; clear before vault auth
+            self.dismiss_workday_overlays(page, max_rounds=4)
+        except Exception:
+            pass
+
+    def _fill_workday_create_account(self, page: Any, acct_email: str, acct_pwd: str) -> bool:
+        """Completes Workday tenant account registration when tenant does not recognize candidate."""
+        email_loc = page.locator("input[data-automation-id='email']").first
+        pass_loc = page.locator("input[data-automation-id='password']").first
+        verify_pass_loc = page.locator("input[data-automation-id='verifyPassword']").first
+
+        if safe_count(email_loc) > 0 and email_loc.is_visible():
+            email_loc.fill(str(acct_email))
+            self.record_field(
+                label="Account Email",
+                value=acct_email,
+                field_name="email",
+                field_type="email",
+                step=1,
+                step_name="VAULT_AUTH",
+                action_type="FILLED"
+            )
+        if safe_count(pass_loc) > 0 and pass_loc.is_visible():
+            pass_loc.fill(str(acct_pwd))
+            self.record_field(
+                label="Account Password",
+                value="********",
+                field_name="password",
+                field_type="password",
+                step=1,
+                step_name="VAULT_AUTH",
+                action_type="FILLED"
+            )
+        if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
+            verify_pass_loc.fill(str(acct_pwd))
+            self.record_field(
+                label="Verify Password",
+                value="********",
+                field_name="verifyPassword",
+                field_type="password",
+                step=1,
+                step_name="VAULT_AUTH",
+                action_type="FILLED"
+            )
+        cb = page.locator("input[data-automation-id='createAccountCheckbox']").first
+        if safe_count(cb) > 0:
+            try:
+                cb.check(force=True)
+            except Exception:
+                pass
+            self.record_field(
+                label="Create Account Terms",
+                value="True",
+                field_name="createAccountCheckbox",
+                field_type="checkbox",
+                step=1,
+                step_name="VAULT_AUTH",
+                action_type="CHECKED"
+            )
+        time.sleep(0.8)
+        cf = page.locator("div[data-automation-id='click_filter'][aria-label='Create Account']").first
+        sub = page.locator("button[data-automation-id='createAccountSubmitButton']").first
+        if safe_count(cf) > 0 and cf.is_visible():
+            cf.click(force=True)
+        elif safe_count(sub) > 0 and sub.is_visible():
+            sub.click(force=True)
+        else:
+            return False
+        self.record_field(
+            label="Create Account Submit",
+            value="CLICKED",
+            field_name="createAccountSubmitButton",
+            field_type="button",
+            step=1,
+            step_name="VAULT_AUTH",
+            action_type="CLICKED"
+        )
+        time.sleep(3.5)
+        return True
 
     def attempt_vault_sign_in(self, page: Any, job_url: str = "") -> bool:
-        """Fill Workday sign-in from portal_accounts vault. Never logs password."""
+        """Fill Workday sign-in from portal_accounts vault, with automatic Create Account fallback per employer tenant."""
         try:
             from naukari_pro.modules.portal_accounts import PortalAccountManager
+            # ORDER MATTERS: cookie/legal banner first — otherwise email fields stay hidden
+            self.dismiss_workday_overlays(page, max_rounds=4)
+            fields_ready = self.wait_for_workday_sign_in_fields(page, timeout_sec=10.0)
+            if not fields_ready:
+                self.dismiss_workday_overlays(page, max_rounds=3)
+                fields_ready = self._workday_sign_in_ready(page)
+            if not fields_ready and self._workday_overlay_present(page):
+                logger.warning("Workday vault auth blocked: legalNotice/cookie banner still present")
+                return False
+
             mgr = PortalAccountManager()
             acct = mgr.ensure_account(job_url or (page.url if page else ""), email=self.profile.get("email", "lav84095@gmail.com"))
             acct_email = acct.get("email") or self.profile.get("email", "lav84095@gmail.com")
@@ -1947,11 +2639,20 @@ class WorkdayHandler(BaseATSHandler):
                 acct_pwd += "!"
 
             # If SignInWithEmailButton or 'Sign in with email' is visible
-            email_btn_sel = "[data-automation-id='SignInWithEmailButton'], button:has-text('Sign in with email'), a:has-text('Sign in with email')"
+            email_btn_sel = (
+                "[data-automation-id='SignInWithEmailButton'], "
+                "button:has-text('Sign in with email'), a:has-text('Sign in with email'), "
+                "button:has-text('Sign In with Email'), button:has-text('Email')"
+            )
             try:
-                page.wait_for_selector(email_btn_sel, timeout=10000)
+                page.wait_for_selector(
+                    email_btn_sel + ", input[data-automation-id='email'], input[data-automation-id='password']",
+                    timeout=8000,
+                )
             except Exception:
                 pass
+            # Cookie banner can reappear after Apply redirect — dismiss again before fill
+            self.dismiss_workday_overlays(page, max_rounds=3)
 
             email_sign_in_btn = page.locator(email_btn_sel).first
             if safe_count(email_sign_in_btn) > 0 and email_sign_in_btn.is_visible():
@@ -1969,77 +2670,43 @@ class WorkdayHandler(BaseATSHandler):
                     page.wait_for_selector("input[data-automation-id='email']", timeout=8000)
                 except Exception:
                     time.sleep(2)
+                self.dismiss_workday_overlays(page, max_rounds=2)
 
-            email_loc = page.locator("input[data-automation-id='email']").first
-            pass_loc = page.locator("input[data-automation-id='password']").first
+            email_loc = page.locator(
+                "input[data-automation-id='email'], input[type='email'], "
+                "input[name='email'], input[autocomplete='username']"
+            ).first
+            pass_loc = page.locator(
+                "input[data-automation-id='password'], input[type='password']"
+            ).first
             verify_pass_loc = page.locator("input[data-automation-id='verifyPassword']").first
 
-            # If create account fields exist
-            if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
-                if safe_count(email_loc) > 0:
-                    email_loc.fill(str(acct_email))
-                    self.record_field(
-                        label="Account Email",
-                        value=acct_email,
-                        field_name="email",
-                        field_type="email",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="FILLED"
-                    )
-                if safe_count(pass_loc) > 0:
-                    pass_loc.fill(str(acct_pwd))
-                    self.record_field(
-                        label="Account Password",
-                        value="********",
-                        field_name="password",
-                        field_type="password",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="FILLED"
-                    )
-                verify_pass_loc.fill(str(acct_pwd))
-                self.record_field(
-                    label="Verify Password",
-                    value="********",
-                    field_name="verifyPassword",
-                    field_type="password",
-                    step=1,
-                    step_name="VAULT_AUTH",
-                    action_type="FILLED"
-                )
-                cb = page.locator("input[data-automation-id='createAccountCheckbox']").first
-                if safe_count(cb) > 0:
-                    cb.check(force=True)
-                    self.record_field(
-                        label="Create Account Terms",
-                        value="True",
-                        field_name="createAccountCheckbox",
-                        field_type="checkbox",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="CHECKED"
-                    )
-                time.sleep(1)
-                cf = page.locator("div[data-automation-id='click_filter'][aria-label='Create Account']").first
-                if safe_count(cf) > 0 and cf.is_visible():
-                    cf.click()
-                else:
-                    sub = page.locator("button[data-automation-id='createAccountSubmitButton']").first
-                    if safe_count(sub) > 0:
-                        sub.click(force=True)
-                self.record_field(
-                    label="Create Account Submit",
-                    value="CLICKED",
-                    field_name="createAccountSubmitButton",
-                    field_type="button",
-                    step=1,
-                    step_name="VAULT_AUTH",
-                    action_type="CLICKED"
-                )
-                time.sleep(3)
-                return True
+            def _auth_cleared_early() -> bool:
+                try:
+                    path = self._workday_url_path(page)
+                    if "/login" in path:
+                        return False
+                    pwd = page.locator("input[data-automation-id='password']").first
+                    if safe_count(pwd) > 0 and pwd.is_visible():
+                        return False
+                    if any(tok in path for tok in ("/apply", "userhome", "myapplications")):
+                        return True
+                    app_field = page.locator(
+                        "input[data-automation-id='legalNameSection_firstName'], "
+                        "button[data-automation-id='bottom-navigation-next-button'], "
+                        "button[data-automation-id='pageFooterNextButton']"
+                    ).first
+                    return safe_count(app_field) > 0 and app_field.is_visible()
+                except Exception:
+                    return False
 
+            # Already on Create Account page
+            if safe_count(verify_pass_loc) > 0 and verify_pass_loc.is_visible():
+                self._fill_workday_create_account(page, acct_email, acct_pwd)
+                time.sleep(2.5)
+                return _auth_cleared_early()
+
+            # Sign-In page -> Try Sign In first, verify it succeeded, otherwise click Create Account
             if safe_count(email_loc) > 0 and email_loc.is_visible():
                 email_loc.fill(str(acct_email))
                 self.record_field(
@@ -2063,24 +2730,15 @@ class WorkdayHandler(BaseATSHandler):
                     action_type="FILLED"
                 )
 
-            cf_sign = page.locator("div[data-automation-id='click_filter'][aria-label='Sign In'], div[data-automation-id='click_filter'][aria-label='Submit'], div[data-automation-id='click_filter']").first
+            sign_in_clicked = False
+            cf_sign = page.locator(
+                "div[data-automation-id='click_filter'][aria-label='Sign In'], "
+                "div[data-automation-id='click_filter'][aria-label='Submit'], "
+                "button[data-automation-id='signInSubmitButton'], "
+                "button:has-text('Sign In'), button[type='submit']"
+            ).first
             if safe_count(cf_sign) > 0 and cf_sign.is_visible():
                 cf_sign.click(force=True)
-                self.record_field(
-                    label="Sign In Submit",
-                    value="CLICKED",
-                    field_name="signInClickFilter",
-                    field_type="button",
-                    step=1,
-                    step_name="VAULT_AUTH",
-                    action_type="CLICKED"
-                )
-                time.sleep(2)
-                return True
-
-            submit = page.locator("button[data-automation-id='signInSubmitButton']").first
-            if safe_count(submit) > 0:
-                submit.click(force=True)
                 self.record_field(
                     label="Sign In Submit",
                     value="CLICKED",
@@ -2090,13 +2748,50 @@ class WorkdayHandler(BaseATSHandler):
                     step_name="VAULT_AUTH",
                     action_type="CLICKED"
                 )
-                time.sleep(2)
-                return True
+                sign_in_clicked = True
+                time.sleep(3)
 
-            # Create Account path
-            create_btn = page.locator("button:has-text('Create Account'), a:has-text('Create Account'), [data-automation-id='createAccountLink']").first
+            def _auth_cleared() -> bool:
+                try:
+                    path = self._workday_url_path(page)
+                    # Still on /login path even if redirect query contains /apply
+                    if "/login" in path:
+                        return False
+                    pwd = page.locator("input[data-automation-id='password']").first
+                    if safe_count(pwd) > 0 and pwd.is_visible():
+                        return False
+                    email = page.locator("input[data-automation-id='email']").first
+                    if safe_count(email) > 0 and email.is_visible() and "/apply" not in path:
+                        return False
+                    # Progressed into apply wizard / My Applications (path only)
+                    if any(tok in path for tok in ("/apply", "userhome", "myapplications")):
+                        return True
+                    # Form fields from application present
+                    app_field = page.locator(
+                        "input[data-automation-id='legalNameSection_firstName'], "
+                        "button[data-automation-id='bottom-navigation-next-button'], "
+                        "button[data-automation-id='pageFooterNextButton'], "
+                        "button[data-automation-id='submitButton']"
+                    ).first
+                    return safe_count(app_field) > 0 and app_field.is_visible()
+                except Exception:
+                    return False
+
+            if sign_in_clicked:
+                time.sleep(2.5)
+                # Session cookie may be set while browser stays on /login?redirect=...
+                if "/login" in self._workday_url_path(page):
+                    self._workday_follow_login_redirect(page)
+                    time.sleep(1.5)
+                if _auth_cleared():
+                    mgr.mark_verified(job_url or (page.url if page else ""))
+                    return True
+                logger.info("[AUTH] Workday Sign-In failed/unregistered on tenant; attempting Create Account fallback...")
+
+            # Create Account fallback path
+            create_btn = page.locator("button[data-automation-id='createAccountLink'], a[data-automation-id='createAccountLink'], button:has-text('Create Account'), a:has-text('Create Account')").first
             if safe_count(create_btn) > 0 and create_btn.is_visible():
-                create_btn.click()
+                create_btn.click(force=True)
                 self.record_field(
                     label="Create Account Navigation",
                     value="CLICKED",
@@ -2106,71 +2801,92 @@ class WorkdayHandler(BaseATSHandler):
                     step_name="VAULT_AUTH",
                     action_type="CLICKED"
                 )
-                time.sleep(1)
-                if safe_count(email_loc) > 0:
-                    email_loc.fill(str(acct_email))
-                    self.record_field(
-                        label="Account Email",
-                        value=acct_email,
-                        field_name="email",
-                        field_type="email",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="FILLED"
+                try:
+                    page.wait_for_selector("input[data-automation-id='verifyPassword']", timeout=5000)
+                except Exception:
+                    time.sleep(2)
+                self._fill_workday_create_account(page, acct_email, acct_pwd)
+                time.sleep(2.5)
+                # Autonomous email verification via Gmail IMAP (link or OTP)
+                try:
+                    from naukari_pro.modules.autonomous_loop import (
+                        fetch_ats_email_code,
+                        fetch_ats_verification_link,
                     )
-                if safe_count(pass_loc) > 0:
-                    pass_loc.fill(str(acct_pwd))
-                    self.record_field(
-                        label="Account Password",
-                        value="********",
-                        field_name="password",
-                        field_type="password",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="FILLED"
-                    )
-                if safe_count(verify_pass_loc) > 0:
-                    verify_pass_loc.fill(str(acct_pwd))
-                    self.record_field(
-                        label="Verify Password",
-                        value="********",
-                        field_name="verifyPassword",
-                        field_type="password",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="FILLED"
-                    )
-                cb = page.locator("input[data-automation-id='createAccountCheckbox']").first
-                if safe_count(cb) > 0:
-                    cb.check(force=True)
-                    self.record_field(
-                        label="Create Account Terms",
-                        value="True",
-                        field_name="createAccountCheckbox",
-                        field_type="checkbox",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="CHECKED"
-                    )
-                create_sub = page.locator("button[data-automation-id='createAccountSubmitButton']").first
-                if safe_count(create_sub) > 0:
-                    create_sub.click(force=True)
-                    self.record_field(
-                        label="Create Account Submit",
-                        value="CLICKED",
-                        field_name="createAccountSubmitButton",
-                        field_type="button",
-                        step=1,
-                        step_name="VAULT_AUTH",
-                        action_type="CLICKED"
-                    )
-                time.sleep(3)
-                return True
+                    t_verify = time.time()
+                    verify_link = fetch_ats_verification_link(since_ts=t_verify - 5, timeout_sec=75.0)
+                    if verify_link:
+                        print(f"    ✉️ [Workday] Opening verification link from Gmail...")
+                        page.goto(verify_link, wait_until="domcontentloaded", timeout=30000)
+                        time.sleep(2)
+                        if _auth_cleared():
+                            mgr.mark_verified(job_url or (page.url if page else ""))
+                            return True
+                    otp = fetch_ats_email_code(since_ts=t_verify - 5, timeout_sec=45.0)
+                    if otp:
+                        otp_loc = page.locator(
+                            "input[data-automation-id*='verification' i], input[name*='code' i], "
+                            "input[autocomplete='one-time-code'], input[placeholder*='code' i]"
+                        ).first
+                        if safe_count(otp_loc) > 0 and otp_loc.is_visible():
+                            otp_loc.fill(str(otp))
+                            submit_otp = page.locator(
+                                "button:has-text('Verify'), button:has-text('Submit'), "
+                                "button[data-automation-id='signInSubmitButton']"
+                            ).first
+                            if safe_count(submit_otp) > 0:
+                                submit_otp.click()
+                                time.sleep(2)
+                            if _auth_cleared():
+                                mgr.mark_verified(job_url or (page.url if page else ""))
+                                return True
+                except Exception as e_ver:
+                    logger.debug("Workday IMAP verify notice: %s", e_ver)
+                if _auth_cleared():
+                    mgr.mark_verified(job_url or (page.url if page else ""))
+                    return True
+                return False
+            cleared = _auth_cleared()
+            # Never report success while URL path is still /login
+            if cleared and "/login" in self._workday_url_path(page):
+                self._workday_follow_login_redirect(page)
+                cleared = _auth_cleared() and "/login" not in self._workday_url_path(page)
+            return cleared
         except Exception:
             return False
         return False
 
     def detect_barriers(self, page: Any) -> Optional[str]:
+        if page:
+            self.open_apply_modal_if_needed(page)
+            # SPA lag: /apply URL with empty DOM → wait for Sign-In or form
+            stage = self.wait_for_workday_auth_or_form(page, timeout_sec=18.0)
+            if stage == "signin":
+                signed = self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+                if not signed:
+                    return "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)"
+                if "/login" in self._workday_url_path(page):
+                    self._workday_follow_login_redirect(page)
+                post = self.wait_for_workday_auth_or_form(page, timeout_sec=12.0)
+                if post != "form" or "/login" in self._workday_url_path(page):
+                    return "Workday Account / Sign-In Barrier — still on login after vault"
+                parent_barrier = super().detect_barriers(page)
+                if parent_barrier and any(
+                    k in parent_barrier.lower() for k in ("captcha", "checkpoint", "otp", "turnstile")
+                ):
+                    return parent_barrier
+                return None
+            if stage == "form":
+                return None
+            # empty after wait — still try vault if login path
+            if "/login" in self._workday_url_path(page):
+                signed = self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+                if not signed or "/login" in self._workday_url_path(page):
+                    if signed:
+                        self._workday_follow_login_redirect(page)
+                    if "/login" in self._workday_url_path(page):
+                        return "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)"
+                return None
         parent_barrier = super().detect_barriers(page)
         if parent_barrier:
             # Captcha/checkpoint still hard-stop
@@ -2243,45 +2959,20 @@ class WorkdayHandler(BaseATSHandler):
         if not page:
             return {"filled": filled, "ats": "Workday"}
 
-        try:
-            apply_sel = "a[data-automation-id='adventureButton'], button[data-automation-id='adventureButton'], a[data-automation-id='applyButton'], button[data-automation-id='applyButton'], button[data-automation-id='startApplication'], a:has-text('Apply'), button:has-text('Apply')"
-            try:
-                page.wait_for_selector(apply_sel, timeout=6000)
-            except Exception:
-                pass
-
-            start_btn = page.locator(apply_sel).first
-            if safe_count(start_btn) > 0 and start_btn.is_visible():
-                start_btn.click()
-                self.record_field(
-                    label="Apply Navigation Button",
-                    value="CLICKED",
-                    field_name="apply_button",
-                    field_type="button",
-                    step=1,
-                    step_name="NAVIGATION",
-                    action_type="CLICKED"
-                )
-                time.sleep(2)
-                manual_btn = page.locator("[data-automation-id='applyManually'], a:has-text('Apply Manually'), button:has-text('Apply Manually'), [data-automation-id='autofillWithResume']").first
-                if safe_count(manual_btn) > 0 and manual_btn.is_visible():
-                    manual_btn.click()
-                    self.record_field(
-                        label="Apply Option Selection",
-                        value="Apply Manually",
-                        field_name="apply_option",
-                        field_type="button",
-                        step=1,
-                        step_name="NAVIGATION",
-                        action_type="CLICKED"
-                    )
-                    time.sleep(3)
-        except Exception:
-            pass
+        self.open_apply_modal_if_needed(page)
+        stage = self.wait_for_workday_auth_or_form(page, timeout_sec=15.0)
 
         # Workday Vault Sign-in / Create Account step if needed
         try:
-            self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+            if stage == "signin" or "/login" in self._workday_url_path(page):
+                signed = self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+                if signed:
+                    self.wait_for_workday_auth_or_form(page, timeout_sec=12.0)
+                elif stage == "signin":
+                    return {"filled": filled, "field_records": list(self.field_records), "ats": "Workday"}
+            elif stage != "form":
+                self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+                self.wait_for_workday_auth_or_form(page, timeout_sec=10.0)
         except Exception:
             pass
 
@@ -2292,14 +2983,20 @@ class WorkdayHandler(BaseATSHandler):
             ("input[data-automation-id='phone-number'], input[data-automation-id='phoneNumber']", p.get("phone", "+919122036484"), "Phone"),
             ("input[data-automation-id='addressSection_city']", p.get("city", "Hyderabad"), "City"),
             ("input[data-automation-id='addressSection_postalCode']", p.get("postalCode", "500081"), "Postal Code"),
+            ("input[data-automation-id='addressSection_addressLine1']", p.get("address", "HITEC City, Madhapur"), "Address Line 1"),
         ]
 
-        # Multi-Step Wizard Engine (Loops up to 5 steps until Review/Submit)
-        for wizard_step in range(1, 6):
-            # Check if final Submit button is reached (only on step > 1 if form fields not present)
+        # Multi-Step Wizard Engine (Loops up to 9 steps until Review/Submit)
+        for wizard_step in range(1, 10):
+            # Check if final Submit button is reached
             if wizard_step > 1:
                 submit_visible = False
-                for s_sel in ["button[data-automation-id='submitButton']", "button[data-automation-id='bottom-navigation-submit-button']"]:
+                for s_sel in [
+                    "button[data-automation-id='submitButton']",
+                    "button[data-automation-id='bottom-navigation-submit-button']",
+                    "button[data-automation-id='bottom-navigation-next-button']:has-text('Submit')",
+                    "div[data-automation-id='click_filter'][aria-label*='Submit' i]"
+                ]:
                     s_btn = page.locator(s_sel).first
                     if safe_count(s_btn) > 0 and s_btn.is_visible():
                         submit_visible = True
@@ -2307,6 +3004,17 @@ class WorkdayHandler(BaseATSHandler):
                 if submit_visible:
                     filled.append(f"Reached Final Review Step {wizard_step}")
                     break
+
+            # 0. Resume File upload if dropzone / input present on this step
+            try:
+                resume_path = p.get("resumePath")
+                if resume_path and os.path.exists(resume_path):
+                    f_inp = page.locator("input[data-automation-id='file-upload-input'], input[data-automation-id='file-upload-input-ref'], input[type='file']").first
+                    if safe_count(f_inp) > 0:
+                        self.upload_resume(page, resume_path)
+                        filled.append("Workday Resume File")
+            except Exception:
+                pass
 
             # 1. Standard Contact / Identity Fields
             for selector, val, label in field_map:
@@ -2336,7 +3044,23 @@ class WorkdayHandler(BaseATSHandler):
                 except Exception:
                     pass
 
-            # 2. General Text Inputs & Textareas on current step
+            # 1b. Workday 'How Did You Hear About Us?' multiselect searchBox
+            try:
+                src_box = page.locator("div[data-automation-id='formField-sourcePrompt'] input, input[data-automation-id='searchBox']").first
+                if safe_count(src_box) > 0 and src_box.is_visible():
+                    src_box.click()
+                    src_box.fill("LinkedIn")
+                    if hasattr(page, "keyboard"):
+                        page.keyboard.press("Enter")
+                    time.sleep(1.0)
+                    prompt_opt = page.locator("div[data-automation-id='promptOption']:has-text('LinkedIn'), div[data-automation-id='promptOption']").first
+                    if safe_count(prompt_opt) > 0 and prompt_opt.is_visible():
+                        prompt_opt.click()
+                        filled.append("Source: LinkedIn")
+            except Exception:
+                pass
+
+            # 2. General Text Inputs & Textareas on current step (fact-matrix solver backed)
             try:
                 for inp in page.locator("input[data-automation-id]:not([type='file']):not([type='checkbox']):not([type='radio']), textarea[data-automation-id]").all():
                     try:
@@ -2353,18 +3077,14 @@ class WorkdayHandler(BaseATSHandler):
                         if val_cur:
                             continue
                         auto_id = inp.get_attribute("data-automation-id") or ""
-                        if any(k in auto_id.lower() for k in ["email", "phone", "name", "city", "postal"]):
+                        if any(k in auto_id.lower() for k in ["email", "phone", "name", "city", "postal", "searchbox"]):
                             continue
-                        parent = inp.locator("xpath=ancestor::div[1]").first
+                        parent = inp.locator("xpath=ancestor::div[contains(@data-automation-id,'formField')][1] | xpath=ancestor::div[1]").first
                         lbl_text = parent.inner_text().strip().split("\n")[0] if safe_count(parent) > 0 else auto_id
-                        ans = "Yes"
-                        if any(k in lbl_text.lower() for k in ["salary", "compensation"]):
-                            ans = "Competitive / Market Standard"
-                        elif any(k in lbl_text.lower() for k in ["notice", "availability"]):
-                            ans = "15 Days"
-                        elif any(k in lbl_text.lower() for k in ["linkedin", "website"]):
+                        ans = self.solver.solve_question(lbl_text) if self.solver else "Yes"
+                        if any(k in lbl_text.lower() for k in ["linkedin", "website"]):
                             ans = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
-                        inp.fill(ans)
+                        inp.fill(str(ans))
                         filled.append(f"Field ({lbl_text[:15]})")
                         self.record_field(
                             label=lbl_text,
@@ -2380,7 +3100,7 @@ class WorkdayHandler(BaseATSHandler):
             except Exception:
                 pass
 
-            # 3. Workday Custom Dropdowns (Country, Source, Phone Type, Disclosures)
+            # 3. Workday Custom Dropdowns (Country, Source, Phone Type, Questions, Disclosures)
             try:
                 wd_dropdowns = page.locator("button[data-automation-id*='Dropdown' i], button[data-automation-id*='prompt' i], button[aria-haspopup='listbox']").all()
                 for dd_idx, dd_btn in enumerate(wd_dropdowns):
@@ -2392,30 +3112,35 @@ class WorkdayHandler(BaseATSHandler):
                         if dd_text and dd_text not in ["select", "select one", "select...", ""]:
                             continue
 
+                        parent_ff = dd_btn.locator("xpath=ancestor::div[contains(@data-automation-id,'formField')][1]").first
+                        q_label = parent_ff.inner_text().strip().split("\n")[0] if safe_count(parent_ff) > 0 else dd_id
+
                         dd_btn.click()
-                        time.sleep(0.4)
+                        time.sleep(0.5)
                         opts_loc = page.locator("div[data-automation-id='promptOption'], div[role='option'], li[role='option']")
                         opts = [o.strip() for o in opts_loc.all_inner_texts() if o.strip()]
 
                         chosen = None
-                        if "country" in dd_id.lower():
+                        if "country" in dd_id.lower() or "country" in q_label.lower():
                             chosen = next((o for o in opts if "india" in o.lower()), None)
-                        elif "source" in dd_id.lower():
+                        elif "source" in dd_id.lower() or "hear" in q_label.lower():
                             chosen = next((o for o in opts if "linkedin" in o.lower() or "career site" in o.lower()), None)
                         elif "phone" in dd_id.lower() or "device" in dd_id.lower():
                             chosen = next((o for o in opts if "mobile" in o.lower()), None)
-                        elif any("prefer not" in o.lower() or "decline" in o.lower() for o in opts):
-                            chosen = next((o for o in opts if "prefer not" in o.lower() or "decline" in o.lower()), None)
+                        elif any("prefer not" in o.lower() or "decline" in o.lower() or "do not wish" in o.lower() for o in opts):
+                            chosen = next((o for o in opts if any(x in o.lower() for x in ("prefer not", "decline", "do not wish"))), None)
+                        elif self.solver and opts:
+                            chosen = self.solver.solve_question(q_label, options=opts)
                         elif opts:
                             chosen = opts[0]
 
                         if chosen:
-                            opt_match = page.locator(f"div[data-automation-id='promptOption']:has-text('{chosen}'), div[role='option']:has-text('{chosen}')").first
+                            opt_match = page.locator(f"div[data-automation-id='promptOption']:has-text('{chosen}'), div[role='option']:has-text('{chosen}'), li[role='option']:has-text('{chosen}')").first
                             if safe_count(opt_match) > 0:
                                 opt_match.click()
                                 filled.append(f"Workday Dropdown: {chosen}")
                                 self.record_field(
-                                    label=dd_id,
+                                    label=q_label,
                                     value=chosen,
                                     field_name=dd_id,
                                     field_type="select",
@@ -2452,22 +3177,21 @@ class WorkdayHandler(BaseATSHandler):
             except Exception:
                 pass
 
-            # 5. Check if Resume File upload is present on this step
+            # Advance to Next Step (Fractal uses pageFooterNextButton = Save and Continue)
             try:
-                resume_path = p.get("resumePath")
-                if resume_path and os.path.exists(resume_path):
-                    f_inp = page.locator("input[data-automation-id='file-upload-input'], input[type='file']").first
-                    if safe_count(f_inp) > 0 and f_inp.is_visible():
-                        self.upload_resume(page, resume_path)
-                        filled.append("Workday Resume File")
-            except Exception:
-                pass
-
-            # Advance to Next Step
-            try:
-                next_btn = page.locator("button[data-automation-id='bottom-navigation-next-button'], button[data-automation-id='saveAndContinue']").first
+                next_btn = page.locator(
+                    "button[data-automation-id='pageFooterNextButton'], "
+                    "button[data-automation-id='bottom-navigation-next-button'], "
+                    "button[data-automation-id='saveAndContinue'], "
+                    "button:has-text('Save and Continue'), "
+                    "button:has-text('Save & Continue')"
+                ).first
                 if safe_count(next_btn) > 0 and next_btn.is_visible():
-                    next_btn.click()
+                    btn_txt = (next_btn.inner_text() or "").strip().lower()
+                    if "submit" in btn_txt and "continue" not in btn_txt:
+                        filled.append(f"Reached Final Review Step {wizard_step}")
+                        break
+                    next_btn.click(force=True)
                     self.record_field(
                         label=f"Next Step Navigation (Step {wizard_step})",
                         value="CLICKED",
@@ -2485,6 +3209,35 @@ class WorkdayHandler(BaseATSHandler):
 
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Workday"}
 
+    def _click_workday_submit_if_visible(self, page: Any) -> bool:
+        submit_selectors = [
+            "button[data-automation-id='submitButton']",
+            "button[data-automation-id='bottom-navigation-submit-button']",
+            "button[data-automation-id='pageFooterNextButton']:has-text('Submit')",
+            "button[data-automation-id='bottom-navigation-next-button']:has-text('Submit')",
+            "div[data-automation-id='click_filter'][aria-label*='Submit' i]",
+            "button:has-text('Submit Application')",
+            "button:has-text('Submit')",
+        ]
+        for sel in submit_selectors:
+            try:
+                btn = page.locator(sel).first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    btn.click(timeout=5000)
+                    self.record_field(
+                        label="Submit Application Button",
+                        value="CLICKED",
+                        field_name=sel,
+                        field_type="button",
+                        step=1,
+                        step_name="SUBMIT_APPLICATION",
+                        action_type="SUBMITTED",
+                    )
+                    return True
+            except Exception:
+                pass
+        return False
+
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
@@ -2503,29 +3256,53 @@ class WorkdayHandler(BaseATSHandler):
         except Exception:
             pass
 
-        submit_selectors = [
-            "button[data-automation-id='submitButton']",
-            "button[data-automation-id='bottom-navigation-submit-button']",
-            "button:has-text('Submit')"
+        # Autonomous multi-step: advance Next/Continue until Submit is clickable (fixes SUBMIT_NOT_FOUND)
+        next_selectors = [
+            "button[data-automation-id='pageFooterNextButton']",
+            "button[data-automation-id='bottom-navigation-next-button']",
+            "button[data-automation-id='saveAndContinue']",
+            "button[data-automation-id='nextButton']",
+            "div[data-automation-id='click_filter'][aria-label*='Next' i]",
+            "button:has-text('Save and Continue')",
+            "button:has-text('Save & Continue')",
+            "button:has-text('Next')",
+            "button:has-text('Continue')",
         ]
-        for sel in submit_selectors:
-            try:
-                btn = page.locator(sel).first
-                if safe_count(btn) > 0 and btn.is_visible():
+        for step in range(1, 12):
+            if self._click_workday_submit_if_visible(page):
+                return True
+            advanced = False
+            for sel in next_selectors:
+                try:
+                    btn = page.locator(sel).first
+                    if safe_count(btn) == 0 or not btn.is_visible():
+                        continue
+                    label = (btn.inner_text() or "").strip().lower()
+                    if "submit" in label:
+                        continue
                     btn.click(timeout=5000)
                     self.record_field(
-                        label="Submit Application Button",
+                        label=f"Next Navigation (submit pass {step})",
                         value="CLICKED",
                         field_name=sel,
                         field_type="button",
-                        step=1,
-                        step_name="SUBMIT_APPLICATION",
-                        action_type="SUBMITTED"
+                        step=step,
+                        step_name="SUBMIT_WIZARD_ADVANCE",
+                        action_type="CLICKED",
                     )
-                    return True
-            except Exception:
-                pass
-        return False
+                    advanced = True
+                    time.sleep(1.5)
+                    # Re-fill residual empty fields after step change
+                    try:
+                        self.fill_form(page)
+                    except Exception:
+                        pass
+                    break
+                except Exception:
+                    continue
+            if not advanced:
+                break
+        return self._click_workday_submit_if_visible(page)
 
     def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
         if not page:
@@ -2533,11 +3310,17 @@ class WorkdayHandler(BaseATSHandler):
         start = time.time()
         while time.time() - start < timeout:
             try:
+                url = (getattr(page, "url", "") or "").lower()
+                if any(tok in url for tok in ("/userhome", "/myapplications", "submitted")):
+                    return True
                 conf_selectors = [
                     "div[data-automation-id='applicationSubmitted']",
                     "div[data-automation-id='thankYouMessage']",
                     "[data-automation-id='pageHeader']:has-text('Application Submitted')",
-                    "h2:has-text('Application Submitted')"
+                    "h2:has-text('Application Submitted')",
+                    "h1:has-text('Thank You')",
+                    "h2:has-text('Congratulations')",
+                    "div:has-text('you have applied')"
                 ]
                 for sel in conf_selectors:
                     try:
@@ -2553,25 +3336,50 @@ class WorkdayHandler(BaseATSHandler):
 
 
 class GenericPortalHandler(BaseATSHandler):
-    """Fallback handler for generic company portals and ATS platforms."""
+    """Fallback handler for generic company portals and ATS platforms (ZohoRecruit, Keka, TalentBrew, iCIMS, etc.)."""
 
     def __init__(self, profile: Dict[str, Any], solver: Optional[FactMatrixScreeningSolver] = None, ats_type: str = "Generic Portal"):
         super().__init__(profile, solver, ats_type=ats_type)
 
-    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        filled = []
-        p = self.profile
+    def _get_active_context(self, page: Any) -> Any:
+        """Returns either the main page or the richest child iframe containing the application form."""
         if not page:
-            return {"filled": filled, "ats": self.ats_type}
+            return page
+        try:
+            top_inputs = safe_count(page.locator("input:not([type='hidden']), textarea, select, lyte-input, lyte-drop-box"))
+            if top_inputs >= 2:
+                return page
+            frames = getattr(page, "frames", []) or []
+            best_frame = None
+            best_count = 1
+            for fr in frames:
+                if fr == page:
+                    continue
+                try:
+                    fr_url = (getattr(fr, "url", "") or "").lower()
+                    if any(b in fr_url for b in ("recaptcha", "hcaptcha", "doubleclick", "googletagmanager", "about:blank")):
+                        continue
+                    cnt = safe_count(fr.locator("input:not([type='hidden']), textarea, select, lyte-input, lyte-drop-box"))
+                    if cnt > best_count:
+                        best_count = cnt
+                        best_frame = fr
+                except Exception:
+                    continue
+            if best_frame is not None:
+                return best_frame
+        except Exception:
+            pass
+        return page
 
-        # Semantic anchor hierarchy: autocomplete > data-automation-id > name/id > placeholder
+    def _fill_ctx_fields(self, ctx: Any, page: Any, filled: List[str], step: int = 1) -> None:
+        p = self.profile
         field_map = [
             ("input[autocomplete='given-name'], input[data-automation-id*='firstName' i], input[name*='first_name' i], input[name*='firstName' i], #first_name, input[placeholder*='first name' i]", p.get("firstName", "Lavkush"), "First Name"),
             ("input[autocomplete='family-name'], input[data-automation-id*='lastName' i], input[name*='last_name' i], input[name*='lastName' i], #last_name, input[placeholder*='last name' i]", p.get("lastName", "Kumar"), "Last Name"),
             ("input[autocomplete='name'], input[data-automation-id*='fullName' i], input[name*='full_name' i], input[name*='fullName' i], input[name='name'], #name, input[placeholder*='full name' i]", p.get("fullName", "Lavkush Kumar"), "Full Name"),
             ("input[type='email'], input[autocomplete='email'], input[data-automation-id*='email' i], input[name*='email' i], #email, input[placeholder*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
-            ("input[type='tel'], input[autocomplete='tel'], input[data-automation-id*='phone' i], input[name*='phone' i], input[name*='mobile' i], #phone, input[placeholder*='phone' i]", p.get("phone", "+91-9122036484"), "Phone"),
-            ("input[autocomplete='address-level2'], input[data-automation-id*='city' i], input[data-automation-id*='location' i], input[name*='city' i], input[name*='location' i], #location", p.get("city", "Hyderabad"), "Location"),
+            ("input[type='tel'], input[autocomplete='tel'], input[data-automation-id*='phone' i], input[name*='phone' i], input[name*='mobile' i], #phone, input[placeholder*='phone' i], input[placeholder*='mobile' i]", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[autocomplete='address-level2'], input[data-automation-id*='city' i], input[data-automation-id*='location' i], input[name*='city' i], input[name*='location' i], #location, input[placeholder*='city' i]", p.get("city", "Hyderabad"), "Location"),
             ("input[autocomplete='organization'], input[data-automation-id*='company' i], input[name*='company' i], input[name*='org' i], input[placeholder*='company' i]", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Company"),
             ("input[autocomplete='organization-title'], input[data-automation-id*='title' i], input[name*='title' i], input[name*='designation' i], input[placeholder*='job title' i]", p.get("currentTitle", "DevOps Engineer / Azure Data Engineer"), "Title"),
             ("input[data-automation-id*='linkedin' i], input[name*='linkedin' i], input[id*='linkedin' i], input[placeholder*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
@@ -2579,25 +3387,29 @@ class GenericPortalHandler(BaseATSHandler):
         ]
         for selector, val, label in field_map:
             try:
-                loc = page.locator(selector).first
+                loc = ctx.locator(selector).first
                 if safe_count(loc) > 0 and loc.is_visible():
-                    loc.fill(str(val))
-                    filled.append(label)
-                    self.record_field(
-                        label=label,
-                        value=val,
-                        field_name=selector,
-                        field_type="text",
-                        step=1,
-                        step_name="BASIC_INFO",
-                        action_type="FILLED"
-                    )
-                else:
-                    logger.debug("GenericPortalHandler selector miss for %s: %s", label, selector)
+                    cur = ""
+                    try:
+                        cur = loc.input_value() if hasattr(loc, "input_value") else ""
+                    except Exception:
+                        cur = ""
+                    if not cur:
+                        loc.fill(str(val))
+                        filled.append(label)
+                        self.record_field(
+                            label=label,
+                            value=val,
+                            field_name=selector,
+                            field_type="text",
+                            step=step,
+                            step_name="BASIC_INFO",
+                            action_type="FILLED"
+                        )
             except Exception as e_f:
                 logger.debug("GenericPortalHandler field fill notice [%s]: %s", label, e_f)
 
-        # AIHawk Lesson: Label text anchor fallback for custom/obfuscated input IDs (e.g. Zoho, Keka, Darwinbox)
+        # Label text anchor fallback for custom/obfuscated input IDs (ZohoRecruit, Keka, Darwinbox)
         label_fallbacks = [
             ("First Name", p.get("firstName", "Lavkush")),
             ("Last Name", p.get("lastName", "Kumar")),
@@ -2607,31 +3419,81 @@ class GenericPortalHandler(BaseATSHandler):
             ("Current Company", p.get("currentCompany", "CGI India (PNC Bank GCC)")),
             ("LinkedIn", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")),
             ("GitHub", p.get("githubUrl", "https://github.com/lavkush-kumar")),
+            ("Total Experience", p.get("experienceYears", "2.5")),
+            ("Current CTC", "12"),
+            ("Expected CTC", "22"),
+            ("Notice Period", "15"),
+            ("Current Location", p.get("city", "Hyderabad")),
         ]
         for lbl_name, val in label_fallbacks:
             if lbl_name not in filled:
                 try:
-                    lbl_el = page.locator(f"label:has-text('{lbl_name}')").first
+                    lbl_el = ctx.locator(f"label:has-text('{lbl_name}')").first
                     if safe_count(lbl_el) > 0 and lbl_el.is_visible():
                         inp_el = lbl_el.locator("xpath=following::input[1] | ..//input").first
-                        if safe_count(inp_el) > 0 and inp_el.is_visible() and not inp_el.input_value():
-                            inp_el.fill(str(val))
-                            filled.append(lbl_name)
-                            self.record_field(
-                                label=lbl_name,
-                                value=val,
-                                field_name=f"label_{lbl_name}",
-                                field_type="text",
-                                step=1,
-                                step_name="BASIC_INFO",
-                                action_type="FILLED"
-                            )
+                        if safe_count(inp_el) > 0 and inp_el.is_visible():
+                            cur_iv = inp_el.input_value() if hasattr(inp_el, "input_value") else ""
+                            if not cur_iv:
+                                inp_el.fill(str(val))
+                                filled.append(lbl_name)
+                                self.record_field(
+                                    label=lbl_name,
+                                    value=val,
+                                    field_name=f"label_{lbl_name}",
+                                    field_type="text",
+                                    step=step,
+                                    step_name="BASIC_INFO",
+                                    action_type="FILLED"
+                                )
                 except Exception:
                     pass
 
+        # Catch remaining visible required/empty text/number inputs via FactMatrixScreeningSolver
+        try:
+            for inp in ctx.locator("input[type='text'], input[type='number'], textarea").all():
+                try:
+                    if not inp.is_visible():
+                        continue
+                    cur = inp.input_value() if hasattr(inp, "input_value") else ""
+                    if cur:
+                        continue
+                    ph = inp.get_attribute("placeholder") or ""
+                    nm = inp.get_attribute("name") or inp.get_attribute("id") or ""
+                    q_hint = f"{ph} {nm}".strip()
+                    if not q_hint or not self.solver:
+                        continue
+                    ans = self.solver.solve_question(q_hint)
+                    if ans:
+                        inp.fill(str(ans))
+                        filled.append(f"Solved ({q_hint[:18]})")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Native <select> dropdowns
+        try:
+            for sel_el in ctx.locator("select").all():
+                try:
+                    if not sel_el.is_visible():
+                        continue
+                    opts = sel_el.locator("option").all_inner_texts()
+                    opts = [o.strip() for o in opts if o.strip() and "select" not in o.lower()]
+                    if not opts:
+                        continue
+                    nm = sel_el.get_attribute("name") or sel_el.get_attribute("id") or "dropdown"
+                    choice = self.solver.solve_question(nm, options=opts) if self.solver else opts[0]
+                    if choice in opts:
+                        sel_el.select_option(label=choice)
+                        filled.append(f"Select ({choice[:18]})")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Consent and privacy checkboxes
         try:
-            for cb in page.locator("input[type='checkbox']").all():
+            for cb in ctx.locator("input[type='checkbox']").all():
                 try:
                     if not cb.is_checked():
                         parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
@@ -2644,7 +3506,7 @@ class GenericPortalHandler(BaseATSHandler):
                                 value="Checked",
                                 field_name="checkbox",
                                 field_type="checkbox",
-                                step=1,
+                                step=step,
                                 step_name="DISCLOSURES",
                                 action_type="CHECKED"
                             )
@@ -2653,56 +3515,147 @@ class GenericPortalHandler(BaseATSHandler):
         except Exception as e_cb:
             logger.debug("GenericPortalHandler checkbox notice: %s", e_cb)
 
+    def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
+        if not page or not resume_path or not os.path.exists(resume_path):
+            return False
+        for ctx in [self._get_active_context(page), page]:
+            try:
+                file_input = ctx.locator("input[type='file']").first
+                if safe_count(file_input) > 0:
+                    file_input.set_input_files(resume_path)
+                    self.record_field(
+                        label="Resume File",
+                        value=os.path.basename(resume_path),
+                        field_name="resume",
+                        field_type="file",
+                        step=1,
+                        step_name="RESUME_ATTACHMENT",
+                        action_type="UPLOADED"
+                    )
+                    return True
+            except Exception as e:
+                logger.debug("Resume upload notice in %s: %s", self.ats_type, e)
+        return False
+
+    def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        filled = []
+        if not page:
+            return {"filled": filled, "ats": self.ats_type}
+
+        # Open Zoho/Keka/corporate initial application CTA if form isn't already open
+        try:
+            if safe_count(page.locator("input:not([type='hidden'])")) < 2:
+                cta_selectors = [
+                    "lyte-button:has-text(\"I'm interested\")",
+                    "button:has-text(\"I'm interested\")",
+                    "a:has-text(\"I'm interested\")",
+                    "button:has-text('Apply Now')",
+                    "a:has-text('Apply Now')",
+                    "button:has-text('Apply for this job')",
+                    "a:has-text('Apply for this job')",
+                    "button:has-text('Apply')"
+                ]
+                for cta_sel in cta_selectors:
+                    cta = page.locator(cta_sel).first
+                    if safe_count(cta) > 0 and cta.is_visible():
+                        cta.click(force=True)
+                        time.sleep(2.5)
+                        break
+        except Exception:
+            pass
+
+        for step in range(1, 4):
+            ctx = self._get_active_context(page)
+            self._fill_ctx_fields(ctx, page, filled, step=step)
+
+            # Check if multi-step Next button exists while Submit is absent
+            submit_sel = (
+                "lyte-button[data-zcqa*='submit' i], #zsSubmitButton, "
+                "button[type='submit'], input[type='submit'], "
+                "button:has-text('Submit Application'), button:has-text('Submit')"
+            )
+            next_sel = "button:has-text('Next'), button:has-text('Continue'), button:has-text('Save & Continue')"
+            has_submit = safe_count(ctx.locator(submit_sel).first) > 0 and ctx.locator(submit_sel).first.is_visible()
+            if has_submit:
+                break
+            nxt = ctx.locator(next_sel).first
+            if safe_count(nxt) > 0 and nxt.is_visible():
+                try:
+                    nxt.click(force=True)
+                    filled.append(f"Next Step {step}")
+                    time.sleep(2.0)
+                except Exception:
+                    break
+            else:
+                break
+
         return {"filled": filled, "field_records": list(self.field_records), "ats": self.ats_type}
 
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
 
-        # Pre-submit: Remove any residual required constraint from empty non-file inputs
-        try:
-            if hasattr(page, "evaluate"):
-                page.evaluate("""() => {
-                    document.querySelectorAll('[required]').forEach(el => {
-                        if (el.type !== 'file' && (!el.value || el.value === '')) {
-                            el.removeAttribute('required');
-                            el.removeAttribute('aria-required');
-                        }
-                    });
-                }""")
-        except Exception:
-            pass
+        contexts = []
+        active_ctx = self._get_active_context(page)
+        if active_ctx is not None:
+            contexts.append(active_ctx)
+        if page not in contexts:
+            contexts.append(page)
 
-        submit_selectors = [
-            "button[type='submit']",
-            "input[type='submit']",
-            "button:has-text('Submit Application')",
-            "button:has-text('Submit')",
-            "button:has-text('Apply')"
-        ]
-        for sel in submit_selectors:
+        for ctx in contexts:
             try:
-                btn = page.locator(sel).first
-                if safe_count(btn) > 0 and btn.is_visible():
-                    btn.click(timeout=5000)
-                    self.record_field(
-                        label="Submit Application Button",
-                        value="CLICKED",
-                        field_name=sel,
-                        field_type="button",
-                        step=1,
-                        step_name="SUBMIT_APPLICATION",
-                        action_type="SUBMITTED"
-                    )
-                    return True
+                if hasattr(ctx, "evaluate"):
+                    ctx.evaluate("""() => {
+                        document.querySelectorAll('[required]').forEach(el => {
+                            if (el.type !== 'file' && (!el.value || el.value === '')) {
+                                el.removeAttribute('required');
+                                el.removeAttribute('aria-required');
+                            }
+                        });
+                    }""")
             except Exception:
                 pass
+
+        submit_selectors = [
+            "lyte-button[data-zcqa*='submit' i] button",
+            "lyte-button[data-zcqa*='submit' i]",
+            "#zsSubmitButton",
+            "button[id*='submit' i]",
+            "input[id*='submit' i][type='submit']",
+            "button:has-text('Submit Application')",
+            "button:has-text('Submit')",
+            "button[type='submit']",
+            "input[type='submit']",
+            "input[value*='Submit' i]",
+            "a.btn-primary:has-text('Submit')",
+            "button:has-text('Send Application')",
+            "button:has-text('Apply')"
+        ]
+        for ctx in contexts:
+            for sel in submit_selectors:
+                try:
+                    btn = ctx.locator(sel).first
+                    if safe_count(btn) > 0 and btn.is_visible():
+                        btn.click(timeout=5000, force=True)
+                        self.record_field(
+                            label="Submit Application Button",
+                            value="CLICKED",
+                            field_name=sel,
+                            field_type="button",
+                            step=1,
+                            step_name="SUBMIT_APPLICATION",
+                            action_type="SUBMITTED"
+                        )
+                        return True
+                except Exception:
+                    pass
         return False
 
     def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
         if not page:
             return False
         start = time.time()
+        contexts = [self._get_active_context(page), page]
         while time.time() - start < timeout:
             try:
                 url = (getattr(page, "url", "") or "").lower()
@@ -2714,18 +3667,25 @@ class GenericPortalHandler(BaseATSHandler):
                     "h2:has-text('Application Submitted')",
                     "h1:has-text('Thank You')",
                     "h2:has-text('Thank You')",
+                    "h1:has-text('Thank you')",
+                    "h2:has-text('Thank you')",
                     "h1:has-text('Application Received')",
-                    "h2:has-text('Application Received')"
+                    "h2:has-text('Application Received')",
+                    "div:has-text('application has been submitted')",
+                    "div:has-text('successfully applied')",
+                    "div:has-text('thank you for applying')",
+                    "div:has-text('received your application')"
                 ]
-                for sel in conf_selectors:
-                    try:
-                        loc = page.locator(sel)
-                        if safe_count(loc) > 0 and loc.first.is_visible():
-                            errs = page.locator(".error, .has-error, [aria-invalid='true']")
-                            if safe_count(errs) == 0 or not errs.first.is_visible():
-                                return True
-                    except Exception:
-                        pass
+                for ctx in contexts:
+                    for sel in conf_selectors:
+                        try:
+                            loc = ctx.locator(sel)
+                            if safe_count(loc) > 0 and loc.first.is_visible():
+                                errs = ctx.locator(".error, .has-error, [aria-invalid='true']")
+                                if safe_count(errs) == 0 or not errs.first.is_visible():
+                                    return True
+                        except Exception:
+                            pass
             except Exception:
                 pass
             time.sleep(1)
@@ -2813,6 +3773,12 @@ class CareerPortalFiller:
             return "Phenom"
         if "eightfold.ai" in u:
             return "Eightfold"
+        if "zohorecruit." in u or "careers.wissen.com" in u or "/jobs/careers/" in u:
+            return "ZohoRecruit"
+        if "keka.com" in u:
+            return "Keka"
+        if "unitedhealthgroup.com" in u or "talentbrew" in u:
+            return "TalentBrew"
         return "Generic Portal"
 
     def generate_fill_script(self, ats_type: str) -> str:
@@ -3065,6 +4031,36 @@ class CareerPortalFiller:
 
         # Hard stop: closed or expired link
         page_url_lower = (getattr(page, "url", "") or "").lower()
+
+        # Workday: accept legalNotice/cookies BEFORE any Apply / vault auth (banner hides email)
+        if ats_type == "Workday":
+            try:
+                early = self.get_handler("Workday")
+                if hasattr(early, "dismiss_workday_overlays"):
+                    early.dismiss_workday_overlays(page, max_rounds=4)
+            except Exception as e_ov:
+                logger.debug("Workday early overlay dismiss notice: %s", e_ov)
+
+        # Embedded Greenhouse redirect (?gh_jid= or iframe#grnhse_iframe)
+        if ats_type == "Greenhouse" and "greenhouse.io" not in page_url_lower:
+            try:
+                embed_src = None
+                gh_iframe = page.locator("iframe#grnhse_iframe, iframe[src*='greenhouse.io/embed/job_app']").first
+                if safe_count(gh_iframe) > 0:
+                    embed_src = gh_iframe.get_attribute("src")
+                if not embed_src and "gh_jid=" in portal_url:
+                    from urllib.parse import urlparse, parse_qs
+                    q = parse_qs(urlparse(portal_url).query)
+                    jid = (q.get("gh_jid") or [None])[0]
+                    if jid:
+                        embed_src = f"https://boards.greenhouse.io/embed/job_app?token={jid}"
+                if embed_src:
+                    print(f"    ↪️ Switching to Embedded Greenhouse form: {embed_src}")
+                    page.goto(embed_src, wait_until="domcontentloaded", timeout=25000)
+                    time.sleep(2)
+                    page_url_lower = (getattr(page, "url", "") or "").lower()
+            except Exception as e_gh:
+                logger.debug("Embedded Greenhouse switch notice: %s", e_gh)
         page_content_lower = ""
         try:
             page_content_lower = (page.content() or "").lower()
@@ -3095,25 +4091,27 @@ class CareerPortalFiller:
             pass
 
         # Universal Landing Page CTA Opener (reveals form if on job description / view page)
+        # Workday: skip — open_apply_modal_if_needed owns Apply → Apply Manually + cookie re-dismiss
         try:
-            visible_inputs = safe_count(page.locator("input:not([type='hidden'])"))
-            if visible_inputs < 2:
-                cta_selectors = [
-                    "button:has-text('interested')",
-                    "button:has-text('Apply for this job')",
-                    "a:has-text('Apply for this job')",
-                    "button:has-text('Apply Now')",
-                    "a:has-text('Apply Now')",
-                    "button:has-text('Apply')",
-                    "a:has-text('Apply')"
-                ]
-                for cta_sel in cta_selectors:
-                    cta = page.locator(cta_sel).first
-                    if safe_count(cta) > 0 and cta.is_visible():
-                        print(f"    🔘 Opening application form via CTA: {cta_sel}...")
-                        cta.click(force=True, timeout=5000)
-                        time.sleep(2)
-                        break
+            if ats_type != "Workday":
+                visible_inputs = safe_count(page.locator("input:not([type='hidden'])"))
+                if visible_inputs < 2:
+                    cta_selectors = [
+                        "button:has-text('interested')",
+                        "button:has-text('Apply for this job')",
+                        "a:has-text('Apply for this job')",
+                        "button:has-text('Apply Now')",
+                        "a:has-text('Apply Now')",
+                        "button:has-text('Apply')",
+                        "a:has-text('Apply')"
+                    ]
+                    for cta_sel in cta_selectors:
+                        cta = page.locator(cta_sel).first
+                        if safe_count(cta) > 0 and cta.is_visible():
+                            print(f"    🔘 Opening application form via CTA: {cta_sel}...")
+                            cta.click(force=True, timeout=5000)
+                            time.sleep(2)
+                            break
         except Exception as e_cta:
             logger.debug("CTA opener notice: %s", e_cta)
 
@@ -3129,12 +4127,50 @@ class CareerPortalFiller:
         if barrier:
             b_low = barrier.lower()
             if any(k in b_low for k in ("captcha", "turnstile", "challenge", "recaptcha", "hcaptcha", "arkose")):
-                print(f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] Stopped on anti-bot challenge: {barrier}")
-                return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value)
-            elif any(k in b_low for k in ("sign-in", "login", "account", "vault")):
-                print(f"    [FALLBACK: {FallbackReason.SIGNIN_WALL.value}] Sign-in wall encountered: {barrier}")
-                return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.SIGNIN_WALL.value)
-            else:
+                # M5 chain + headed human wait (vendor only if CAPTCHA_MODE allows). Never silent SSO/legal bypass.
+                try:
+                    from naukari_pro.modules.autonomous_loop import resolve_captcha_with_attention
+                    wait_sec = int(os.environ.get("CAPTCHA_HUMAN_WAIT_SEC", "180"))
+                    cap = resolve_captcha_with_attention(
+                        page,
+                        job_url=portal_url,
+                        company=company,
+                        board=ats_type.lower(),
+                        headed_wait_sec=wait_sec,
+                    )
+                    if cap.get("resolved"):
+                        print(f"    [✓] Captcha cleared via {cap.get('resolved_by')} — continuing autonomous fill.")
+                        barrier = handler.detect_barriers(page)
+                        if not barrier:
+                            b_low = ""
+                        else:
+                            b_low = barrier.lower()
+                    else:
+                        print(f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] Stopped on anti-bot challenge: {barrier}")
+                        return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value)
+                except Exception as e_cap:
+                    logger.debug("Captcha attention notice: %s", e_cap)
+                    print(f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] Stopped on anti-bot challenge: {barrier}")
+                    return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value)
+            if barrier and any(k in b_low for k in ("sign-in", "login", "account", "vault")):
+                # One more vault attempt before hard-stop (Workday create/sign-in + IMAP verify)
+                if ats_type == "Workday" and hasattr(handler, "attempt_vault_sign_in"):
+                    try:
+                        if handler.attempt_vault_sign_in(page, job_url=portal_url):
+                            barrier = handler.detect_barriers(page)
+                            if not barrier:
+                                print("    [✓] Workday vault auth recovered — continuing autonomous fill.")
+                            else:
+                                b_low = barrier.lower()
+                    except Exception:
+                        pass
+                if barrier and any(k in (barrier or "").lower() for k in ("sign-in", "login", "account", "vault", "captcha")):
+                    if "captcha" in (barrier or "").lower():
+                        print(f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] Stopped on anti-bot challenge: {barrier}")
+                        return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value)
+                    print(f"    [FALLBACK: {FallbackReason.SIGNIN_WALL.value}] Sign-in wall encountered: {barrier}")
+                    return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.SIGNIN_WALL.value)
+            elif barrier:
                 print(f"    [FALLBACK: {FallbackReason.SIGNIN_WALL.value}] Barrier encountered: {barrier}")
                 return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.SIGNIN_WALL.value)
 
@@ -3143,6 +4179,32 @@ class CareerPortalFiller:
         if time.time() - t_start > PER_JOB_TIME_BUDGET_SEC:
             print(f"    [FALLBACK: {FallbackReason.TIMEOUT_240S.value}] Per-job time budget exceeded.")
             return FillResult(False, [], None, status=FallbackReason.TIMEOUT_240S.value)
+
+        # Workday: refuse to "fill" while still on Sign-In (was false-progressing to SUBMIT_NOT_FOUND)
+        if ats_type == "Workday":
+            try:
+                if hasattr(handler, "dismiss_workday_overlays"):
+                    handler.dismiss_workday_overlays(page, max_rounds=4)
+                path_l = handler._workday_url_path(page) if hasattr(handler, "_workday_url_path") else (
+                    (getattr(page, "url", "") or "").lower()
+                )
+                pwd = page.locator("input[data-automation-id='password']").first
+                email = page.locator("input[data-automation-id='email']").first
+                on_login = ("/login" in path_l) or (
+                    (safe_count(pwd) > 0 and pwd.is_visible())
+                    or (safe_count(email) > 0 and email.is_visible())
+                )
+                if on_login and hasattr(handler, "attempt_vault_sign_in"):
+                    if not handler.attempt_vault_sign_in(page, job_url=portal_url):
+                        print(f"    [FALLBACK: {FallbackReason.SIGNIN_WALL.value}] Workday still on Sign-In after vault auth.")
+                        audit = _capture_portal_audit_screenshot(page, company, role)
+                        return FillResult(
+                            False, [], audit,
+                            field_records=list(handler.field_records),
+                            status=FallbackReason.SIGNIN_WALL.value,
+                        )
+            except Exception as e_auth2:
+                logger.debug("Workday pre-fill auth notice: %s", e_auth2)
 
         filled_fields: List[str] = []
         try:
@@ -3170,8 +4232,17 @@ class CareerPortalFiller:
                 print(f"    📎 [RESUME] Resume PDF uploaded: {os.path.basename(resume_path)}")
                 filled_fields.append("Resume PDF")
 
-        # Cloud upload settling delay
+        # Cloud upload settling delay — Greenhouse may autofill wrong education from PDF
         time.sleep(3)
+        if ats_type == "Greenhouse" and hasattr(handler, "fill_education_fields"):
+            try:
+                # Only education AFTER resume parse (PDF autofill often injects wrong school)
+                extra = handler.fill_education_fields(page) or []
+                if extra:
+                    filled_fields = list(set(filled_fields + extra))
+                    print(f"    [✓] Post-resume education overwrite: {', '.join(extra[:8])}")
+            except Exception as e_rf:
+                logger.debug("Post-resume Greenhouse education notice: %s", e_rf)
 
         # ── STATE 4: REVIEW ──
         checkpoint_portal_state(cand_job_id, PortalState.REVIEW, company, role, target_db)
@@ -3479,7 +4550,12 @@ class CareerPortalFiller:
             if not row or not any(row):
                 continue
             status = str(row[8] or "").strip()
-            if status in ("External Redirect", "Not Available"):
+            if status in (
+                "External Redirect",
+                "Not Available",
+                "Form Auto-Filled (Ready for Review)",
+                "FALLBACK (SUBMIT_NOT_FOUND)",
+            ):
                 date_val = row[0]
                 company = str(row[1] or "").strip()
                 title = str(row[2] or "").strip()
@@ -4045,39 +5121,50 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
         except Exception as e:
             logger.debug("Notice querying Ashby %s: %s", board_token, e)
 
-    # 3. Workday (NVIDIA, Salesforce, Autodesk) — list API usually omits JD; leave NULL
+    # 3. Workday (NVIDIA, Salesforce, Adobe, MasterCard, NatWest) — list API usually omits JD; leave NULL
     workday_tenants = [
         ("NVIDIA", "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs", "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"),
         ("Salesforce", "https://salesforce.wd12.myworkdayjobs.com/wday/cxs/salesforce/External_Career_Site/jobs", "https://salesforce.wd12.myworkdayjobs.com/en-US/External_Career_Site"),
-        ("Autodesk", "https://autodesk.wd1.myworkdayjobs.com/wday/cxs/autodesk/Ext/jobs", "https://autodesk.wd1.myworkdayjobs.com/en-US/Ext")
+        ("Adobe", "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced/jobs", "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced"),
+        ("MasterCard", "https://mastercard.wd1.myworkdayjobs.com/wday/cxs/mastercard/CorporateCareers/jobs", "https://mastercard.wd1.myworkdayjobs.com/en-US/CorporateCareers"),
+        ("NatWest", "https://natwest.wd3.myworkdayjobs.com/wday/cxs/natwest/NatWestGroup/jobs", "https://natwest.wd3.myworkdayjobs.com/en-US/NatWestGroup"),
     ]
+    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
     for co_name, post_url, base_url in workday_tenants:
-        try:
-            payload = {"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": "Engineer"}
-            r = requests.post(post_url, json=payload, timeout=6)
-            if r.status_code == 200:
-                postings = r.json().get("jobPostings", [])
-                board_added = 0
-                for j in postings:
-                    if board_added >= 15:
-                        break
-                    title = j.get("title", "")
-                    ext_path = j.get("externalPath", "")
-                    if any(kw in title.lower() for kw in keywords):
-                        real_jd = j.get("jobDescription") or j.get("description") or None
-                        by_ats["Workday"].append({
-                            "company": co_name,
-                            "title": title,
-                            "url": f"{base_url}{ext_path}",
-                            "ats": "Workday",
-                            "location": j.get("locationsText") or None,
-                            "exp": None,
-                            "salary": None,
-                            "jd": real_jd,
-                        })
-                        board_added += 1
-        except Exception as e:
-            logger.debug("Notice querying Workday %s: %s", co_name, e)
+        seen_wd_paths = set()
+        board_added = 0
+        for search_q in ("Data Engineer", "Databricks", "Azure", "DevOps"):
+            if board_added >= 10:
+                break
+            try:
+                payload = {"appliedFacets": {}, "limit": 15, "offset": 0, "searchText": search_q}
+                r = requests.post(post_url, json=payload, timeout=6)
+                if r.status_code == 200:
+                    postings = r.json().get("jobPostings", [])
+                    for j in postings:
+                        if board_added >= 10:
+                            break
+                        title = j.get("title", "")
+                        ext_path = j.get("externalPath", "")
+                        if not ext_path or ext_path in seen_wd_paths:
+                            continue
+                        is_ok, _ = is_strictly_data_or_cloud_role(title, "", company=co_name)
+                        if is_ok or any(kw in title.lower() for kw in ["data engineer", "databricks", "pyspark", "azure", "devops", "platform engineer", "cloud"]):
+                            seen_wd_paths.add(ext_path)
+                            real_jd = j.get("jobDescription") or j.get("description") or None
+                            by_ats["Workday"].append({
+                                "company": co_name,
+                                "title": title,
+                                "url": f"{base_url}{ext_path}",
+                                "ats": "Workday",
+                                "location": j.get("locationsText") or None,
+                                "exp": None,
+                                "salary": None,
+                                "jd": real_jd,
+                            })
+                            board_added += 1
+            except Exception as e:
+                logger.debug("Notice querying Workday %s (%s): %s", co_name, search_q, e)
 
     # 4. Lever (Spotify, Palantir, Brex, Deliveroo)
     lever_boards = [("Spotify", "spotify"), ("Palantir", "palantir"), ("Brex", "brex"), ("Deliveroo", "deliveroo")]
@@ -4401,14 +5488,22 @@ class ExternalPortalBatchRunner:
                 break
 
             stats["total_evaluated"] += 1
-            company = job.get("company", "Company")
-            title = job.get("title", "Role")
-            url = job.get("url", "N/A")
-            jd = job.get("jd", "")
-            salary = job.get("salary", "22 - 28 Lacs PA")
-            exp = job.get("exp", "2-5 Yrs")
+            company = job.get("company") or "Company"
+            title = job.get("title") or "Role"
+            url = job.get("url") or "N/A"
+            jd_raw = job.get("jd")
+            jd = jd_raw or ""
+            salary = job.get("salary") or "22 - 28 Lacs PA"
+            exp = job.get("exp") or "2-5 Yrs"
             ats_type = self.manager.detect_ats(url)
-            score = float(calculate_match_score(f"{title} {company} {jd}"))
+            raw_score = float(calculate_match_score(f"{title} {company} {jd}"))
+            # When JD metadata has not been fetched yet (jd is None), a title that already
+            # contains weighted Azure/Databricks/Cloud keywords receives the candidate domain
+            # baseline (+60) so title-only ATS index items are not false-rejected at min_score=70.
+            if jd_raw is None and raw_score > 0.0:
+                score = min(100.0, raw_score + 60.0)
+            else:
+                score = raw_score
 
             # Unconditional Role Guard: Never apply to non-data / non-cloud roles
             from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role

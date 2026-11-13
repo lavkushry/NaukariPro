@@ -1,5 +1,26 @@
 [
   {
+    "company": "Indeed India",
+    "ats_type": "indeed",
+    "board_identifier": "devops OR mlops OR \"data engineer\" OR \"platform engineer\"|Hyderabad",
+    "domain": "indeed.co.in",
+    "active": true
+  },
+  {
+    "company": "Indeed India",
+    "ats_type": "indeed",
+    "board_identifier": "devops OR mlops OR \"azure data\"|Bengaluru",
+    "domain": "indeed.co.in",
+    "active": true
+  },
+  {
+    "company": "Indeed India",
+    "ats_type": "indeed",
+    "board_identifier": "\"data engineer\" OR databricks OR \"ml platform\"|India",
+    "domain": "indeed.co.in",
+    "active": true
+  },
+  {
     "company": "Stripe",
     "ats_type": "greenhouse",
     "board_identifier": "stripe",

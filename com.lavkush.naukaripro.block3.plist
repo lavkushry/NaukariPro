@@ -7,10 +7,12 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Users/lavkushkumar/Desktop/Resume/naukariPro</string>
-        <string>pro</string>
+        <string>beast-autonomous</string>
         <string>--headless</string>
         <string>--limit</string>
         <string>35</string>
+        <string>--limit-external</string>
+        <string>25</string>
         <string>--block</string>
         <string>3</string>
     </array>

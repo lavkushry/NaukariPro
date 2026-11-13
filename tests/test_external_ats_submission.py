@@ -1101,6 +1101,218 @@ class TestComprehensiveDataEngineeringSkillsInScreeningSolver:
         assert q4.answer == "Yes"
 
 
+class TestExternalSitesAndReachFixes:
+    """Verifies passive reCAPTCHA v3 distinction, Workday Create Account fallback, ZohoRecruit/iframe support, and LinkedIn cookie normalization."""
+
+    def test_passive_recaptcha_v3_ignored_active_bframe_blocked(self, sample_profile):
+        handler = BaseATSHandler(sample_profile)
+        mock_page = MagicMock()
+
+        # Passive badge only -> active selectors return count 0
+        def passive_locator(sel):
+            loc = MagicMock()
+            loc.count.return_value = 0
+            return loc
+
+        mock_page.locator.side_effect = passive_locator
+        assert handler.detect_barriers(mock_page) is None
+
+        # Active visible bframe (320x420) -> MUST stop and report barrier
+        def active_bframe_locator(sel):
+            loc = MagicMock()
+            if "bframe" in sel:
+                item = MagicMock()
+                item.is_visible.return_value = True
+                item.bounding_box.return_value = {"x": 100, "y": 100, "width": 320, "height": 420}
+                loc.count.return_value = 1
+                loc.nth.return_value = item
+            else:
+                loc.count.return_value = 0
+            return loc
+
+        mock_page.locator.side_effect = active_bframe_locator
+        barrier = handler.detect_barriers(mock_page)
+        assert barrier is not None
+        assert "CAPTCHA" in barrier
+
+    def test_workday_sign_in_failure_falls_back_to_create_account(self, sample_profile):
+        handler = WorkdayHandler(sample_profile)
+        mock_page = MagicMock()
+        mock_page.url = "https://vanguard.wd5.myworkdayjobs.com/en-US/Vanguard/job/apply"
+        state = {"created_view": False, "submitted_create": False, "filled_verify": False}
+
+        def wd_locator(sel):
+            loc = MagicMock()
+            loc.first = loc
+            # Cookie/legal banner absent for this vault-create scenario
+            if "legalNotice" in sel or "Accept Cookies" in sel:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            elif "verifyPassword" in sel:
+                loc.count.return_value = 1 if (state["created_view"] and not state["submitted_create"]) else 0
+                loc.is_visible.return_value = state["created_view"] and not state["submitted_create"]
+                loc.fill.side_effect = lambda v: state.update({"filled_verify": True})
+            elif "errorMessage" in sel:
+                loc.count.return_value = 0 if state["submitted_create"] else 1
+                loc.is_visible.return_value = not state["submitted_create"]
+            elif "verify your email" in sel:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            elif "createAccountLink" in sel:
+                loc.count.return_value = 1
+                loc.is_visible.return_value = not state["submitted_create"]
+                loc.click.side_effect = lambda **kw: state.update({"created_view": True})
+            elif "createAccountSubmitButton" in sel or "aria-label='Create Account'" in sel:
+                loc.count.return_value = 1 if state["created_view"] and not state["submitted_create"] else 0
+                loc.is_visible.return_value = state["created_view"] and not state["submitted_create"]
+                loc.click.side_effect = lambda **kw: state.update({"submitted_create": True})
+            elif "SignInWithEmailButton" in sel:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            elif "legalNameSection_firstName" in sel or "bottom-navigation-next-button" in sel:
+                # After create submit, app form is visible (auth cleared)
+                loc.count.return_value = 1 if state["submitted_create"] else 0
+                loc.is_visible.return_value = bool(state["submitted_create"])
+            elif "data-automation-id='email'" in sel or "data-automation-id='password'" in sel:
+                # Auth fields gone after successful create
+                loc.count.return_value = 0 if state["submitted_create"] else 1
+                loc.is_visible.return_value = not state["submitted_create"]
+            else:
+                loc.count.return_value = 1
+                loc.is_visible.return_value = True
+            return loc
+
+        mock_page.locator.side_effect = wd_locator
+        mock_page.wait_for_selector = MagicMock(return_value=None)
+        with patch("naukari_pro.modules.portal_accounts.PortalAccountManager.ensure_account", return_value={"email": "lav84095@gmail.com", "password": "TestPassword@2026"}), \
+             patch("naukari_pro.modules.career_portals.time.sleep", return_value=None), \
+             patch("naukari_pro.modules.autonomous_loop.fetch_ats_verification_link", return_value=None), \
+             patch("naukari_pro.modules.autonomous_loop.fetch_ats_email_code", return_value=None):
+            ok = handler.attempt_vault_sign_in(mock_page, job_url=mock_page.url)
+        assert state["created_view"] is True
+        assert state["filled_verify"] is True
+        assert ok is True
+
+    def test_workday_login_redirect_query_is_not_auth_cleared(self, sample_profile):
+        """login?redirect=.../apply must NOT count as cleared (false vault True root cause)."""
+        handler = WorkdayHandler(sample_profile)
+        mock_page = MagicMock()
+        mock_page.url = (
+            "https://fractal.wd1.myworkdayjobs.com/en-US/Careers/login"
+            "?redirect=%2Fen-US%2FCareers%2Fjob%2Fx%2Fapply%2FapplyManually"
+        )
+        assert "/login" in handler._workday_url_path(mock_page)
+        assert "/apply" not in handler._workday_url_path(mock_page)
+        # Path is login — on_apply_flow is true (need vault), but auth not cleared via path alone
+        assert handler._workday_on_apply_flow(mock_page) is True
+
+    def test_workday_cookie_banner_must_clear_before_vault_email(self, sample_profile):
+        """Root cause: legalNoticeAcceptButton blocks auth_container until Accept Cookies."""
+        handler = WorkdayHandler(sample_profile)
+        mock_page = MagicMock()
+        mock_page.url = "https://fractal.wd1.myworkdayjobs.com/en-US/Careers/login"
+        state = {
+            "banner": True,
+            "email_filled": False,
+            "accept_clicks": 0,
+            "signed_in": False,
+        }
+
+        def wd_locator(sel):
+            loc = MagicMock()
+            loc.first = loc
+            if "legalNotice" in sel or "Accept Cookies" in sel:
+                loc.count.return_value = 1 if state["banner"] else 0
+                loc.is_visible.return_value = bool(state["banner"])
+                def _accept(**_kw):
+                    state["banner"] = False
+                    state["accept_clicks"] += 1
+                loc.click.side_effect = _accept
+            elif "data-automation-id='email'" in sel or "contactInfoEmail" in sel:
+                # Email only visible after cookie accept, hidden after successful sign-in
+                ready = (not state["banner"]) and (not state["signed_in"])
+                loc.count.return_value = 1 if ready else 0
+                loc.is_visible.return_value = ready
+                loc.fill.side_effect = lambda v: state.update({"email_filled": True})
+            elif "SignInWithEmailButton" in sel or "Sign in with email" in sel:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            elif "password" in sel.lower() and "verify" not in sel.lower():
+                ready = (not state["banner"]) and (not state["signed_in"])
+                loc.count.return_value = 1 if ready else 0
+                loc.is_visible.return_value = ready
+            elif "verifyPassword" in sel or "createAccount" in sel or "errorMessage" in sel:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            elif "signInSubmitButton" in sel or "click_filter" in sel:
+                ready = (not state["banner"]) and (not state["signed_in"])
+                loc.count.return_value = 1 if ready else 0
+                loc.is_visible.return_value = ready
+                def _sign(**_kw):
+                    state["signed_in"] = True
+                    # Leave /login path — mirrors real post-auth navigation
+                    mock_page.url = (
+                        "https://fractal.wd1.myworkdayjobs.com/en-US/Careers/job/x/apply/applyManually"
+                    )
+                loc.click.side_effect = _sign
+            elif "legalNameSection_firstName" in sel or "bottom-navigation-next-button" in sel or "pageFooterNextButton" in sel:
+                loc.count.return_value = 1 if state["signed_in"] else 0
+                loc.is_visible.return_value = bool(state["signed_in"])
+            else:
+                loc.count.return_value = 0
+                loc.is_visible.return_value = False
+            return loc
+
+        mock_page.locator.side_effect = wd_locator
+        mock_page.wait_for_selector = MagicMock(return_value=None)
+        mock_page.goto = MagicMock(return_value=None)
+        with patch("naukari_pro.modules.portal_accounts.PortalAccountManager.ensure_account", return_value={"email": "lav84095@gmail.com", "password": "TestPassword@2026"}), \
+             patch("naukari_pro.modules.career_portals.time.sleep", return_value=None):
+            # dismiss alone must clear banner
+            assert handler.dismiss_workday_overlays(mock_page) is True
+            assert state["banner"] is False
+            assert state["accept_clicks"] >= 1
+            # reset for full vault path with banner up again
+            state["banner"] = True
+            state["accept_clicks"] = 0
+            state["email_filled"] = False
+            state["signed_in"] = False
+            mock_page.url = "https://fractal.wd1.myworkdayjobs.com/en-US/Careers/login"
+            ok = handler.attempt_vault_sign_in(mock_page, job_url=mock_page.url)
+        assert state["accept_clicks"] >= 1
+        assert state["banner"] is False
+        assert state["email_filled"] is True
+        assert state["signed_in"] is True
+        assert ok is True
+
+    def test_detect_ats_covers_zoho_keka_talentbrew_and_embedded_greenhouse(self):
+        filler = CareerPortalFiller()
+        assert filler.detect_ats("https://esyasoft.zohorecruit.in/jobs/Careers/108345000006985001") == "ZohoRecruit"
+        assert filler.detect_ats("https://careers.wissen.com/jobs/Careers/80238000209173100") == "ZohoRecruit"
+        assert filler.detect_ats("https://company.keka.com/careers/apply/123") == "Keka"
+        assert filler.detect_ats("https://careers.unitedhealthgroup.com/job/123") == "TalentBrew"
+        assert filler.detect_ats("https://block.xyz/careers/jobs/5473605008?gh_jid=5473605008") == "Greenhouse"
+
+    def test_linkedin_cookie_normalization_preserves_companion_cookies(self, tmp_path):
+        import json
+        from naukari_pro.modules.linkedin_session import LinkedInSessionManager
+        cookie_file = tmp_path / "session_cookies.json"
+        cookie_file.write_text(json.dumps([
+            {"name": "li_at", "value": "AQED_TEST_TOKEN", "domain": ".linkedin.com", "sameSite": "no_restriction"},
+            {"name": "bcookie", "value": "v=2&abc", "domain": ".linkedin.com", "sameSite": "unspecified", "expirationDate": 1893456000},
+            {"name": "bscookie", "value": "v=1&xyz", "domain": ".www.linkedin.com", "sameSite": "None"}
+        ]))
+        mgr = LinkedInSessionManager(cookie_path=str(cookie_file))
+        formatted = mgr.get_formatted_cookies()
+        names = {c["name"]: c for c in formatted}
+        assert "bcookie" in names
+        assert names["bcookie"]["sameSite"] == "Lax"
+        assert names["bcookie"]["expires"] == 1893456000
+        assert "bscookie" in names
+        assert names["bscookie"]["sameSite"] == "None"
+
+
+
 
 
 

@@ -163,7 +163,24 @@ def is_strictly_data_or_cloud_role(
     )
     if has_target:
         # Even with target title, zero-score check if score is explicitly 0.0 with empty text
-        if score is not None and score <= 0.0 and not any(k in title_clean for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+        if score is not None and score <= 0.0 and not any(
+            k in title_clean
+            for k in (
+                "data engineer",
+                "azure",
+                "databricks",
+                "pyspark",
+                "devops",
+                "mlops",
+                "platform engineer",
+                "cloud engineer",
+                "infrastructure",
+                "sre",
+                "site reliability",
+                "ai engineer",
+                "ml engineer",
+            )
+        ):
             return False, f"Rejected: Match score {score}% has zero candidate competencies"
         return True, "Role title matches target candidate domain"
 

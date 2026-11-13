@@ -468,19 +468,17 @@ class VisibilityGrowthEngine:
         self,
         day: int = 1,
         dry_run: Optional[bool] = None,
-        headless: Optional[bool] = None
+        headless: Optional[bool] = None,
+        page: Any = None
     ) -> Dict[str, Any]:
         """
         Executes Resdex recency touch scheduled by ProAutoPilotEngine.
         In dry-run mode, logs simulated freshness bump and displays performance telemetry.
-        In live mode, triggers ProfileEnhancerEngine.bump_profile and syncs live profile.
+        In live mode, triggers ProfileEnhancerEngine.bump_profile when a Playwright page is available.
         """
         active_dry_run = self.dry_run if dry_run is None else dry_run
         active_headless = self.headless if headless is None else headless
         schedule = get_schedule_for_day(day)
-
-        from naukari_pro.modules.pro_autopilot import ProAutoPilotEngine
-        autopilot = ProAutoPilotEngine(limit=5, headless=active_headless, dry_run=active_dry_run)
 
         if active_dry_run:
             status = "DRY_RUN_TOUCH_VERIFIED"
@@ -489,8 +487,13 @@ class VisibilityGrowthEngine:
             try:
                 from naukari_pro.modules.profile_enhancer import ProfileEnhancerEngine
                 enhancer = ProfileEnhancerEngine()
-                status = "LIVE_TOUCH_SUBMITTED"
-                details = f"Live profile recency touch synchronized at {schedule.recency_touch_time_ist}"
+                if page is not None:
+                    ok = enhancer.bump_profile(page, force=True)
+                    status = "LIVE_TOUCH_SUBMITTED" if ok else "LIVE_TOUCH_PENDING"
+                    details = f"Live profile bump {'succeeded' if ok else 'deferred'} at {schedule.recency_touch_time_ist}"
+                else:
+                    status = "LIVE_TOUCH_SCHEDULED"
+                    details = f"Live profile recency touch scheduled for {schedule.recency_touch_time_ist} (no browser page passed)"
             except Exception as e:
                 status = "TOUCH_FAILED"
                 details = str(e)

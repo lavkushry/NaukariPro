@@ -1889,6 +1889,9 @@ class PlaywrightRunner:
                 portal_evidence = getattr(fill_res, "evidence_path", None)
                 if portal_evidence and os.path.exists(portal_evidence):
                     evidence_path = portal_evidence
+                elif not success:
+                    # Do not treat a pre-fill landing screenshot as portal submission evidence
+                    evidence_path = None
 
                 is_confirmed = (
                     success
@@ -1896,7 +1899,13 @@ class PlaywrightRunner:
                     and os.path.exists(evidence_path)
                     and os.path.getsize(evidence_path) >= 1024
                 )
-                status_str = "Submitted (Confirmed)" if is_confirmed else "Form Auto-Filled (Ready for Review)"
+                fill_status = getattr(fill_res, "status", None)
+                if is_confirmed:
+                    status_str = "Submitted (Confirmed)"
+                elif fill_status:
+                    status_str = f"FALLBACK ({fill_status})" if not str(fill_status).startswith(("FALLBACK", "Submitted", "External")) else str(fill_status)
+                else:
+                    status_str = "External Redirect"
                 sync_dual_log(
                     title=title,
                     company=company,

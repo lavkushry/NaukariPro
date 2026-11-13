@@ -7,8 +7,16 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Users/lavkushkumar/Desktop/Resume/naukariPro</string>
-        <string>daily</string>
+        <string>beast-autonomous</string>
         <string>--headless</string>
+        <string>--block</string>
+        <string>1</string>
+        <string>--limit</string>
+        <string>35</string>
+        <string>--limit-external</string>
+        <string>25</string>
+        <string>--limit-redirects</string>
+        <string>25</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>

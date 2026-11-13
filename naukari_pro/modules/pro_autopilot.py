@@ -42,8 +42,10 @@ from naukari_pro.modules.linkedin_session import (
 from naukari_pro.modules.linkedin_apply import LinkedInApplyEngine
 from naukari_pro.modules.linkedin_optimizer import (
     LinkedInProfileAuditor,
+    LinkedInAnalyticsCollector,
     LINKEDIN_100K_BLUEPRINT
 )
+from naukari_pro.modules.visibility_growth import VisibilityGrowthEngine
 from naukari_pro.modules.scorecard import CycleScorecard
 
 def resolve_beast_block(block: Optional[int] = None) -> int:
@@ -72,6 +74,7 @@ class ProAutoPilotEngine:
         universal_apply=True,
         block: Optional[int] = None,
         execute_outreach_live: bool = False,
+        drain_pending: bool = True,
     ):
         self.limit = limit
         self.limit_naukri = limit_naukri if limit_naukri is not None else limit
@@ -82,6 +85,7 @@ class ProAutoPilotEngine:
         self.dry_run = dry_run
         self.force = force
         self.universal_apply = universal_apply
+        self.drain_pending = drain_pending
         self.block = resolve_beast_block(block)
         # Live LinkedIn outreach only on Mac/residential — never force from datacenter by default
         self.execute_outreach_live = execute_outreach_live or (
@@ -114,13 +118,13 @@ class ProAutoPilotEngine:
         print(f"  Block {self.block} | Goal: ₹20–25 LPA Azure Data Engineer")
         print(f"  Candidate: {self.portal_filler.profile['fullName']} ({self.portal_filler.profile['email']})")
         print("  Official title: DevOps Engineer (FACT_MATRIX) | Market: Azure Data Engineer")
-        print("  Platforms: Naukri + LinkedIn(Mac) + Universal ATS | Notice: 15 days")
+        print("  Platforms: Naukri + LinkedIn + Indeed + External ATS + Aggregation | Notice: 15 days")
         print("=" * 76)
 
-        # ── HUNT: Multi-source discovery into apply queue ──
-        print("\n[HUNT] Multi-source job discovery (Naukri + LinkedIn links + HN + curated ATS)...")
+        # ── HUNT: Multi-source discovery + board aggregation ingest ──
+        print("\n[HUNT] Multi-source job discovery (Naukri + LinkedIn + HN + curated ATS)...")
         try:
-            self.hunt_stats = {"status": "OK", "discovered": 0}
+            self.hunt_stats = {"status": "OK", "discovered": 0, "aggregation": {}}
             hunt_result = self.search_engine.run_multi_search(dry_run=self.dry_run)
             if isinstance(hunt_result, list):
                 self.hunt_stats["discovered"] = len(hunt_result)
@@ -134,8 +138,42 @@ class ProAutoPilotEngine:
             print(f"  [✓] Hunt discovered {self.hunt_stats.get('discovered', 0)} leads for this cycle.")
             self.scorecard.record_discovered("naukri", int(self.hunt_stats.get("discovered", 0) or 0))
         except Exception as e_hunt:
-            self.hunt_stats = {"status": "FAILED", "error": str(e_hunt), "discovered": 0}
+            self.hunt_stats = {"status": "FAILED", "error": str(e_hunt), "discovered": 0, "aggregation": {}}
             print(f"  [!] Hunt notice (isolated): {e_hunt}")
+
+        # Aggregation ingest (Greenhouse/Lever/Ashby/Workday/Indeed/…) feeds external apply
+        print("\n[HUNT/AGG] Running multi-board aggregation ingest (incl. Indeed RSS)...")
+        try:
+            if self.dry_run:
+                from naukari_pro.aggregation.base import AdapterRegistry
+                import naukari_pro.aggregation.adapters  # noqa: F401 — register adapters
+                known = AdapterRegistry.known()
+                print(f"  [DRY-RUN] Aggregation adapters ready: {', '.join(known)}")
+                self.hunt_stats["aggregation"] = {"adapters": known, "dry_run": True}
+            else:
+                from naukari_pro.aggregation.pipeline import run_ingest_cycle
+                from naukari_pro.aggregation.storage import AggregationStore
+
+                agg = run_ingest_cycle(seed=True, limit_sources=40)
+                store = AggregationStore()
+                healthy = store.healthy_boards()
+                active_n = len(store.list_active_jobs(limit=5000))
+                self.hunt_stats["aggregation"] = {
+                    **(agg.get("ingest") or {}),
+                    "healthy_boards": len(healthy),
+                    "active_jobs": active_n,
+                    "adapters": agg.get("adapters") or [],
+                }
+                print(
+                    f"  [✓] Ingest complete: active_jobs={active_n}, "
+                    f"healthy_boards={len(healthy)}, "
+                    f"adapters={len(agg.get('adapters') or [])}"
+                )
+                if "indeed" not in (agg.get("adapters") or []):
+                    print("  [!] Indeed adapter missing from registry — check aggregation.adapters import.")
+        except Exception as e_agg:
+            print(f"  [!] Aggregation ingest notice (isolated): {e_agg}")
+            self.hunt_stats.setdefault("aggregation", {})["error"] = str(e_agg)
 
         # ── STAGE 1/8: Naukri Server Entitlements, Profile Alignment & ATS Resume ──
         print("\n[STAGE 1/8] Inspecting Naukri Server Entitlements & Recruiter Alignment...")
@@ -210,6 +248,12 @@ class ProAutoPilotEngine:
         print(f"  [✓] Recruiter Search Optimization Score: {overall_score:.1f}% ({grade})")
         print(f"  [✓] Core Skill Saturation: {sat_pct:.1f}% ({len(critical_kw)}/{total_crit} critical keywords covered)")
         print(f"  [✓] Open to Work Recruiter Privacy: ACTIVE (Recruiters only, hidden from CGI India)")
+        try:
+            vis_engine = VisibilityGrowthEngine(dry_run=self.dry_run, headless=self.headless)
+            vis_day = max(1, (datetime.now().day % 30) or 1)
+            vis_engine.execute_daily_visibility_boost(day=vis_day, platform="all", dry_run=self.dry_run, headless=self.headless)
+        except Exception as e_vis:
+            print(f"  [!] 30-Day Visibility Engine notice: {e_vis}")
 
         # ── STAGE 4/8: Multi-Platform Session Verification (Naukri + LinkedIn) ──
         print("\n[STAGE 4/8] Multi-Platform Session Verification...")
@@ -259,18 +303,6 @@ class ProAutoPilotEngine:
                 li_dry_run_verified = li_stats.get("dry_run_verified", 0)
                 applied_linkedin = li_dry_run_verified
                 print(f"  [✓] LinkedIn Offline Simulation: {li_dry_run_verified} vacancies validated & logged (status: SUBMITTED_DRY_RUN).")
-            elif (
-                sys.platform != "darwin"
-                and not os.environ.get("RESIDENTIAL_PROXY")
-                and not os.environ.get("ALL_PROXY")
-                and not self.config.get("residential_proxy")
-                and not getattr(self, "allow_datacenter_linkedin", False)
-                and not li_session_valid
-            ):
-                # Healthy li_at on Linux is enough to proceed; only skip when cookie is missing
-                # AND no residential proxy / explicit allow flag is set.
-                print("  [!] LinkedIn live auto-apply skipped: MAC_HOST_REQUIRED (no li_at / residential proxy).")
-                li_stats = {"discovered": 0, "applied": 0, "status": "MAC_HOST_REQUIRED"}
             elif not li_session_valid:
                 is_interactive_env = (
                     sys.platform == "darwin"
@@ -325,15 +357,37 @@ class ProAutoPilotEngine:
         # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects ──
         print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)... Target: {self.limit_external}")
         applied_external = 0
+        drained = 0
         ext_stats = {}
+
+        # Drain incomplete Ready-for-Review / SUBMIT_NOT_FOUND / SIGNIN_WALL / CAPTCHA rows first
+        if self.drain_pending:
+            try:
+                from naukari_pro.modules.autonomous_loop import drain_incomplete_portal_applies
+                print(f"  [*] Draining incomplete external ATS queue (auto-submit)...")
+                drain_res = drain_incomplete_portal_applies(
+                    limit=self.limit_external,
+                    headless=self.headless,
+                    dry_run=self.dry_run,
+                    universal_apply=self.universal_apply,
+                )
+                drained = int(drain_res.submitted or 0)
+                applied_external += drained
+                print(
+                    f"  [✓] Drain queue: {drained} submitted, "
+                    f"{drain_res.needs_human} needs_human, {drain_res.skipped} skipped."
+                )
+            except Exception as e_drain:
+                print(f"  [!] Drain incomplete queue notice: {e_drain}")
+
         try:
             ext_stats = self.portal_runner.run_batch(
                 limit=self.limit_external,
                 dry_run=self.dry_run,
                 universal_apply=self.universal_apply
             )
-            applied_external = ext_stats.get("submitted", 0)
-            print(f"  [✓] External ATS Portal Batch: {applied_external} submitted, {ext_stats.get('skipped', 0)} skipped.")
+            applied_external += ext_stats.get("submitted", 0)
+            print(f"  [✓] External ATS Portal Batch: {ext_stats.get('submitted', 0)} submitted, {ext_stats.get('skipped', 0)} skipped.")
         except Exception as e_ext:
             print(f"  [!] External portal batch notice: {e_ext}")
 
@@ -393,20 +447,33 @@ class ProAutoPilotEngine:
         else:
             print(f"\n[TRACK 3] GET CALLS skipped this cycle (Block {self.block}; use --force for all tracks).")
 
-        # ── TRACK 4: Daily Application Outcome Labeling & Telemetry ──
-        # Label every evening block, or when forced / full cycle
+        # ── TRACK 4: Self-learning (outcome labels + keyword mining) ──
+        # Always-on: every beast cycle learns; heavier mutations stay Block 3 / --force
         labeled_res = {}
+        print(f"\n[TRACK 4] Self-learning loop (outcomes + keyword mining)...")
+        try:
+            from naukari_pro.modules.learning.outcome_labeler import OutcomeLabeler
+            labeler = OutcomeLabeler()
+            labeled_res = labeler.label_all_unlabeled(dry_run=self.dry_run)
+            print(f"  [✓] Outcome Labeling: {labeled_res.get('labeled_count', 0)} applications updated.")
+        except Exception as e_label:
+            print(f"  [!] Outcome labeling notice: {e_label}")
+        try:
+            from naukari_pro.modules.learning.keyword_miner import KeywordMiner
+            mined = KeywordMiner().mine_and_store()
+            n = len(mined) if isinstance(mined, list) else (mined.get("count", 0) if isinstance(mined, dict) else 0)
+            print(f"  [✓] Keyword mining stored/updated: {n} utilities.")
+        except Exception as e_mine:
+            print(f"  [!] Keyword mining notice: {e_mine}")
         if self.block == 3 or self.force:
-            print(f"\n[TRACK 4] Executing Daily Application Outcome Labeling...")
             try:
-                from naukari_pro.modules.learning.outcome_labeler import OutcomeLabeler
-                labeler = OutcomeLabeler()
-                labeled_res = labeler.label_all_unlabeled(dry_run=self.dry_run)
-                print(f"  [✓] Outcome Labeling: {labeled_res.get('labeled_count', 0)} applications updated.")
-            except Exception as e_label:
-                print(f"  [!] Outcome labeling notice: {e_label}")
+                from naukari_pro.modules.learning.attribution import AttributionEngine
+                hist = AttributionEngine().get_weekly_history()
+                print(f"  [✓] Attribution history weeks: {len(hist) if isinstance(hist, list) else hist}.")
+            except Exception as e_attr:
+                print(f"  [!] Attribution notice: {e_attr}")
         else:
-            print(f"\n[TRACK 4] Labeling deferred to Block 3 / 21:00 timer.")
+            print("  [*] Heavy mutation/attribution deferred to Block 3 / --force.")
 
         # ── STAGE 8/8: Consolidated Multi-Platform Summary Report & Scorecard ──
         print("\n[STAGE 8/8] Generating Consolidated Multi-Platform Application Scorecard...")

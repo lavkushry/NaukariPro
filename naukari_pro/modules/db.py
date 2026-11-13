@@ -826,6 +826,7 @@ def is_job_already_applied(
     """
     init_db(db_path)
     conn = get_db_connection(db_path)
+    # Incomplete / barrier statuses stay retryable so Always-on Beast can drain them.
     UNAPPLIED_PLACEHOLDERS = {
         "External Redirect",
         "Not Available",
@@ -833,9 +834,20 @@ def is_job_already_applied(
         "SUBMITTED_DRY_RUN",
         "DRY_RUN_ELIGIBLE",
         "DRY_RUN_MATCH",
+        "DRY_RUN_VALIDATED",
+        "DRY_RUN_VERIFIED",
         "SKIPPED_ALREADY_APPLIED",
         "REJECTED_NON_DATA_ROLE",
-        "REJECTED_BELOW_THRESHOLD"
+        "REJECTED_BELOW_THRESHOLD",
+        "Form Auto-Filled",
+        "Form Auto-Filled (Ready for Review)",
+        "FALLBACK (SUBMIT_NOT_FOUND)",
+        "FALLBACK (CLICKED_NO_CONFIRMATION)",
+        "FALLBACK (SIGNIN_WALL)",
+        "FALLBACK (CAPTCHA)",
+        "FALLBACK (VALIDATION_ERRORS)",
+        "FALLBACK (TIMEOUT_240S)",
+        "FALLBACK (OTP_NOT_FOUND)",
     }
     
     def _is_applied_row(r_status: Optional[str]) -> bool:
