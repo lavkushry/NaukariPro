@@ -753,12 +753,60 @@ class LinkedInSessionManager:
         current_url = raw_url.lower()
 
         # Soft recovery: if goto threw on 429 but the page still landed on LinkedIn feed, continue.
-        if nav_failed and ("linkedin.com" in current_url) and ("/feed" in current_url or "/in/" in current_url):
+        is_429_nav = "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
+        if nav_failed and is_429_nav and ("linkedin.com" in current_url) and ("/feed" in current_url or "/in/" in current_url):
             logger.info("LinkedIn verify: treating post-429 feed landing as navigable (%s)", raw_url)
             nav_failed = False
 
+        # Redirect-loop recovery: stale companion cookies (bscookie/JSESSIONID/liap/lidc) or revoked li_at (Set-Cookie: li_at=delete me -> 302 loop -> 429)
+        redirect_loop_detected = False
+        err_lower = nav_error_msg.lower()
+        if nav_failed and ("err_too_many_redirects" in err_lower or "err_http_response_code_failure" in err_lower):
+            try:
+                token = self.get_li_at_cookie(raise_if_missing=False)
+                ctx = getattr(page, "context", None)
+                if token and ctx is not None and hasattr(ctx, "clear_cookies") and hasattr(ctx, "add_cookies"):
+                    logger.info(
+                        "LinkedIn verify: clearing stale context cookies after %s and retrying with clean li_at",
+                        "ERR_TOO_MANY_REDIRECTS" if "err_too_many_redirects" in err_lower else "ERR_HTTP_RESPONSE_CODE_FAILURE",
+                    )
+                    res_clear = ctx.clear_cookies()
+                    if inspect.isawaitable(res_clear):
+                        await res_clear
+                    res_add = ctx.add_cookies([self.format_cookie(token)])
+                    if inspect.isawaitable(res_add):
+                        await res_add
+                    res_retry = page.goto(FEED_URL, wait_until="domcontentloaded", timeout=30000)
+                    if inspect.isawaitable(res_retry):
+                        await res_retry
+                    nav_failed = False
+                    nav_error_msg = ""
+                    raw_url = getattr(page, "url", "") or ""
+                    current_url = raw_url.lower()
+                    if hasattr(ctx, "cookies"):
+                        try:
+                            fresh_res = ctx.cookies(["https://www.linkedin.com", "https://linkedin.com"])
+                            fresh_cookies = await fresh_res if inspect.isawaitable(fresh_res) else fresh_res
+                            if isinstance(fresh_cookies, list) and fresh_cookies:
+                                self.save_session_cookies(fresh_cookies)
+                                for fc in fresh_cookies:
+                                    if isinstance(fc, dict) and fc.get("name") == "JSESSIONID" and fc.get("value"):
+                                        clean_js = str(fc["value"]).strip('"')
+                                        update_env_variable("LINKEDIN_JSESSIONID", f'"{clean_js}"')
+                                        break
+                        except Exception as e_persist:
+                            logger.debug("Notice persisting recovered cookies: %s", e_persist)
+            except Exception as e_redir:
+                nav_failed = True
+                nav_error_msg = str(e_redir)
+                redir_lower = nav_error_msg.lower()
+                if "err_too_many_redirects" in redir_lower or "err_http_response_code_failure" in redir_lower:
+                    # Clean single-li_at retry still looped/failed -> li_at token itself is revoked (li_at=delete me)
+                    redirect_loop_detected = True
+                logger.warning("LinkedIn verify redirect-loop recovery failed: %s", e_redir)
+
         # Last-chance recovery via location assign (avoids Chromium navigation error path)
-        if nav_failed and (
+        if nav_failed and not redirect_loop_detected and (
             "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
         ):
             try:
@@ -776,9 +824,11 @@ class LinkedInSessionManager:
             except Exception as e_rec:
                 logger.warning("LinkedIn verify location.assign recovery failed: %s", e_rec)
 
-        # If navigation completely failed/timed out, distinguish 429 rate limit vs expired/unreachable
+        # If navigation completely failed/timed out, distinguish 429 rate limit vs expired/revoked
         if nav_failed:
-            is_429 = "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
+            is_429 = (not redirect_loop_detected) and (
+                "429" in nav_error_msg or "err_http_response_code_failure" in nav_error_msg.lower()
+            )
             status_name = "RATE_LIMITED" if is_429 else "EXPIRED"
             if raise_for_status:
                 if is_429:
@@ -1158,33 +1208,24 @@ class LinkedInSessionManager:
         }
 
     def save_session_cookies(self, cookies: List[Dict[str, Any]]) -> bool:
-        """Persists extracted browser cookies to session_cookies.json and syncs to remote VM."""
+        """Persists extracted browser cookies locally to session_cookies.json (excluding IP/edge-bound cookies)."""
         try:
             os.makedirs(os.path.dirname(self.cookie_path), exist_ok=True)
+            ephemeral_edge_cookies = {"__cf_bm", "dfpfpt", "fptctx2"}
+            filtered_cookies = [
+                c for c in cookies
+                if isinstance(c, dict) and c.get("name") not in ephemeral_edge_cookies
+            ]
             with open(self.cookie_path, "w", encoding="utf-8") as f:
-                json.dump(cookies, f, indent=2)
-            logger.info("Saved %d LinkedIn cookies to %s", len(cookies), self.cookie_path)
-
-            # Sync cookies to production Linux VM if SSH key is available
-            if sys.platform == "darwin":
-                ssh_key = os.path.expanduser("~/.ssh/ssh-key-2026-08-30.key")
-                if os.path.exists(ssh_key):
-                    try:
-                        import subprocess
-                        subprocess.run(
-                            f"scp -i {ssh_key} -o StrictHostKeyChecking=no -o ConnectTimeout=5 {self.cookie_path} ubuntu@130.210.19.226:/home/ubuntu/Resume/linkedin_system/session_cookies.json",
-                            shell=True, timeout=10, capture_output=True
-                        )
-                    except Exception:
-                        pass
-
+                json.dump(filtered_cookies, f, indent=2)
+            logger.info("Saved %d LinkedIn cookies to %s", len(filtered_cookies), self.cookie_path)
             return True
         except Exception as e:
             logger.warning("Could not persist cookies to %s: %s", self.cookie_path, e)
             return False
 
     def set_li_at_token(self, token: str, jsessionid: Optional[str] = None) -> bool:
-        """Sets a fresh li_at token in .env and updates session_cookies.json."""
+        """Sets a fresh li_at token in .env, clears stale companion/browser cookies when needed, and updates session_cookies.json."""
         clean_token = sanitize_cookie_token(token)
         if not clean_token:
             return False
@@ -1192,8 +1233,31 @@ class LinkedInSessionManager:
         if jsessionid:
             clean_js = jsessionid.strip('"')
             update_env_variable("LINKEDIN_JSESSIONID", f'"{clean_js}"')
+        else:
+            update_env_variable("LINKEDIN_JSESSIONID", "")
+            os.environ.pop("LINKEDIN_JSESSIONID", None)
+            os.environ.pop("JSESSIONID", None)
 
-        # Also update session_cookies.json
+        if not jsessionid:
+            # Never carry over stale companion cookies (bscookie, bcookie, lidc, JSESSIONID, etc.)
+            cookies = [self.format_cookie(clean_token)]
+            # Also remove stale Chromium persistent cookie DBs in self.session_dir
+            for rel_path in (
+                os.path.join("Default", "Cookies"),
+                os.path.join("Default", "Cookies-journal"),
+                os.path.join("Default", "Network", "Cookies"),
+                os.path.join("Default", "Network", "Cookies-journal"),
+            ):
+                db_file = os.path.join(self.session_dir, rel_path)
+                if os.path.exists(db_file):
+                    try:
+                        os.remove(db_file)
+                    except Exception:
+                        pass
+            self.save_session_cookies(cookies)
+            return True
+
+        # Explicit jsessionid provided: update or append li_at and JSESSIONID in existing session_cookies.json
         cookies = []
         if self.cookie_path and os.path.exists(self.cookie_path):
             try:
@@ -1201,6 +1265,9 @@ class LinkedInSessionManager:
                     cookies = json.load(f)
             except Exception:
                 cookies = []
+
+        if not isinstance(cookies, list):
+            cookies = []
 
         found_li_at = False
         for c in cookies:
@@ -1384,17 +1451,58 @@ class LinkedInSessionManager:
             start_time = time.time()
             authenticated = False
             notified_challenge = False
+            email_pin_attempted = False
             while time.time() - start_time < timeout_seconds:
                 curr_url = (page.url or "").lower()
 
                 # Notice security checkpoint / 2FA
-                if ("/checkpoint" in curr_url or "/challenge" in curr_url) and not notified_challenge:
-                    print("\n  📲 [ACTION REQUIRED] LinkedIn Security Verification / 2FA Challenge active!")
-                    print("     • If prompt asks to check your LinkedIn App: Open your phone and tap 'YES'.")
-                    print("     • If prompt asks for an Email/SMS Code: Type the code in the browser window.")
-                    print("     • If a puzzle appears: Solve the puzzle in the browser window.")
-                    sys.stdout.flush()
-                    notified_challenge = True
+                if "/checkpoint" in curr_url or "/challenge" in curr_url:
+                    if not notified_challenge:
+                        print("\n  📲 [ACTION REQUIRED] LinkedIn Security Verification / 2FA Challenge active!")
+                        print("     • If prompt asks to check your LinkedIn App: Open your phone and tap 'YES'.")
+                        print("     • If prompt asks for an Email/SMS Code: Auto-checking Gmail IMAP or enter code manually.")
+                        print("     • If a puzzle appears: Solve the puzzle in the browser window.")
+                        sys.stdout.flush()
+                        notified_challenge = True
+
+                    if not email_pin_attempted:
+                        try:
+                            pin_loc = page.locator("input#input__email_verification_pin, input[name='pin']").first
+                            pin_cnt_res = pin_loc.count()
+                            pin_cnt = await pin_cnt_res if inspect.isawaitable(pin_cnt_res) else int(pin_cnt_res)
+                            pin_vis = False
+                            if pin_cnt > 0:
+                                vis_res = pin_loc.is_visible()
+                                pin_vis = await vis_res if inspect.isawaitable(vis_res) else bool(vis_res)
+                            if pin_vis:
+                                email_pin_attempted = True
+                                from naukari_pro.modules.autonomous_loop import fetch_ats_email_code
+
+                                logger.info("LinkedIn checkpoint asks for email verification PIN; polling Gmail IMAP...")
+                                otp = await asyncio.to_thread(
+                                    fetch_ats_email_code,
+                                    since_ts=start_time - 30,
+                                    timeout_sec=25.0,
+                                    subject_keywords=("linkedin", "security code", "verification code", "pin", "sign in"),
+                                )
+                                if otp:
+                                    fill_pin = pin_loc.fill(otp)
+                                    if inspect.isawaitable(fill_pin):
+                                        await fill_pin
+                                    sub_btn = page.locator("button#email-pin-submit-button, button[type='submit'], button:has-text('Submit')").first
+                                    sub_cnt_res = sub_btn.count()
+                                    sub_cnt = await sub_cnt_res if inspect.isawaitable(sub_cnt_res) else int(sub_cnt_res)
+                                    if sub_cnt > 0:
+                                        clk_sub = sub_btn.click()
+                                        if inspect.isawaitable(clk_sub):
+                                            await clk_sub
+                                    else:
+                                        prs_sub = pin_loc.press("Enter")
+                                        if inspect.isawaitable(prs_sub):
+                                            await prs_sub
+                                    logger.info("Submitted LinkedIn email verification PIN from Gmail IMAP.")
+                        except Exception as e_pin:
+                            logger.debug("Notice during LinkedIn email PIN auto-fill: %s", e_pin)
 
                 if (
                     ("/feed" in curr_url or "/in/" in curr_url or "/mynetwork" in curr_url or "/jobs" in curr_url)

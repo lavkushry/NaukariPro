@@ -312,3 +312,161 @@ def test_run_apply_cycle_auto_login_on_expired_token():
         assert stats["discovered"] == 0
 
     asyncio.run(_test())
+
+
+def test_verify_session_recovers_from_err_too_many_redirects():
+    import asyncio
+
+    async def _test():
+        with tempfile.TemporaryDirectory() as td:
+            cookie_file = os.path.join(td, "session_cookies.json")
+            env_file = os.path.join(td, ".env")
+            with open(env_file, "w", encoding="utf-8") as f:
+                f.write('LINKEDIN_LI_AT="AQED_RECOVERY_TOKEN"\n')
+
+            mgr = LinkedInSessionManager(cookie_path=cookie_file)
+            events = []
+            goto_calls = {"count": 0}
+
+            async def async_ret(val=None):
+                return val
+
+            async def mock_clear_cookies():
+                events.append("clear_cookies")
+
+            async def mock_add_cookies(cookies):
+                events.append(("add_cookies", [c.get("name") for c in cookies]))
+
+            mock_ctx = MagicMock()
+            mock_ctx.clear_cookies = mock_clear_cookies
+            mock_ctx.add_cookies = mock_add_cookies
+            mock_ctx.cookies = lambda urls: async_ret([
+                {"name": "li_at", "value": "AQED_RECOVERY_TOKEN"},
+                {"name": "JSESSIONID", "value": '"ajax:recovered_777"'},
+            ])
+
+            mock_page = MagicMock()
+            mock_page.context = mock_ctx
+            mock_page.url = "about:blank"
+            mock_page.wait_for_load_state = lambda state, timeout=None: async_ret(None)
+            mock_page.content = lambda: async_ret("<html><body>Feed</body></html>")
+
+            async def mock_goto(url, **kwargs):
+                goto_calls["count"] += 1
+                if goto_calls["count"] == 1:
+                    raise RuntimeError("Page.goto: net::ERR_TOO_MANY_REDIRECTS at https://www.linkedin.com/feed/")
+                mock_page.url = "https://www.linkedin.com/feed/"
+                return None
+
+            mock_page.goto = mock_goto
+
+            mock_name_loc = MagicMock()
+            mock_name_loc.count = lambda: async_ret(1)
+            mock_name_loc.inner_text = lambda: async_ret("Lavkush Kumar")
+            mock_name_loc.get_attribute = lambda attr: async_ret("https://www.linkedin.com/in/lavkushry/")
+
+            def mock_locator(sel):
+                if "actor-meta" in sel:
+                    return MagicMock(first=mock_name_loc)
+                return MagicMock(
+                    first=MagicMock(count=lambda: async_ret(0)),
+                    count=lambda: async_ret(0),
+                )
+
+            mock_page.locator = mock_locator
+
+            with patch("naukari_pro.modules.linkedin_session.WORKSPACE_DIR", td), \
+                 patch.dict(os.environ, {"LINKEDIN_LI_AT": "AQED_RECOVERY_TOKEN"}), \
+                 patch("sys.platform", "linux"):
+                res = await mgr.verify_session(mock_page, raise_for_status=False)
+
+            assert res["status"] == "VALID"
+            assert res["authenticated"] is True
+            assert res["candidate_name"] == "Lavkush Kumar"
+            assert "clear_cookies" in events
+            assert ("add_cookies", ["li_at"]) in events
+            assert os.path.exists(cookie_file)
+            with open(env_file, "r", encoding="utf-8") as f:
+                assert "ajax:recovered_777" in f.read()
+
+    asyncio.run(_test())
+
+
+def test_verify_session_classifies_revoked_redirect_loop_as_expired():
+    import asyncio
+
+    async def _test():
+        with tempfile.TemporaryDirectory() as td:
+            cookie_file = os.path.join(td, "session_cookies.json")
+            mgr = LinkedInSessionManager(cookie_path=cookie_file)
+            events = []
+
+            async def async_ret(val=None):
+                return val
+
+            async def mock_clear_cookies():
+                events.append("clear_cookies")
+
+            async def mock_add_cookies(cookies):
+                events.append("add_cookies")
+
+            mock_ctx = MagicMock()
+            mock_ctx.clear_cookies = mock_clear_cookies
+            mock_ctx.add_cookies = mock_add_cookies
+
+            mock_page = MagicMock()
+            mock_page.context = mock_ctx
+            mock_page.url = "chrome-error://chromewebdata/"
+
+            async def mock_goto(url, **kwargs):
+                raise RuntimeError("Page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://www.linkedin.com/feed/")
+
+            mock_page.goto = mock_goto
+
+            with patch("naukari_pro.modules.linkedin_session.WORKSPACE_DIR", td), \
+                 patch.dict(os.environ, {"LINKEDIN_LI_AT": "AQED_REVOKED_TOKEN"}), \
+                 patch("sys.platform", "linux"):
+                res = await mgr.verify_session(mock_page, raise_for_status=False)
+
+            assert res["status"] == "EXPIRED"
+            assert res["rate_limited"] is False
+            assert res["authenticated"] is False
+            assert "clear_cookies" in events
+            assert "add_cookies" in events
+
+    asyncio.run(_test())
+
+
+def test_set_li_at_token_without_jsessionid_purges_stale_cookies():
+    import json
+
+    with tempfile.TemporaryDirectory() as td:
+        cookie_file = os.path.join(td, "session_cookies.json")
+        session_dir = os.path.join(td, "browser_session")
+        default_dir = os.path.join(session_dir, "Default")
+        os.makedirs(default_dir, exist_ok=True)
+        stale_db = os.path.join(default_dir, "Cookies")
+        with open(stale_db, "w", encoding="utf-8") as f:
+            f.write("stale_sqlite_db")
+        with open(cookie_file, "w", encoding="utf-8") as f:
+            json.dump([
+                {"name": "li_at", "value": "OLD"},
+                {"name": "bscookie", "value": "OLD_BS"},
+                {"name": "bcookie", "value": "OLD_BC"},
+                {"name": "dfpfpt", "value": "OLD_DF"},
+            ], f)
+
+        env_file = os.path.join(td, ".env")
+        with open(env_file, "w", encoding="utf-8") as f:
+            f.write('LINKEDIN_LI_AT="OLD"\nLINKEDIN_JSESSIONID="ajax:old"\n')
+
+        with patch("naukari_pro.modules.linkedin_session.WORKSPACE_DIR", td), \
+             patch("sys.platform", "linux"):
+            mgr = LinkedInSessionManager(session_dir=session_dir, cookie_path=cookie_file)
+            assert mgr.set_li_at_token("AQED_FRESH_ONLY") is True
+
+        with open(cookie_file, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        assert [c["name"] for c in saved] == ["li_at"]
+        assert saved[0]["value"] == "AQED_FRESH_ONLY"
+        assert not os.path.exists(stale_db)
