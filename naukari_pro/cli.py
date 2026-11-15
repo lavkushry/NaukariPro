@@ -800,28 +800,70 @@ def handle_early_access(headless=False):
 def handle_agy_schedule(action="status"):
     import subprocess
     import os
+    import platform
     workspace = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     runner = os.path.join(workspace, "agy_schedule_runner.sh")
-    installer = os.path.join(workspace, "install_linux_schedule.sh")
+    installer_linux = os.path.join(workspace, "install_linux_schedule.sh")
+    installer_macos = os.path.join(workspace, "install_schedule.sh")
+    is_darwin = platform.system() == "Darwin"
 
     if action == "install":
-        print("\n[*] Installing NaukariPro AGY Autonomous Linux Scheduler...")
-        subprocess.run(["bash", installer], check=False)
+        if is_darwin:
+            print("\n[*] Installing NaukariPro Always-on Beast schedule (macOS LaunchAgents)...")
+            subprocess.run(["bash", installer_macos], check=False)
+        else:
+            print("\n[*] Installing NaukariPro AGY Autonomous Linux Scheduler...")
+            subprocess.run(["bash", installer_linux], check=False)
     elif action == "run":
-        print("\n[*] Triggering immediate AGY Autonomous Cycle...")
-        subprocess.run(["bash", runner], check=False)
+        print("\n[*] Triggering immediate AGY / Beast Autonomous Cycle...")
+        if os.path.exists(runner):
+            subprocess.run(["bash", runner], check=False)
+        else:
+            # macOS: kick block-1 beast-autonomous directly
+            naukari = os.path.join(workspace, "naukariPro")
+            subprocess.run([naukari, "beast-autonomous", "--block", "1", "--limit", "15"], check=False)
     elif action == "logs":
         history = os.path.join(workspace, "logs", "agy_schedule_history.log")
+        launchd_logs = [
+            os.path.join(workspace, "logs", "block1.log"),
+            os.path.join(workspace, "logs", "block2.log"),
+            os.path.join(workspace, "logs", "block3.log"),
+            os.path.join(workspace, "logs", "naukaripro_morning.log"),
+        ]
         if os.path.exists(history):
             print(f"\n[*] Recent logs from {history}:")
-            subprocess.run(["tail", "-n", "50", history])
-        else:
-            print(f"\n[*] No schedule logs found yet in {history}")
+            subprocess.run(["tail", "-n", "50", history], check=False)
+        found = False
+        for lp in launchd_logs:
+            if os.path.exists(lp):
+                found = True
+                print(f"\n[*] Tail {lp}:")
+                subprocess.run(["tail", "-n", "30", lp], check=False)
+        if not found and not os.path.exists(history):
+            print(f"\n[*] No schedule logs found yet in {history} or logs/block{{1,2,3}}.log")
     else:  # status
-        print("\n[*] Checking Linux systemd user timers (naukaripro-agy):")
-        subprocess.run(["systemctl", "--user", "list-timers", "--no-pager"], check=False)
-        print("\n[*] Checking Crontab Fallback:")
-        subprocess.run(["crontab", "-l"], check=False)
+        if is_darwin:
+            print("\n[*] Checking macOS LaunchAgents (Beast blocks 1/2/3):")
+            labels = (
+                "com.lavkush.naukaripro",
+                "com.lavkush.naukaripro.block2",
+                "com.lavkush.naukaripro.block3",
+            )
+            for label in labels:
+                plist = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+                exists = os.path.exists(plist)
+                print(f"    {label}: plist={'YES' if exists else 'MISSING'} ({plist})")
+            print("\n[*] launchctl list (naukaripro):")
+            subprocess.run(
+                "launchctl list 2>/dev/null | grep -i naukaripro || true",
+                shell=True,
+                check=False,
+            )
+        else:
+            print("\n[*] Checking Linux systemd user timers (naukaripro-agy):")
+            subprocess.run(["systemctl", "--user", "list-timers", "--no-pager"], check=False)
+            print("\n[*] Checking Crontab Fallback:")
+            subprocess.run(["crontab", "-l"], check=False)
 
 def handle_linkedin_auth(timeout: int = 300, headless: bool = False) -> int:
     """Runs interactive browser login and saves fresh LinkedIn session cookies."""
@@ -1909,8 +1951,11 @@ def main():
     )
     beast_parser.add_argument("--block", type=int, choices=[1, 2, 3], default=None)
     beast_parser.add_argument("--live-outreach", action="store_true", default=False)
+    beast_parser.add_argument("--limit-naukri", type=int, default=20)
+    beast_parser.add_argument("--limit-linkedin", type=int, default=20)
     beast_parser.add_argument("--limit-external", type=int, default=25)
     beast_parser.add_argument("--limit-redirects", type=int, default=25)
+    beast_parser.add_argument("--drain-pending", action=argparse.BooleanOptionalAction, default=True)
 
     for cmd, hlp in [
         ("weekly-report", "Run weekly 5-number recruiter performance & keyword diff audit"),

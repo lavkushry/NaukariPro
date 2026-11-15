@@ -312,6 +312,43 @@ def test_cli_pro_command_parsing():
         )
 
 
+def test_cli_beast_autonomous_schedule_runner_parsing():
+    """Verify `beast-autonomous` accepts all flags passed by agy_schedule_runner.sh."""
+    test_args = [
+        "naukariPro",
+        "beast-autonomous",
+        "--headless",
+        "--limit",
+        "20",
+        "--limit-naukri",
+        "20",
+        "--limit-linkedin",
+        "20",
+        "--limit-external",
+        "25",
+        "--limit-redirects",
+        "25",
+        "--block",
+        "1",
+    ]
+    with patch("sys.argv", test_args), \
+         patch("naukari_pro.cli.handle_pro") as mock_pro:
+        main()
+        mock_pro.assert_called_once_with(
+            limit=20,
+            headless=True,
+            dry_run=False,
+            force=True,
+            block=1,
+            execute_outreach_live=False,
+            drain_pending=True,
+            limit_naukri=20,
+            limit_linkedin=20,
+            limit_external=25,
+            limit_redirects=25,
+        )
+
+
 # ==============================================================================
 # 7. CANDIDATE PROFILE & TARGET CALIBRATION INTEGRITY
 # ==============================================================================
