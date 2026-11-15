@@ -14,6 +14,7 @@ from naukari_pro.agent.dispatchers.ats_dispatcher import (
     ATSDispatcher,
     ExternalATSDispatcher
 )
+from naukari_pro.agent.dispatchers.indeed_dispatcher import IndeedDispatcher
 
 __all__ = [
     "PlatformDispatcher",
@@ -22,5 +23,6 @@ __all__ = [
     "NaukriDispatcher",
     "LinkedInDispatcher",
     "ATSDispatcher",
-    "ExternalATSDispatcher"
+    "ExternalATSDispatcher",
+    "IndeedDispatcher",
 ]

@@ -267,6 +267,64 @@ def safe_count(locator: Any) -> int:
         return 0
 
 
+def click_react_select_option(page: Any, choice: str, timeout: float = 5000) -> bool:
+    """Click a React-Select option without CSS :has-text('...') apostrophe breakage.
+
+    Cloudflare options like \"I currently live in this job's location.\" contain
+    apostrophes that break Playwright CSS :has-text('...') parsers; exceptions were
+    swallowed and left required selects on Select...
+    """
+    if not page or not choice:
+        return False
+    text = str(choice).strip()
+    if not text:
+        return False
+    try:
+        opts = page.locator(".select__option, [class*='select__option'], [id*='-option-']")
+        # Exact / substring via Playwright text engine (safe for quotes/apostrophes)
+        matched = opts.filter(has_text=text).first
+        if safe_count(matched) > 0:
+            matched.click(timeout=timeout)
+            return True
+        # Fallback: scan visible option texts and click by index
+        texts = [t.strip() for t in opts.all_inner_texts() if t and t.strip()]
+        for idx, t in enumerate(texts):
+            if t == text or text.lower() in t.lower() or t.lower() in text.lower():
+                opts.nth(idx).click(timeout=timeout)
+                return True
+    except Exception as e_click:
+        logger.debug("click_react_select_option notice: %s", e_click)
+    return False
+
+
+def solver_answer(
+    solver: Any,
+    question: str,
+    options: Optional[List[str]] = None,
+    default: str = "Yes",
+) -> str:
+    """Unwrap FactMatrixScreeningSolver.solve_question → (answer, confidence, ambiguous)."""
+    if not solver:
+        return default
+    try:
+        ctx = {"options": options} if options is not None else None
+        result = solver.solve_question(question, context=ctx) if ctx is not None else solver.solve_question(question)
+    except TypeError:
+        try:
+            result = solver.solve_question(question)
+        except Exception:
+            return default
+    except Exception:
+        return default
+    ans = result[0] if isinstance(result, tuple) else result
+    if ans is None:
+        return default
+    text = str(ans).strip()
+    if not text or text.startswith("(") and "None" in text:
+        return default
+    return text
+
+
 # ==============================================================================
 # ARCHITECTURE RULES A1–A5: STATE MACHINE, SCHEMAS & ANCHORS
 # ==============================================================================
@@ -298,7 +356,9 @@ class FallbackReason(str, Enum):
     ALREADY_APPLIED = "SKIPPED_ALREADY_APPLIED"
 
 
-PER_JOB_TIME_BUDGET_SEC: float = 240.0
+# Workday multi-page apply (auth → My Info → application questions → review) routinely
+# exceeds 4 minutes; 15 minutes matches live Embitel/Fractal runs without false TIMEOUT.
+PER_JOB_TIME_BUDGET_SEC: float = 900.0
 
 
 def checkpoint_portal_state(
@@ -896,8 +956,7 @@ class GreenhouseHandler(BaseATSHandler):
                                 if t.lower() not in ("select...", "select"):
                                     chosen = t
                                     break
-                        if chosen:
-                            page.locator(f".select__option:has-text('{chosen}')").first.click()
+                        if chosen and click_react_select_option(page, chosen):
                             filled.append(f"Education Dropdown:{chosen[:24]}")
                             time.sleep(0.2)
                         else:
@@ -1056,19 +1115,24 @@ class GreenhouseHandler(BaseATSHandler):
                                         ans_to_fill = "Python"
                                     elif any(k in q_lower for k in ["adjustment", "accommodation"]):
                                         ans_to_fill = "None"
+                                    elif any(k in q_lower for k in ["legal name", "preferred name", "preferred first", "other name"]):
+                                        # Optional identity fields — leave blank; never dump "Yes"
+                                        ans_to_fill = None
                                     else:
-                                        ans_to_fill = "Yes"
-                                inp.fill(str(ans_to_fill))
-                                filled.append(f"Screening: {lbl_text[:20]}")
-                                self.record_field(
-                                    label=lbl_text,
-                                    value=ans_to_fill,
-                                    field_name=for_id,
-                                    field_type="text",
-                                    step=1,
-                                    step_name="CUSTOM_SCREENING",
-                                    action_type="ANSWERED"
-                                )
+                                        # Do not invent answers for unknown free-text screening
+                                        ans_to_fill = None
+                                if ans_to_fill:
+                                    inp.fill(str(ans_to_fill))
+                                    filled.append(f"Screening: {lbl_text[:20]}")
+                                    self.record_field(
+                                        label=lbl_text,
+                                        value=ans_to_fill,
+                                        field_name=for_id,
+                                        field_type="text",
+                                        step=1,
+                                        step_name="CUSTOM_SCREENING",
+                                        action_type="ANSWERED"
+                                    )
                 except Exception:
                     pass
         except Exception as e_lbls:
@@ -1081,14 +1145,58 @@ class GreenhouseHandler(BaseATSHandler):
             for i in range(rs_cnt):
                 try:
                     ctrl = react_selects.nth(i)
-                    parent_lbl = ctrl.locator("xpath=ancestor::div[contains(@class, 'field-wrapper') or contains(@class, 'field')]//label").first
-                    lbl_text = parent_lbl.inner_text().strip() if safe_count(parent_lbl) > 0 else f"Select {i}"
+                    # Cloudflare / modern GH: label may sit outside .field-wrapper — walk ancestors
+                    lbl_text = f"Select {i}"
+                    for xp in (
+                        "xpath=ancestor::div[contains(@class,'field')][1]//label",
+                        "xpath=ancestor::div[contains(@class,'field-wrapper')][1]//label",
+                        "xpath=preceding::label[1]",
+                        "xpath=ancestor::*[self::div or self::fieldset][1]//label",
+                    ):
+                        try:
+                            parent_lbl = ctrl.locator(xp).first
+                            if safe_count(parent_lbl) > 0 and parent_lbl.is_visible():
+                                t = (parent_lbl.inner_text() or "").strip()
+                                if t and t.lower() not in ("select...", "select"):
+                                    lbl_text = t.split("\n")[0].strip()
+                                    break
+                        except Exception:
+                            continue
+                    # Aria / nearby question text fallback (avoids blind "Select N" → wrong opts[1])
+                    if lbl_text.lower().startswith("select "):
+                        try:
+                            aria = ctrl.get_attribute("aria-label") or ""
+                            if aria.strip():
+                                lbl_text = aria.strip()
+                            else:
+                                near = ctrl.evaluate(
+                                    """el => {
+                                      const root = el.closest('div,fieldset,li,section') || el.parentElement;
+                                      const lab = root && root.querySelector('label, legend, .field-label, p');
+                                      return (lab && (lab.innerText||'').trim()) || (root && (root.innerText||'').split('\\n')[0]) || '';
+                                    }"""
+                                ) or ""
+                                if str(near).strip():
+                                    lbl_text = str(near).strip().split("\n")[0][:180]
+                        except Exception:
+                            pass
                     lbl_lower = lbl_text.lower()
                     ctrl_text = ctrl.inner_text() or ""
 
                     # Skip phone country code and candidate city location search (already handled)
-                    if ("+1" in ctrl_text and "phone" in lbl_lower) or "location (city)" in lbl_lower or ctrl.locator("#candidate-location").count() > 0 or (lbl_lower.startswith("location") and "sponsorship" not in lbl_lower):
+                    # Do NOT skip "willing to relocate to the job's location" screening questions
+                    is_city_loc = (
+                        "location (city)" in lbl_lower
+                        or ctrl.locator("#candidate-location").count() > 0
+                        or (lbl_lower.startswith("location") and "relocat" not in lbl_lower and "live" not in lbl_lower and "sponsorship" not in lbl_lower)
+                    )
+                    if ("+1" in ctrl_text and "phone" in lbl_lower) or is_city_loc:
                         continue
+
+                    # Already answered
+                    if ctrl_text.strip() and ctrl_text.strip().lower() not in ("select...", "select", "select an option", ""):
+                        if "select" not in ctrl_text.strip().lower():
+                            continue
 
                     ctrl.click()
                     time.sleep(0.3)
@@ -1102,11 +1210,27 @@ class GreenhouseHandler(BaseATSHandler):
                             if "human" in opt.lower():
                                 target_choice = opt
                                 break
-                    elif "sponsorship" in lbl_lower:
+                    elif "sponsorship" in lbl_lower or "immigration" in lbl_lower:
                         for opt in opts:
-                            if opt.lower() == "no":
+                            if opt.lower() == "no" or "will not" in opt.lower() or "do not require" in opt.lower():
                                 target_choice = opt
                                 break
+                    elif any(k in lbl_lower for k in ("relocat", "willing to relocate", "live or are you willing", "currently live")):
+                        for opt in opts:
+                            ol = opt.lower()
+                            # Cloudflare: "I currently live in this job's location." / "Yes, I am willing..."
+                            if (
+                                ol == "yes"
+                                or "willing" in ol
+                                or "already live" in ol
+                                or "currently live" in ol
+                                or "live in this job" in ol
+                                or "live in" in ol
+                            ):
+                                target_choice = opt
+                                break
+                        if not target_choice:
+                            target_choice = next((o for o in opts if o.lower().startswith("yes")), None)
                     elif any(k in lbl_lower for k in ["employment agreements", "restrictions", "post-employment"]):
                         for opt in opts:
                             if opt.lower() == "no":
@@ -1117,7 +1241,7 @@ class GreenhouseHandler(BaseATSHandler):
                             if opt.lower() == "no":
                                 target_choice = opt
                                 break
-                    elif "country" in lbl_lower:
+                    elif "country" in lbl_lower and "relocat" not in lbl_lower:
                         for opt in opts:
                             if opt.lower() == "india":
                                 target_choice = opt
@@ -1143,12 +1267,14 @@ class GreenhouseHandler(BaseATSHandler):
                                 target_choice = opt
                                 break
                     elif opts:
-                        target_choice = opts[1] if len(opts) > 1 and opts[0].lower() in ["select...", "select an option"] else opts[0]
+                        # Never guess when label unresolved — leave for validation rather than wrong answer
+                        if lbl_lower.startswith("select "):
+                            target_choice = None
+                        else:
+                            target_choice = opts[1] if len(opts) > 1 and opts[0].lower() in ["select...", "select an option"] else opts[0]
 
                     if target_choice:
-                        matched_opt = page.locator(f".select__option:has-text('{target_choice}')").first
-                        if safe_count(matched_opt) > 0:
-                            matched_opt.click()
+                        if click_react_select_option(page, target_choice):
                             filled.append(f"Screening (Select): {lbl_text[:20]}")
                             self.record_field(
                                 label=lbl_text,
@@ -1159,6 +1285,9 @@ class GreenhouseHandler(BaseATSHandler):
                                 step_name="CUSTOM_SCREENING",
                                 action_type="SELECTED"
                             )
+                        else:
+                            if hasattr(page, "keyboard"):
+                                page.keyboard.press("Escape")
                     else:
                         if hasattr(page, "keyboard"):
                             page.keyboard.press("Escape")
@@ -1167,6 +1296,90 @@ class GreenhouseHandler(BaseATSHandler):
                     pass
         except Exception as e_rs:
             logger.debug("Greenhouse React-Select controls notice: %s", e_rs)
+
+        # 4b. Label-anchored required selects (Cloudflare / job-boards GH where
+        # .select__control label walk fails and leaves "Select..." + required error)
+        try:
+            required_pairs = (
+                (
+                    ("relocat", "willing to relocate", "live or are you willing", "currently live or"),
+                    ("yes", "willing", "already live", "currently live", "live in this job", "live in"),
+                    "Yes",
+                ),
+                (
+                    ("sponsorship", "immigration sponsorship", "require immigration", "visa sponsorship"),
+                    ("no", "will not", "do not require", "not require"),
+                    "No",
+                ),
+            )
+            for label_keys, opt_keys, fallback in required_pairs:
+                try:
+                    labels = page.locator("label, .field-label, legend, p").all()
+                    target_lbl = None
+                    for lab in labels:
+                        try:
+                            if not lab.is_visible():
+                                continue
+                            t = (lab.inner_text() or "").strip().lower()
+                            if not t or len(t) > 220:
+                                continue
+                            if any(k in t for k in label_keys):
+                                target_lbl = lab
+                                break
+                        except Exception:
+                            continue
+                    if target_lbl is None:
+                        continue
+                    # Prefer control inside the same field container as the label
+                    ctrl = None
+                    for xp in (
+                        "xpath=ancestor::div[contains(@class,'field') or contains(@class,'question')][1]//div[contains(@class,'select__control')]",
+                        "xpath=following::div[contains(@class,'select__control')][1]",
+                        "xpath=../div[contains(@class,'select__control')]",
+                    ):
+                        try:
+                            cand = target_lbl.locator(xp).first
+                            if safe_count(cand) > 0 and cand.is_visible():
+                                ctrl = cand
+                                break
+                        except Exception:
+                            continue
+                    if ctrl is None:
+                        continue
+                    cur = (ctrl.inner_text() or "").strip().lower()
+                    if cur and cur not in ("select...", "select", "select an option", ""):
+                        continue
+                    ctrl.click()
+                    time.sleep(0.35)
+                    opts = [o.strip() for o in page.locator(".select__option").all_inner_texts() if o.strip()]
+                    choice = None
+                    for o in opts:
+                        ol = o.lower()
+                        if any(k in ol for k in opt_keys) or ol == fallback.lower():
+                            choice = o
+                            break
+                    if not choice and opts:
+                        # Prefer exact Yes/No when present
+                        choice = next((o for o in opts if o.lower() == fallback.lower()), None)
+                    if choice and click_react_select_option(page, choice):
+                        filled.append(f"Screening (Select-by-label): {fallback}")
+                        self.record_field(
+                            label="required_select_by_label",
+                            value=choice,
+                            field_name="select_by_label",
+                            field_type="select",
+                            step=1,
+                            step_name="CUSTOM_SCREENING",
+                            action_type="SELECTED",
+                        )
+                    else:
+                        if hasattr(page, "keyboard"):
+                            page.keyboard.press("Escape")
+                    time.sleep(0.15)
+                except Exception:
+                    continue
+        except Exception as e_req:
+            logger.debug("Greenhouse required select-by-label notice: %s", e_req)
 
         # 5. Education
         try:
@@ -1882,13 +2095,39 @@ class LeverHandler(BaseATSHandler):
                 url = (getattr(page, "url", "") or "").lower()
                 if "/thanks" in url or "/confirmation" in url:
                     return True
+                body_txt = ""
+                try:
+                    if hasattr(page, "evaluate"):
+                        body_txt = (
+                            page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''") or ""
+                        ).lower()
+                except Exception:
+                    pass
+                # Ashby toast: "Your application was successfully submitted!"
+                if any(
+                    phrase in body_txt
+                    for phrase in (
+                        "successfully submitted",
+                        "application was successfully submitted",
+                        "thank you for applying",
+                        "application has been received",
+                        "application submitted",
+                        "we'll contact you if there are next steps",
+                        "we will contact you if there are next steps",
+                    )
+                ):
+                    return True
                 conf_selectors = [
                     ".application-confirmation",
+                    "[role='status']:has-text('Success')",
+                    "[role='alert']:has-text('Success')",
+                    "div:has-text('Success')",
                     "h2:has-text('Thank you')",
                     "h3:has-text('Thank you')",
                     "h2:has-text('Application Submitted')",
                     "div:has-text('Thank you for applying')",
-                    "div:has-text('Your application has been received')"
+                    "div:has-text('Your application has been received')",
+                    "div:has-text('successfully submitted')",
                 ]
                 for sel in conf_selectors:
                     try:
@@ -1983,12 +2222,31 @@ class AshbyHandler(BaseATSHandler):
             pass
 
         # 2. Standard system fields
+        linkedin_url = p.get("linkedInUrl") or p.get("linkedin") or "https://linkedin.com/in/lavkush-kumar"
+        if linkedin_url and not str(linkedin_url).startswith("http"):
+            linkedin_url = f"https://{linkedin_url}"
+        current_ctc = str(p.get("currentCtcLpa") or p.get("current_ctc") or "12")
+        expected_ctc = str(p.get("expectedCtcLpa") or p.get("expected_ctc") or "20")
+        notice_days = str(p.get("noticePeriodDays") or p.get("notice_period_days") or "15")
+        edu0 = {}
+        try:
+            edu_list = p.get("education") or []
+            if isinstance(edu_list, list) and edu_list and isinstance(edu_list[0], dict):
+                edu0 = edu_list[0]
+        except Exception:
+            edu0 = {}
+
         std_map = [
             ("input#_systemfield_name, input[name='_systemfield_name'], input[name='name']", p.get("fullName", "Lavkush Kumar"), "Full Name"),
             ("input#_systemfield_email, input[name='_systemfield_email'], input[name='email']", p.get("email", "lav84095@gmail.com"), "Email"),
             ("input[type='tel'], input#phone, input[name='phone'], input[name*='phone' i]", p.get("phone", "+919122036484"), "Phone"),
-            ("input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
-            ("input[name*='github' i], input[id*='github' i]", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
+            (
+                "input[name*='linkedin' i], input[id*='linkedin' i], input[placeholder*='linkedin' i], "
+                "input[aria-label*='linkedin' i], input[autocomplete='url']",
+                linkedin_url,
+                "LinkedIn",
+            ),
+            ("input[name*='github' i], input[id*='github' i], input[placeholder*='github' i]", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
         ]
         for sel, val, label in std_map:
             try:
@@ -2007,6 +2265,101 @@ class AshbyHandler(BaseATSHandler):
                     )
             except Exception:
                 pass
+
+        # 2b. Label-driven requireds Ashby often hosts as UUID-named url/number inputs
+        # (Triomics: LINKEDIN URL type=url; CURRENT/EXPECTED CTC + NOTICE PERIOD type=number)
+        try:
+            label_vals = [
+                (re.compile(r"linkedin\s*url", re.I), linkedin_url, "LinkedIn URL"),
+                (re.compile(r"current\s*ctc", re.I), current_ctc, "Current CTC"),
+                (re.compile(r"expected\s*ctc", re.I), expected_ctc, "Expected CTC"),
+                (re.compile(r"notice\s*period", re.I), notice_days, "Notice Period"),
+            ]
+            for pat, val, label in label_vals:
+                try:
+                    loc = page.get_by_label(pat).first
+                    if safe_count(loc) == 0 or not loc.is_visible():
+                        # Fallback: label text → following input
+                        loc = page.locator(
+                            "xpath=//label[contains(translate(normalize-space(.),"
+                            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                            f"'{label.lower()}')]/following::input[1]"
+                        ).first
+                    if safe_count(loc) == 0 or not loc.is_visible():
+                        continue
+                    cur = ""
+                    try:
+                        cur = loc.input_value() or ""
+                    except Exception:
+                        pass
+                    if cur.strip():
+                        continue
+                    loc.fill(str(val))
+                    filled.append(label)
+                    self.record_field(
+                        label=label,
+                        value=val,
+                        field_name="ashby_label_input",
+                        field_type="text",
+                        step=1,
+                        step_name="BASIC_INFO",
+                        action_type="FILLED",
+                    )
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # 2c. Education History (Ashby system field: school autocomplete + degree + major)
+        try:
+            school_q = str(edu0.get("institution") or "Maharishi Dayanand University")
+            degree_v = str(edu0.get("degree") or "B.Tech in Computer Science and Engineering")
+            major_v = "Computer Science"
+            if "computer" in degree_v.lower():
+                major_v = "Computer Science and Engineering"
+            school_inp = page.locator(
+                "input[placeholder*='Search schools' i], input.ashby-application-form-input-autocomplete"
+            ).first
+            if safe_count(school_inp) > 0 and school_inp.is_visible():
+                try:
+                    cur_s = school_inp.input_value() or ""
+                except Exception:
+                    cur_s = ""
+                if not cur_s.strip():
+                    school_inp.click()
+                    school_inp.fill("")
+                    # Short searchable token (Ashby school taxonomy)
+                    token = "Maharishi" if "maharishi" in school_q.lower() else school_q.split("(")[0].strip()[:40]
+                    school_inp.type(token, delay=40)
+                    time.sleep(1.2)
+                    opt = page.locator("[role='option'], [role='listbox'] div, [role='listbox'] li").first
+                    if safe_count(opt) > 0 and opt.is_visible():
+                        opt.click()
+                        filled.append("Education School")
+                    else:
+                        # Keep typed value if no taxonomy hit
+                        school_inp.fill(school_q)
+                        filled.append("Education School (typed)")
+            deg = page.locator("input#_systemfield_education_history-degree").first
+            if safe_count(deg) > 0 and deg.is_visible():
+                try:
+                    if not (deg.input_value() or "").strip():
+                        deg.fill(degree_v)
+                        filled.append("Education Degree")
+                except Exception:
+                    deg.fill(degree_v)
+                    filled.append("Education Degree")
+            maj = page.locator("input#_systemfield_education_history-major").first
+            if safe_count(maj) > 0 and maj.is_visible():
+                try:
+                    if not (maj.input_value() or "").strip():
+                        maj.fill(major_v)
+                        filled.append("Education Major")
+                except Exception:
+                    maj.fill(major_v)
+                    filled.append("Education Major")
+        except Exception as e_edu:
+            logger.debug("Ashby education history notice: %s", e_edu)
 
         # 3. Location autocomplete
         try:
@@ -2046,14 +2399,19 @@ class AshbyHandler(BaseATSHandler):
             pass
 
         # 4. Custom question inputs & textareas
+        # Include type=url / type=number — Triomics LinkedIn+CTC+Notice use these (UUID names).
         try:
-            for inp in page.locator("input[type='text'], input:not([type]), textarea").all():
+            for inp in page.locator(
+                "input[type='text'], input[type='url'], input[type='number'], input:not([type]), textarea"
+            ).all():
                 try:
                     iid = inp.get_attribute("id") or ""
                     name = inp.get_attribute("name") or ""
-                    itype = inp.get_attribute("type") or ""
+                    itype = (inp.get_attribute("type") or "").lower()
                     if iid in ("_systemfield_name", "_systemfield_email") or name in ("_systemfield_name", "_systemfield_email") or itype == "tel":
                         continue
+                    if iid.startswith("_systemfield_education_history"):
+                        continue  # handled in 2c
                     if inp.input_value():
                         continue
                     label_text = ""
@@ -2071,20 +2429,46 @@ class AshbyHandler(BaseATSHandler):
                         ans_to_fill = p.get("githubUrl", "https://github.com/lavkush-kumar")
                         filled.append("GitHub Profile")
                     elif "linkedin" in lt:
-                        ans_to_fill = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                        ans_to_fill = linkedin_url
                         filled.append("LinkedIn Profile")
+                    elif "current ctc" in lt or ("current" in lt and "ctc" in lt) or "current compensation" in lt:
+                        ans_to_fill = current_ctc
+                        filled.append("Current CTC")
+                    elif "expected ctc" in lt or ("expected" in lt and "ctc" in lt) or "expected compensation" in lt or "expected salary" in lt:
+                        ans_to_fill = expected_ctc
+                        filled.append("Expected CTC")
+                    elif "notice" in lt:
+                        # Triomics expects numeric days; keep digits-only when label says Days
+                        ans_to_fill = notice_days if "day" in lt else f"{notice_days} Days"
+                        filled.append("Notice Period")
+                    elif any(k in lt for k in ("school", "university", "college", "institution")) and "email" not in lt:
+                        ans_to_fill = str(edu0.get("institution") or "Maharishi Dayanand University (MDU), Rohtak")
+                        filled.append("Education Institution")
+                    elif "degree" in lt or "field of study" in lt or ("major" in lt and "city" not in lt):
+                        ans_to_fill = str(edu0.get("degree") or "B.Tech in Computer Science and Engineering")
+                        filled.append("Education Degree")
+                    elif ("start" in lt or "end" in lt or "graduation" in lt or "year" in lt) and any(
+                        k in lt for k in ("educat", "school", "degree", "graduat")
+                    ):
+                        dates = str(edu0.get("dates") or "2020 – 2023")
+                        # Prefer end year for graduation-year prompts
+                        years = re.findall(r"20\d{2}", dates)
+                        if "start" in lt and years:
+                            ans_to_fill = years[0]
+                        elif years:
+                            ans_to_fill = years[-1]
+                        else:
+                            ans_to_fill = dates
+                        filled.append("Education Dates")
                     elif "pronoun" in lt:
                         ans_to_fill = "He/Him"
                         filled.append("Pronouns")
-                    elif "why" in lt and "join" in lt:
+                    elif "why" in lt and ("join" in lt or "apply" in lt):
                         ans_to_fill = "Excited by the engineering mission, modern architecture, and scale; eager to contribute to robust distributed data pipelines and platform observability."
                         filled.append("Why Join")
                     elif "country" in lt or "based in" in lt:
                         ans_to_fill = "India"
                         filled.append("Country")
-                    elif "notice" in lt:
-                        ans_to_fill = f"{p.get('noticePeriodDays', '15')} Days"
-                        filled.append("Notice Period")
                     elif "refer" in lt:
                         ans_to_fill = "No"
                         filled.append("Referral")
@@ -2120,26 +2504,42 @@ class AshbyHandler(BaseATSHandler):
         except Exception:
             pass
 
-        # 5. Yes/No button widgets
+        # 5. Yes/No button widgets (+ radio Yes/No for Triomics-style disclosures)
         try:
             for container in page.locator("div.ashby-application-form-input-yesno").all():
                 try:
                     txt = container.locator("xpath=ancestor::div[2]").first.inner_text().lower()
-                    if any(w in txt for w in ("office", "join us", "hybrid", "onsite")):
+                    want_yes = any(
+                        w in txt
+                        for w in (
+                            "office",
+                            "join us",
+                            "hybrid",
+                            "onsite",
+                            "on-site",
+                            "commuting",
+                            "comfortable commuting",
+                            "buy out",
+                            "buyout",
+                            "buy-out",
+                        )
+                    )
+                    want_no = any(w in txt for w in ("sponsorship", "require visa", "visa sponsorship"))
+                    if want_yes:
                         yes_btn = container.locator("button[data-option='yes']").first
                         if safe_count(yes_btn) > 0:
                             yes_btn.click()
-                            filled.append("In-Office / Hybrid (Yes)")
+                            filled.append("Yes/No disclosure (Yes)")
                             self.record_field(
-                                label="In-Office / Hybrid",
+                                label="Yes/No disclosure",
                                 value="Yes",
                                 field_name="yes_no_button",
                                 field_type="button_toggle",
                                 step=1,
                                 step_name="CUSTOM_SCREENING",
-                                action_type="CLICKED"
+                                action_type="CLICKED",
                             )
-                    elif any(w in txt for w in ("sponsorship", "require visa")):
+                    elif want_no:
                         no_btn = container.locator("button[data-option='no']").first
                         if safe_count(no_btn) > 0:
                             no_btn.click()
@@ -2151,10 +2551,95 @@ class AshbyHandler(BaseATSHandler):
                                 field_type="button_toggle",
                                 step=1,
                                 step_name="CUSTOM_SCREENING",
-                                action_type="CLICKED"
+                                action_type="CLICKED",
                             )
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+        # 5b. Field-level Yes/No radios (commute / buy-out / authorization)
+        try:
+            for ff in page.locator("div[class*='field'], fieldset, div.ashby-application-form-field-entry").all():
+                try:
+                    if not ff.is_visible():
+                        continue
+                    ftxt = (ff.inner_text() or "").lower()
+                    if not ftxt:
+                        continue
+                    radios = ff.locator("input[type='radio'], button[data-option]")
+                    if safe_count(radios) == 0:
+                        continue
+                    pick_yes = any(
+                        k in ftxt
+                        for k in (
+                            "comfortable commuting",
+                            "commuting to this location",
+                            "buy out",
+                            "buyout",
+                            "on-site position",
+                            "onsite position",
+                        )
+                    )
+                    pick_no = any(k in ftxt for k in ("sponsorship", "require visa", "authorized to work")) and "comfortable" not in ftxt
+                    if "authorized to work" in ftxt or "legally authorized" in ftxt or "eligible to work" in ftxt:
+                        pick_yes, pick_no = True, False
+                    if not pick_yes and not pick_no:
+                        continue
+                    target = "yes" if pick_yes else "no"
+                    btn = ff.locator(f"button[data-option='{target}']").first
+                    if safe_count(btn) > 0 and btn.is_visible():
+                        btn.click()
+                        filled.append(f"Disclosure radio ({target})")
+                        continue
+                    # Native radios labeled Yes/No
+                    lab = ff.get_by_label(re.compile(rf"^{target}$", re.I)).first
+                    if safe_count(lab) > 0:
+                        lab.click(force=True)
+                        filled.append(f"Disclosure radio ({target})")
+                        continue
+                    opt = ff.locator(f"label:has-text('{target.title()}'), text={target.title()}").first
+                    if safe_count(opt) > 0:
+                        opt.click(force=True)
+                        filled.append(f"Disclosure radio ({target})")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # 5c. Technical skills checklist — check relevant production infra skills
+        try:
+            skill_needles = (
+                "python",
+                "docker",
+                "kubernetes",
+                "aws",
+                "azure",
+                "ci/cd",
+                "terraform",
+                "mlops",
+                "databricks",
+                "spark",
+                "sql",
+                "linux",
+                "monitoring",
+                "prometheus",
+                "grafana",
+            )
+            for cb in page.locator("input[type='checkbox']").all():
+                try:
+                    if not cb.is_visible() or cb.is_checked():
+                        continue
+                    parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
+                    txt = (parent.inner_text() if safe_count(parent) > 0 else "") or ""
+                    tl = txt.lower()
+                    if "technical skills" in tl or "checklist" in tl or any(n in tl for n in skill_needles):
+                        # Only auto-check when the option itself matches a known skill
+                        if any(n in tl for n in skill_needles):
+                            cb.check(force=True)
+                            filled.append(f"Skill checklist: {txt.strip()[:40]}")
+                except Exception:
+                    continue
         except Exception:
             pass
 
@@ -2327,7 +2812,31 @@ class AshbyHandler(BaseATSHandler):
         while time.time() - start < timeout:
             try:
                 url = (getattr(page, "url", "") or "").lower()
-                if "/confirmation" in url or "/submitted" in url:
+                if "/confirmation" in url or "/submitted" in url or "/thanks" in url:
+                    return True
+                body_txt = ""
+                try:
+                    if hasattr(page, "evaluate"):
+                        body_txt = (
+                            page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''") or ""
+                        ).lower()
+                except Exception:
+                    pass
+                # Sentry/Ashby toast: "Success — Your application was successfully submitted!"
+                if any(
+                    phrase in body_txt
+                    for phrase in (
+                        "successfully submitted",
+                        "application was successfully submitted",
+                        "your application has been submitted",
+                        "thank you for applying",
+                        "thanks for applying",
+                        "we have received your application",
+                        "application received",
+                        "we'll contact you if there are next steps",
+                        "we will contact you if there are next steps",
+                    )
+                ):
                     return True
                 conf_selectors = [
                     "h1:has-text('Application Submitted')",
@@ -2337,10 +2846,13 @@ class AshbyHandler(BaseATSHandler):
                     "h1:has-text('Thanks for applying')",
                     "h2:has-text('Thanks for applying')",
                     "div:has-text('Your application has been submitted')",
+                    "div:has-text('successfully submitted')",
                     "div:has-text('Thank you for applying')",
                     "div:has-text('Thanks for applying')",
                     "div:has-text('We have received your application')",
                     "div:has-text('Application received')",
+                    "[role='status']:has-text('Success')",
+                    "[role='alert']:has-text('Success')",
                     ".ashby-application-form-success",
                     "[data-testid='application-success']"
                 ]
@@ -2957,6 +3469,19 @@ class WorkdayHandler(BaseATSHandler):
                 self._ensure_workday_login_surface(page)
                 fields_ready = self._workday_sign_in_ready(page)
             if not fields_ready:
+                # Tenant pages often land on job marketing / verify-ok with no auth inputs.
+                # Force applyManually → login surface before abandoning vault auth.
+                try:
+                    if job_url:
+                        page.goto(job_url, wait_until="domcontentloaded", timeout=45000)
+                        time.sleep(1.0)
+                    self._workday_goto_apply_manually(page)
+                    self.dismiss_workday_overlays(page, max_rounds=3)
+                    self._ensure_workday_login_surface(page)
+                    fields_ready = self.wait_for_workday_sign_in_fields(page, timeout_sec=12.0) or self._workday_sign_in_ready(page)
+                except Exception as e_force:
+                    logger.debug("Workday force login-surface notice: %s", e_force)
+            if not fields_ready:
                 logger.warning("Workday vault auth blocked: sign-in fields never appeared")
                 return False
 
@@ -3198,8 +3723,19 @@ class WorkdayHandler(BaseATSHandler):
                         time.sleep(2)
                         if _auth_cleared() or _auth_cleared_early():
                             return True
-                        # Many tenants land on /login/ok after verify — Sign In with vault password
+                        # Many tenants land on /login/ok or a blank verify page with no inputs.
+                        # Return to apply/login surface, then Sign In with vault password.
                         self.dismiss_workday_overlays(page, max_rounds=2)
+                        if not (self._workday_sign_in_ready(page) or "/login" in self._workday_url_path(page)):
+                            try:
+                                if job_key_url:
+                                    page.goto(job_key_url, wait_until="domcontentloaded", timeout=45000)
+                                    time.sleep(1.0)
+                                    self._workday_goto_apply_manually(page)
+                                self._ensure_workday_login_surface(page)
+                                self.wait_for_workday_sign_in_fields(page, timeout_sec=10.0)
+                            except Exception as e_back:
+                                logger.debug("Post-verify return-to-apply notice: %s", e_back)
                         if self._workday_sign_in_ready(page) or "/login" in self._workday_url_path(page):
                             for cand in pwd_candidates:
                                 if _try_sign_in_with_password(cand):
@@ -3209,6 +3745,17 @@ class WorkdayHandler(BaseATSHandler):
                             time.sleep(1.5)
                             if _auth_cleared() or _auth_cleared_early():
                                 return True
+                            # One more apply deep-link after cookie set
+                            try:
+                                if job_key_url:
+                                    page.goto(job_key_url, wait_until="domcontentloaded", timeout=45000)
+                                    time.sleep(1.0)
+                                    self._workday_goto_apply_manually(page)
+                                    time.sleep(1.5)
+                                if _auth_cleared() or _auth_cleared_early():
+                                    return True
+                            except Exception:
+                                pass
                     otp = fetch_ats_email_code(since_ts=t_verify - 5, timeout_sec=45.0)
                     if otp:
                         otp_loc = page.locator(
@@ -3486,11 +4033,23 @@ class WorkdayHandler(BaseATSHandler):
         except Exception:
             pass
 
+        def _india_national_phone(raw: Optional[str]) -> str:
+            """National digits only — never lstrip('+91') (char-class strip mangles numbers)."""
+            digits = re.sub(r"\D", "", raw or "") or "919122036484"
+            if digits.startswith("91") and len(digits) >= 12:
+                digits = digits[2:]
+            if digits.startswith("0") and len(digits) == 11:
+                digits = digits[1:]
+            return digits or "9122036484"
+
+        phone_national = _india_national_phone(p.get("phone") or "+919122036484")
+
         field_map = [
             ("input[data-automation-id='legalNameSection_firstName']", p.get("firstName", "Lavkush"), "First Name"),
             ("input[data-automation-id='legalNameSection_lastName']", p.get("lastName", "Kumar"), "Last Name"),
             ("input[data-automation-id='email'], input[data-automation-id='contactInfoEmail']", p.get("email", "lav84095@gmail.com"), "Email"),
-            ("input[data-automation-id='phone-number'], input[data-automation-id='phoneNumber']", p.get("phone", "+919122036484"), "Phone"),
+            # Country Phone Code is a separate multiselect — keep national digits only here
+            ("input[data-automation-id='phone-number'], input[data-automation-id='phoneNumber']", phone_national, "Phone"),
             ("input[data-automation-id='addressSection_city']", p.get("city", "Hyderabad"), "City"),
             ("input[data-automation-id='addressSection_postalCode']", p.get("postalCode", "500081"), "Postal Code"),
             ("input[data-automation-id='addressSection_addressLine1']", p.get("address", "HITEC City, Madhapur"), "Address Line 1"),
@@ -3500,8 +4059,8 @@ class WorkdayHandler(BaseATSHandler):
             ("First Name", p.get("firstName", "Lavkush")),
             ("Last Name", p.get("lastName", "Kumar")),
             ("Email", p.get("email", "lav84095@gmail.com")),
-            ("Phone Number", (p.get("phone") or "+919122036484").lstrip("+91").lstrip("0") or "9122036484"),
-            ("Phone", (p.get("phone") or "+919122036484").lstrip("+91").lstrip("0") or "9122036484"),
+            ("Phone Number", phone_national),
+            ("Phone", phone_national),
             ("Address Line 1", p.get("address", "HITEC City, Madhapur")),
             ("City", p.get("city", "Hyderabad")),
             ("Postal Code", p.get("postalCode", "500081")),
@@ -3539,9 +4098,17 @@ class WorkdayHandler(BaseATSHandler):
                     cur = loc.input_value() or ""
                 except Exception:
                     pass
-                if cur.strip():
+                is_phone = "phone" in label.lower()
+                # Overwrite mangled/international phone left by prior fills when Country Code is separate
+                bad_phone = is_phone and (
+                    cur.strip().startswith("+")
+                    or "91" + phone_national in re.sub(r"\D", "", cur)
+                    or (re.sub(r"\D", "", cur) and re.sub(r"\D", "", cur) != phone_national)
+                )
+                if cur.strip() and not bad_phone:
                     return True
                 loc.click(force=True)
+                loc.fill("", force=True)
                 loc.fill(str(value), force=True)
                 return True
             except Exception:
@@ -3604,7 +4171,15 @@ class WorkdayHandler(BaseATSHandler):
                                     val_cur = iv
                             except Exception:
                                 pass
-                        if not val_cur:
+                        is_phone = "phone" in label.lower()
+                        cur_digits = re.sub(r"\D", "", val_cur or "")
+                        bad_phone = is_phone and (
+                            (val_cur or "").strip().startswith("+")
+                            or (cur_digits and cur_digits != re.sub(r"\D", "", str(val)))
+                        )
+                        if not val_cur or bad_phone:
+                            if bad_phone:
+                                loc.fill("")
                             loc.fill(str(val))
                             filled.append(label)
                             self.record_field(
@@ -3636,74 +4211,810 @@ class WorkdayHandler(BaseATSHandler):
 
             # 1a2. Previously worked here? → No
             try:
+                prev_ok = False
                 no_radio = page.get_by_role("radio", name=re.compile(r"^no$", re.I)).first
                 if safe_count(no_radio) == 0:
                     no_radio = page.locator(
                         "input[type='radio'][value='No'], label:has-text('No') input[type='radio']"
                     ).first
                 if safe_count(no_radio) > 0 and no_radio.is_visible():
-                    no_radio.check(force=True)
+                    no_radio.check(force=True, timeout=4000)
+                    prev_ok = True
+                if not prev_ok:
+                    # Embitel: radios lack accessible name — click label under the question block
+                    lbl = page.locator(
+                        "xpath=//*[contains(.,'Previously worked')]/ancestor::div[contains(@data-automation-id,'formField')][1]"
+                        "//label[normalize-space()='No' or contains(.,'No')]"
+                    ).first
+                    if safe_count(lbl) > 0 and lbl.is_visible():
+                        lbl.click(force=True, timeout=4000)
+                        prev_ok = True
+                if prev_ok:
                     filled.append("Previously Worked: No")
             except Exception:
                 pass
 
-            # 1b. Workday 'How Did You Hear About Us?' multiselect (Embitel has no automation id)
+            # 1b. Workday 'How Did You Hear About Us?' — Embitel formField-source multiselect
+            # Clicks on promptLeafNode/promptOption do NOT stick; Space after ArrowDown does
+            # (selects the highlighted menuItem — often Job Fair / Fair / Event).
             try:
                 src_filled = False
-                # Jump via validation error button when present
-                err_src = page.locator("button:has-text('How Did You Hear'), a:has-text('How Did You Hear')").first
-                if safe_count(err_src) > 0 and err_src.is_visible():
+                src_root = page.locator("div[data-automation-id='formField-source']").first
+
+                def _source_status() -> str:
+                    if safe_count(src_root) == 0:
+                        return ""
                     try:
-                        err_src.click(force=True)
-                        time.sleep(0.3)
+                        return (src_root.inner_text() or "").strip()
                     except Exception:
-                        pass
-                for opener in (
-                    "div[data-automation-id='formField-sourcePrompt'] input",
-                    "div[data-automation-id='formField-sourcePrompt'] button",
-                    "input[data-automation-id='searchBox']",
-                    "xpath=//*[contains(., 'How Did You Hear About Us')]/following::input[1]",
-                    "xpath=//*[contains(., 'How Did You Hear About Us')]/following::button[1]",
-                    "[data-automation-id='multiSelectContainer']",
-                ):
+                        return ""
+
+                def _source_has_selection(txt: str) -> bool:
+                    low = (txt or "").lower()
+                    if not low or "0 items selected" in low:
+                        return False
+                    return "item selected" in low or any(
+                        k in low
+                        for k in (
+                            "linkedin",
+                            "social media",
+                            "website",
+                            "fair",
+                            "event",
+                            "job fair",
+                            "career site",
+                            "other",
+                        )
+                    )
+
+                try:
+                    shown0 = _source_status()
+                    if _source_has_selection(shown0) and "expanded" not in shown0.lower().split("\n")[0:2]:
+                        # Already has a chip (ignore Expanded-only state)
+                        if "expanded" not in shown0.lower() or "item selected" in shown0.lower():
+                            if "item selected" in shown0.lower() or any(
+                                k in shown0.lower() for k in ("linkedin", "social", "website", "fair", "other")
+                            ):
+                                src_filled = True
+                                filled.append(f"Source: already set ({shown0.split(chr(10))[0][:60]})")
+                except Exception:
+                    pass
+
+                if not src_filled and safe_count(src_root) > 0:
+                    err_src = page.locator(
+                        "button:has-text('How Did You Hear'), a:has-text('How Did You Hear')"
+                    ).first
+                    if safe_count(err_src) > 0 and err_src.is_visible():
+                        try:
+                            err_src.click(force=True)
+                            time.sleep(0.3)
+                        except Exception:
+                            pass
+
+                    opener = src_root.locator(
+                        "[data-automation-id='multiselectInputContainer'], "
+                        "[data-automation-id='multiSelectContainer']"
+                    ).first
+                    if safe_count(opener) == 0:
+                        opener = src_root
+
+                    # Embitel options: Job Fair / Other / Social Media / Website (no LinkedIn)
+                    source_prefs = ("Social Media", "Website", "Job Fair", "Other", "LinkedIn", "Career Site")
                     try:
-                        src_box = page.locator(opener).first
-                        if safe_count(src_box) == 0 or not src_box.is_visible():
-                            continue
-                        src_box.click(force=True)
-                        time.sleep(0.4)
-                        typed = page.locator(
-                            "input[data-automation-id='searchBox'], input[placeholder*='Search' i]"
-                        ).first
-                        if safe_count(typed) > 0 and typed.is_visible():
-                            typed.fill("LinkedIn")
-                            time.sleep(0.45)
-                        prompt_opt = page.get_by_role("option").filter(has_text="LinkedIn").first
-                        if safe_count(prompt_opt) == 0:
-                            prompt_opt = page.locator(
-                                "div[data-automation-id='promptOption']:has-text('LinkedIn'), "
-                                "[role='option']:has-text('LinkedIn')"
-                            ).first
-                        if safe_count(prompt_opt) > 0 and prompt_opt.is_visible():
-                            prompt_opt.click(force=True)
-                            filled.append("Source: LinkedIn")
-                            src_filled = True
-                            # close multiselect
+                        chosen_src = None
+
+                        def _source_menu_options() -> List[Dict[str, Any]]:
+                            try:
+                                return page.evaluate(
+                                    """() => Array.from(
+                                      document.querySelectorAll('[data-automation-id=menuItem][role=option]')
+                                    ).map(e => ({
+                                      text: (e.innerText || '').trim(),
+                                      sel: e.getAttribute('aria-selected'),
+                                      checked: (e.querySelector('[data-automation-checked]') || e)
+                                        .getAttribute('data-automation-checked')
+                                    }))"""
+                                ) or []
+                            except Exception:
+                                return []
+
+                        def _commit_source_hierarchical(type_filter: Optional[str] = None) -> Optional[str]:
+                            """Embitel source is a 2-level multiselect: Space drills, second Space checks leaf."""
                             try:
                                 page.keyboard.press("Escape")
                             except Exception:
                                 pass
-                            break
-                    except Exception:
-                        continue
+                            time.sleep(0.25)
+                            opener.click(force=True)
+                            time.sleep(0.55)
+                            # Wait for top-level source options (Job Fair / Website / …)
+                            for _ in range(15):
+                                texts = " ".join(o.get("text", "").lower() for o in _source_menu_options())
+                                if any(k in texts for k in ("job fair", "social media", "website", "other")):
+                                    break
+                                time.sleep(0.2)
+                            typed = src_root.locator("input").first
+                            if type_filter and safe_count(typed) > 0 and typed.is_visible():
+                                try:
+                                    typed.click()
+                                    typed.fill("")
+                                    typed.type(type_filter, delay=35)
+                                    time.sleep(0.5)
+                                except Exception:
+                                    pass
+                            # Level 1: highlight first/matching option, Space to drill (or check if leaf)
+                            page.keyboard.press("ArrowDown")
+                            time.sleep(0.18)
+                            page.keyboard.press("Space")
+                            time.sleep(0.55)
+                            shown = _source_status()
+                            if "item selected" in shown.lower() and "0 items" not in shown.lower():
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                time.sleep(0.2)
+                                return shown
+                            # Level 2: child list (e.g. Fair / Event, Naukri) — Space checks leaf
+                            kids = _source_menu_options()
+                            if kids:
+                                page.keyboard.press("ArrowDown")
+                                time.sleep(0.15)
+                                page.keyboard.press("Space")
+                                time.sleep(0.55)
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                            time.sleep(0.25)
+                            shown = _source_status()
+                            low = shown.lower()
+                            if "0 items selected" in low or "item selected" not in low:
+                                return None
+                            chip = None
+                            for line in shown.split("\n"):
+                                ll = line.strip().lower()
+                                if not ll or "hear" in ll or ll == "expanded" or "item selected" in ll:
+                                    continue
+                                chip = line.strip()
+                                break
+                            return chip or "selected"
+
+                        # Filter first — unfiltered ArrowDown+Space often lands on Job Fair / Military
+                        for filt in ("Website", "Social", "Other", "LinkedIn", None):
+                            chosen_src = _commit_source_hierarchical(filt)
+                            if chosen_src:
+                                # Reject military / recruiting-event leaves when a better pass may work
+                                low = (chosen_src or "").lower()
+                                if "military" in low and filt is not None:
+                                    chosen_src = None
+                                    continue
+                                break
+
+                        if chosen_src:
+                            filled.append(f"Source: {chosen_src}")
+                            src_filled = True
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                            time.sleep(0.25)
+                    except Exception as e_src:
+                        logger.debug("Workday source multiselect notice: %s", e_src)
+
                 if not src_filled:
                     logger.debug("Workday source prompt not filled this step")
             except Exception:
                 pass
 
-            # 2. General Text Inputs & Textareas on current step (fact-matrix solver backed)
+            # 1c. State / Province (Embitel formField-countryRegion) — required after Country=India
+            # Options use diacritics (Telangāna, Karnātaka) — type-filter then substring match.
             try:
-                for inp in page.locator("input[data-automation-id]:not([type='file']):not([type='checkbox']):not([type='radio']), textarea[data-automation-id]").all():
+                state_ff = page.locator(
+                    "div[data-automation-id='formField-countryRegion'], "
+                    "div[data-automation-id='formField-region'], "
+                    "div[data-automation-id='formField-state']"
+                ).first
+                if safe_count(state_ff) > 0 and state_ff.is_visible():
+                    st_txt = (state_ff.inner_text() or "").lower()
+                    already = any(
+                        k in st_txt
+                        for k in ("telang", "karnat", "maharash", "andhra", "tamil", "delhi")
+                    )
+                    needs_state = (not already) and (
+                        "select one" in st_txt or "error" in st_txt or "state" in st_txt
+                    )
+                    if needs_state:
+                        city = (p.get("city") or "Hyderabad").lower()
+                        # Hyderabad → Telangana; Bangalore → Karnataka
+                        state_prefs = (
+                            ("Telangana", "Karnataka", "Andhra Pradesh")
+                            if "hyderabad" in city or "secunderabad" in city
+                            else ("Karnataka", "Telangana", "Maharashtra", "Andhra Pradesh")
+                        )
+                        btn = state_ff.locator(
+                            "button, [data-automation-id*='Dropdown' i], [aria-haspopup='listbox']"
+                        ).first
+                        if safe_count(btn) == 0:
+                            btn = page.get_by_role("button", name=re.compile(r"select one|state", re.I)).first
+                        if safe_count(btn) > 0 and btn.is_visible():
+                            picked = None
+                            for pref in state_prefs:
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                time.sleep(0.15)
+                                try:
+                                    btn.click(force=True, timeout=5000)
+                                except Exception:
+                                    break
+                                time.sleep(0.45)
+                                # Type filters the virtualized list (Telangāna etc.)
+                                try:
+                                    page.keyboard.type(pref, delay=35)
+                                except Exception:
+                                    pass
+                                time.sleep(0.7)
+                                opts = page.locator(
+                                    "[data-automation-id='promptOption'], [role='option']"
+                                )
+                                needle = pref[:6].lower()  # telang / karnat / andhra / mahara
+                                try:
+                                    texts = [t.strip() for t in opts.all_inner_texts() if t and t.strip()]
+                                except Exception:
+                                    texts = []
+                                match = next((t for t in texts if needle in t.lower()), None)
+                                if match:
+                                    try:
+                                        opts.filter(has_text=match).first.click(force=True, timeout=5000)
+                                        picked = match
+                                        time.sleep(0.35)
+                                        break
+                                    except Exception:
+                                        continue
+                            if picked:
+                                filled.append(f"State: {picked}")
+                            else:
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+            except Exception as e_st:
+                logger.debug("Workday state fill notice: %s", e_st)
+
+            # 1c2. Country Phone Code — virtualized list starts at Afghanistan; must type-filter India (+91)
+            try:
+                phone_code_ff = page.locator(
+                    "div[data-automation-id='formField-countryPhoneCode'], "
+                    "div[data-automation-id='formField-phoneCountry'], "
+                    "div[data-automation-id*='countryPhone' i], "
+                    "div[data-automation-id*='phoneCountry' i]"
+                ).first
+                if safe_count(phone_code_ff) == 0:
+                    # Label fallback (Ecolab / tenants without stable automation ids)
+                    phone_code_ff = page.locator(
+                        "xpath=//div[starts-with(@data-automation-id,'formField-')]"
+                        "[.//text()[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'country phone')"
+                        " or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'phone code')]]"
+                    ).first
+                if safe_count(phone_code_ff) > 0 and phone_code_ff.is_visible():
+                    pc_txt = (phone_code_ff.inner_text() or "").lower()
+                    already_india = (
+                        ("india" in pc_txt and "+91" in pc_txt)
+                        or ("india" in pc_txt and "ocean" not in pc_txt and "afghanistan" not in pc_txt and "item selected" in pc_txt)
+                    )
+                    needs_pc = (not already_india) and (
+                        "select one" in pc_txt
+                        or "afghanistan" in pc_txt
+                        or "+93" in pc_txt
+                        or "0 items" in pc_txt
+                        or "error" in pc_txt
+                        or "country phone" in pc_txt
+                        or "phone code" in pc_txt
+                    )
+                    if needs_pc:
+                        opener = phone_code_ff.locator(
+                            "[data-automation-id='multiselectInputContainer'], "
+                            "[data-automation-id='multiSelectContainer'], "
+                            "button[aria-haspopup='listbox'], button"
+                        ).first
+                        if safe_count(opener) == 0:
+                            opener = phone_code_ff
+                        picked_pc = None
+                        for filt in ("India", "+91", "91"):
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                            time.sleep(0.15)
+                            try:
+                                opener.click(force=True, timeout=5000)
+                            except Exception:
+                                break
+                            time.sleep(0.45)
+                            typed = phone_code_ff.locator("input").first
+                            if safe_count(typed) > 0 and typed.is_visible():
+                                try:
+                                    typed.click()
+                                    typed.fill("")
+                                    typed.type(filt, delay=35)
+                                except Exception:
+                                    try:
+                                        page.keyboard.type(filt, delay=35)
+                                    except Exception:
+                                        pass
+                            else:
+                                try:
+                                    page.keyboard.type(filt, delay=35)
+                                except Exception:
+                                    pass
+                            time.sleep(0.7)
+                            opts = page.locator(
+                                "[data-automation-id='promptOption'], [role='option']"
+                            )
+                            try:
+                                texts = [t.strip() for t in opts.all_inner_texts() if t and t.strip()]
+                            except Exception:
+                                texts = []
+                            match = None
+                            for t in texts:
+                                tl = t.lower()
+                                if tl in ("india", "india (+91)", "+91", "+91 india") or re.search(
+                                    r"india\s*\(\s*\+?91\s*\)|\+?91\b.*india", tl
+                                ):
+                                    if "ocean" not in tl and "indiana" not in tl:
+                                        match = t
+                                        break
+                            if not match:
+                                match = next(
+                                    (
+                                        t
+                                        for t in texts
+                                        if "india" in t.lower()
+                                        and "ocean" not in t.lower()
+                                        and "indiana" not in t.lower()
+                                    ),
+                                    None,
+                                )
+                            if match:
+                                try:
+                                    opts.filter(has_text=match).first.click(force=True, timeout=5000)
+                                    picked_pc = match
+                                    time.sleep(0.35)
+                                    break
+                                except Exception:
+                                    continue
+                        if picked_pc:
+                            filled.append(f"Country Phone Code: {picked_pc}")
+                        else:
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+            except Exception as e_pc:
+                logger.debug("Workday country phone code fill notice: %s", e_pc)
+
+            # 1d. Skills (Embitel formField-skills) — type + Enter triggers /skillsearch, then Space-select
+            try:
+                skills_ff = page.locator("div[data-automation-id='formField-skills']").first
+                if safe_count(skills_ff) > 0 and skills_ff.is_visible():
+                    sk_txt = (skills_ff.inner_text() or "").lower()
+                    needs_skills = "0 items selected" in sk_txt or "error" in sk_txt or "item selected" not in sk_txt
+                    if needs_skills:
+                        skill_list = p.get("skills") or []
+                        # Prefer searchable short tokens that hit Workday skillsearch taxonomy
+                        skill_queries = []
+                        for s in skill_list:
+                            if isinstance(s, str) and s.strip():
+                                skill_queries.append(s.strip())
+                        for extra in ("Python", "Kubernetes", "Docker", "AWS", "Terraform", "SQL", "MLOps"):
+                            if extra not in skill_queries:
+                                skill_queries.append(extra)
+                        container = skills_ff.locator(
+                            "[data-automation-id='multiselectInputContainer'], "
+                            "[data-automation-id='multiSelectContainer']"
+                        ).first
+                        added = 0
+                        for q in skill_queries[:8]:
+                            if added >= 5:
+                                break
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                            time.sleep(0.15)
+                            if safe_count(container) == 0:
+                                break
+                            try:
+                                container.click(force=True, timeout=5000)
+                            except Exception:
+                                break
+                            time.sleep(0.35)
+                            inp = skills_ff.locator("input").first
+                            if safe_count(inp) == 0 or not inp.is_visible():
+                                break
+                            try:
+                                # Use first significant token for search (e.g. "Azure Databricks" → "Databricks")
+                                token = q
+                                parts = re.split(r"[\s/()]+", q)
+                                parts = [x for x in parts if len(x) > 2 and x.lower() not in ("and", "the", "for")]
+                                if parts:
+                                    token = max(parts, key=len)[:40]
+                                inp.click()
+                                inp.fill("")
+                                inp.type(token, delay=40)
+                                page.keyboard.press("Enter")  # triggers CXS skillsearch
+                                time.sleep(1.2)
+                                # wait for real options (not "No Items.")
+                                ready = False
+                                for _ in range(12):
+                                    opts = page.evaluate(
+                                        """() => Array.from(
+                                          document.querySelectorAll('[data-automation-id=menuItem][role=option]')
+                                        ).map(e => (e.innerText||'').trim()).filter(t => t && !/^no items/i.test(t))"""
+                                    ) or []
+                                    if opts:
+                                        ready = True
+                                        break
+                                    time.sleep(0.25)
+                                if not ready:
+                                    continue
+                                page.keyboard.press("ArrowDown")
+                                time.sleep(0.12)
+                                page.keyboard.press("Space")
+                                time.sleep(0.45)
+                                # hierarchical leaf if still open with children
+                                cur_mid = (skills_ff.inner_text() or "").lower()
+                                if "item selected" not in cur_mid or "0 items" in cur_mid:
+                                    more = page.evaluate(
+                                        """() => Array.from(
+                                          document.querySelectorAll('[data-automation-id=menuItem][role=option]')
+                                        ).map(e => (e.innerText||'').trim()).filter(Boolean)"""
+                                    ) or []
+                                    if more:
+                                        page.keyboard.press("ArrowDown")
+                                        time.sleep(0.1)
+                                        page.keyboard.press("Space")
+                                        time.sleep(0.35)
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                time.sleep(0.2)
+                                cur = (skills_ff.inner_text() or "").lower()
+                                if "item selected" in cur and "0 items" not in cur:
+                                    added += 1
+                                    filled.append(f"Skill: {token}")
+                            except Exception:
+                                continue
+                        if added:
+                            logger.info("Workday skills added: %s", added)
+            except Exception as e_sk:
+                logger.debug("Workday skills fill notice: %s", e_sk)
+
+            # 1e. Application Questions — fill each formField-* in isolation (Embitel AQ has no automation-ids)
+            try:
+                aq_fields = page.locator("div[data-automation-id^='formField-']").all()
+                for ff in aq_fields:
+                    try:
+                        if not ff.is_visible():
+                            continue
+                        raw = (ff.inner_text() or "").strip()
+                        if not raw:
+                            continue
+                        q_label = raw.split("\n")[0].strip()
+                        q_l = q_label.lower()
+                        # Skip contact/identity fields already handled
+                        # NOTE: do NOT skip on bare "country" — "authorised to work in the country" is an AQ
+                        if any(
+                            k in q_l
+                            for k in (
+                                "first name",
+                                "last name",
+                                "email",
+                                "phone",
+                                "address",
+                                "postal",
+                                "how did you hear",
+                                "type to add skills",
+                            )
+                        ):
+                            continue
+                        if q_l.strip() in ("country*", "country", "state*", "state", "city*", "city"):
+                            continue
+                        if q_l.startswith("country phone") or q_l.startswith("phone device"):
+                            continue
+
+                        # Textarea / text answers
+                        ta = ff.locator("textarea, input[type='text']").first
+                        if safe_count(ta) > 0 and ta.is_visible():
+                            cur = ""
+                            try:
+                                cur = ta.input_value() or ""
+                            except Exception:
+                                pass
+                            bad = (not cur.strip()) or cur.strip().lower() in ("yes", "no") or cur.strip().startswith("(")
+                            if bad:
+                                ans = None
+                                if "overall work experience" in q_l or ("work experience" in q_l and "fresher" in q_l):
+                                    ans = str(p.get("experienceYears") or "2")
+                                elif "current company" in q_l:
+                                    ans = str(p.get("currentCompany") or "CGI India")
+                                else:
+                                    ans = solver_answer(self.solver, q_label, default="")
+                                if ans and ans.lower() not in ("yes", "no"):
+                                    try:
+                                        ta.click(force=True, timeout=3000)
+                                        ta.fill("")
+                                        ta.type(str(ans), delay=25)
+                                        ta.evaluate(
+                                            """e => {
+                                              e.dispatchEvent(new Event('input', {bubbles:true}));
+                                              e.dispatchEvent(new Event('change', {bubbles:true}));
+                                            }"""
+                                        )
+                                        page.keyboard.press("Tab")
+                                    except Exception:
+                                        ta.fill(str(ans))
+                                    filled.append(f"AQ Text: {q_label[:40]}={ans}")
+
+                        # Select One dropdowns inside this field only
+                        btn = ff.locator("button").filter(
+                            has_text=re.compile(r"select one|^yes$|^no$|immediate|\d+\s*-\s*\d+\s*days", re.I)
+                        ).first
+                        if safe_count(btn) == 0:
+                            btn = ff.locator("button[aria-haspopup='listbox'], button").first
+                        if safe_count(btn) == 0 or not btn.is_visible():
+                            continue
+                        btn_txt = (btn.inner_text() or "").strip().lower()
+                        needs = (
+                            btn_txt in ("", "select", "select one", "select...")
+                            or ("authoris" in q_l or "authoriz" in q_l or "eligible to work" in q_l) and btn_txt == "no"
+                        )
+                        if not needs and btn_txt not in ("select one", "select"):
+                            # already answered appropriately
+                            if any(k in q_l for k in ("authoris", "authoriz", "eligible")) and btn_txt == "yes":
+                                continue
+                            if any(k in q_l for k in ("career break", "legal proceeding", "connections")) and btn_txt == "no":
+                                continue
+                            if "notice" in q_l and "day" in btn_txt:
+                                continue
+
+                        want_yes = any(k in q_l for k in ("authoris", "authoriz", "eligible to work", "work permit"))
+                        want_no = any(k in q_l for k in ("career break", "legal proceeding", "connections with", "currently work for"))
+                        want_notice = "notice" in q_l
+                        want_gender = "gender" in q_l and "identity" not in q_l
+                        want_nationality = "nationality" in q_l or "citizenship" in q_l
+
+                        # Citizenship Status multiselect (Embitel Voluntary Disclosures)
+                        # Options after search: Citizen (India) / NRI (India) / Non Citizen (India)
+                        if "citizenship" in q_l and safe_count(
+                            ff.locator("[data-automation-id='multiselectInputContainer']")
+                        ) > 0:
+                            already = (ff.inner_text() or "").lower()
+                            if "item selected" in already and "0 items" not in already and "citizen" in already:
+                                continue
+                            token = str(p.get("country") or "India")
+                            picked_cit = None
+                            for attempt in range(2):
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                time.sleep(0.2)
+                                mc = ff.locator("[data-automation-id='multiselectInputContainer']").first
+                                mc.click(force=True, timeout=5000)
+                                time.sleep(0.45)
+                                inp = ff.locator("input").first
+                                if safe_count(inp) > 0 and inp.is_visible():
+                                    inp.click()
+                                    inp.fill("")
+                                    inp.type(token, delay=40)
+                                    page.keyboard.press("Enter")
+                                    time.sleep(1.3)
+                                # Wait for Citizen (India) style options
+                                for _ in range(12):
+                                    texts = [
+                                        t.strip()
+                                        for t in page.locator("[role='option']").all_inner_texts()
+                                        if t and t.strip() and t.strip().lower() != "select one"
+                                    ]
+                                    if any("citizen" in t.lower() and "india" in t.lower() for t in texts):
+                                        break
+                                    time.sleep(0.25)
+                                for pref in (
+                                    f"Citizen ({token})",
+                                    "Citizen (India)",
+                                    "Indian Citizen",
+                                ):
+                                    opt = page.get_by_role(
+                                        "option", name=re.compile(rf"^{re.escape(pref)}$", re.I)
+                                    ).first
+                                    if safe_count(opt) == 0:
+                                        opt = page.locator("[role='option']").filter(
+                                            has_text=re.compile(rf"^{re.escape(pref)}$", re.I)
+                                        ).first
+                                    if safe_count(opt) > 0:
+                                        try:
+                                            opt.click(force=True, timeout=5000)
+                                            picked_cit = pref
+                                            break
+                                        except Exception:
+                                            continue
+                                if not picked_cit:
+                                    # Prefer Citizen (India) text node — avoid NRI / Non Citizen
+                                    leaf = page.locator("[role='option']").filter(
+                                        has_text=re.compile(r"^Citizen\s*\(\s*India\s*\)$", re.I)
+                                    ).first
+                                    if safe_count(leaf) > 0:
+                                        try:
+                                            leaf.click(force=True, timeout=5000)
+                                            picked_cit = "Citizen (India)"
+                                        except Exception:
+                                            pass
+                                    if not picked_cit:
+                                        page.keyboard.press("ArrowDown")
+                                        time.sleep(0.12)
+                                        page.keyboard.press("Enter")
+                                        time.sleep(0.35)
+                                        picked_cit = "Citizen (keyboard)"
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                time.sleep(0.3)
+                                cur = (ff.inner_text() or "").lower()
+                                if "item selected" in cur and "0 items" not in cur:
+                                    filled.append(f"AQ Citizenship: {picked_cit}")
+                                    break
+                                picked_cit = None
+                            continue
+
+                        def _open_aq_options() -> List[str]:
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                            time.sleep(0.15)
+                            btn.click(force=True, timeout=5000)
+                            time.sleep(0.55)
+                            opts_loc = page.locator(
+                                "[data-automation-id='promptOption'], [role='option']"
+                            )
+                            found: List[str] = []
+                            for _ in range(12):
+                                found = [
+                                    o.strip()
+                                    for o in opts_loc.all_inner_texts()
+                                    if o.strip() and o.strip().lower() not in ("select one", "select")
+                                ]
+                                sourcey = found and all(
+                                    any(
+                                        k in o.lower()
+                                        for k in ("naukri", "job fair", "social media", "website", "fair / event")
+                                    )
+                                    for o in found
+                                )
+                                useful = any(
+                                    o.lower().strip() in ("yes", "no", "male", "female")
+                                    or "day" in o.lower()
+                                    or "immediate" in o.lower()
+                                    or "india" in o.lower()
+                                    or "indian" in o.lower()
+                                    or "citizen" in o.lower()
+                                    for o in found
+                                )
+                                if found and useful and not sourcey:
+                                    return found
+                                time.sleep(0.25)
+                            return found
+
+                        opts = _open_aq_options()
+                        # Retry once if Yes/No question opened the wrong menu
+                        if (want_yes or want_no) and not any(o.lower().strip() in ("yes", "no") for o in opts):
+                            opts = _open_aq_options()
+
+                        chosen = None
+                        if want_yes:
+                            chosen = next((o for o in opts if o.lower().strip() == "yes"), None)
+                        elif want_no:
+                            chosen = next((o for o in opts if o.lower().strip() == "no"), None)
+                        elif want_notice:
+                            days = int(re.sub(r"\D", "", str(p.get("noticePeriodDays") or "15")) or "15")
+                            bucket = "0 - 15" if days <= 15 else ("15 - 30" if days <= 30 else "30 - 45")
+                            chosen = next((o for o in opts if bucket in o.lower()), None)
+                            if not chosen:
+                                chosen = next((o for o in opts if "day" in o.lower()), None)
+                        elif want_gender:
+                            for pref in ("male", "man", "masculine"):
+                                chosen = next((o for o in opts if o.lower().strip() == pref or o.lower().startswith(pref)), None)
+                                if chosen:
+                                    break
+                        elif want_nationality:
+                            # Exact India / Indian — never "British Indian Ocean Territory"
+                            for o in opts:
+                                ol = o.lower().strip()
+                                if ol in ("india", "indian", "indian citizen", "citizen of india"):
+                                    chosen = o
+                                    break
+                            if not chosen:
+                                for o in opts:
+                                    ol = o.lower()
+                                    if (
+                                        ("india" in ol or "indian" in ol)
+                                        and "ocean" not in ol
+                                        and "indiana" not in ol
+                                        and "british indian" not in ol
+                                    ):
+                                        chosen = o
+                                        break
+                        if not chosen and opts:
+                            # never pick source leftovers
+                            safe_opts = [
+                                o for o in opts
+                                if not any(k in o.lower() for k in ("naukri", "job fair", "social media", "website"))
+                            ]
+                            chosen = solver_answer(self.solver, q_label, options=safe_opts or opts, default="")
+                            if chosen and chosen not in (safe_opts or opts):
+                                chosen = (safe_opts or opts)[0] if (safe_opts or opts) else None
+
+                        if chosen:
+                            clicked = False
+                            # Prefer exact option role inside the open list (avoid nth index on duplicate menus)
+                            try:
+                                exact = page.get_by_role("option", name=re.compile(rf"^{re.escape(chosen)}$", re.I)).first
+                                if safe_count(exact) > 0:
+                                    exact.click(force=True, timeout=4000)
+                                    clicked = True
+                            except Exception:
+                                pass
+                            if not clicked:
+                                try:
+                                    page.locator(
+                                        "[data-automation-id='promptOption'], [role='option']"
+                                    ).filter(has_text=re.compile(rf"^{re.escape(chosen)}$", re.I)).first.click(
+                                        force=True, timeout=4000
+                                    )
+                                    clicked = True
+                                except Exception:
+                                    pass
+                            if clicked:
+                                filled.append(f"AQ Dropdown: {q_label[:36]}={chosen}")
+                                time.sleep(0.35)
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                            else:
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                        else:
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
+                    except Exception:
+                        continue
+                # Commit AQ textareas (blur) before Next
+                try:
+                    page.keyboard.press("Tab")
+                except Exception:
+                    pass
+            except Exception as e_aq:
+                logger.debug("Workday AQ formField fill notice: %s", e_aq)
+
+            # 2. General Text Inputs & Textareas on current step (fact-matrix solver backed)
+            # Embitel Application Questions textareas often lack data-automation-id — include formField textareas
+            try:
+                for inp in page.locator(
+                    "input[data-automation-id]:not([type='file']):not([type='checkbox']):not([type='radio']), "
+                    "textarea[data-automation-id], "
+                    "div[data-automation-id^='formField'] textarea, "
+                    "div[data-automation-id^='formField'] input[type='text']"
+                ).all():
                     try:
                         if not inp.is_visible():
                             continue
@@ -3725,13 +5036,32 @@ class WorkdayHandler(BaseATSHandler):
                         auto_id = inp.get_attribute("data-automation-id") or ""
                         if any(k in auto_id.lower() for k in ["email", "phone", "name", "city", "postal", "searchbox"]):
                             continue
-                        parent = inp.locator("xpath=ancestor::div[contains(@data-automation-id,'formField')][1] | xpath=ancestor::div[1]").first
-                        lbl_text = parent.inner_text().strip().split("\n")[0] if safe_count(parent) > 0 else auto_id
-                        ans = self.solver.solve_question(lbl_text) if self.solver else "Yes"
-                        if any(k in lbl_text.lower() for k in ["linkedin", "website"]):
+                        parent = inp.locator(
+                            "xpath=ancestor::div[starts-with(@data-automation-id,'formField')][1]"
+                        ).first
+                        if safe_count(parent) == 0:
+                            parent = inp.locator(
+                                "xpath=ancestor::div[contains(@data-automation-id,'formField')][1]"
+                            ).first
+                        lbl_text = parent.inner_text().strip().split("\n")[0] if safe_count(parent) > 0 else ""
+                        if not lbl_text:
+                            continue
+                        lbl_l = lbl_text.lower()
+                        ans = solver_answer(self.solver, lbl_text, default="")
+                        if any(k in lbl_l for k in ["linkedin", "website"]):
                             ans = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                        elif "overall work experience" in lbl_l or ("work experience" in lbl_l and "fresher" in lbl_l):
+                            ans = str(p.get("experienceYears") or p.get("totalExperience") or "2")
+                        elif "current company" in lbl_l:
+                            ans = str(p.get("currentCompany") or "CGI India")
+                        elif "notice" in lbl_l and ("day" in lbl_l or "period" in lbl_l):
+                            ans = f"{p.get('noticePeriodDays', '30')} Days"
+                        if not ans or ans.lower() in ("yes", "no") and "experience" in lbl_l:
+                            continue
+                        if not ans:
+                            continue
                         inp.fill(str(ans))
-                        filled.append(f"Field ({lbl_text[:15]})")
+                        filled.append(f"Field ({lbl_text[:40]})")
                         self.record_field(
                             label=lbl_text,
                             value=ans,
@@ -3762,18 +5092,55 @@ class WorkdayHandler(BaseATSHandler):
                             continue
 
                         parent_ff = dd_btn.locator(
-                            "xpath=ancestor::div[contains(@data-automation-id,'formField')][1] | "
-                            "xpath=ancestor::div[contains(@class,'form')][1]"
+                            "xpath=ancestor::div[starts-with(@data-automation-id,'formField')][1]"
                         ).first
+                        if safe_count(parent_ff) == 0:
+                            parent_ff = dd_btn.locator(
+                                "xpath=ancestor::div[contains(@data-automation-id,'formField')][1] | "
+                                "xpath=ancestor::div[contains(@class,'form')][1]"
+                            ).first
                         q_label = parent_ff.inner_text().strip().split("\n")[0] if safe_count(parent_ff) > 0 else dd_id
                         q_l = q_label.lower()
+                        # Application Questions handled in §1e — do not re-open (overwrites Yes/No)
+                        if any(
+                            k in q_l
+                            for k in (
+                                "authoris",
+                                "authoriz",
+                                "eligible to work",
+                                "notice period",
+                                "career break",
+                                "legal proceeding",
+                                "connections with",
+                                "currently work for",
+                                "nature of relationship",
+                                "mention the reason",
+                                "overall work experience",
+                                "current company",
+                            )
+                        ):
+                            continue
 
-                        dd_btn.click()
-                        time.sleep(0.5)
+                        try:
+                            page.keyboard.press("Escape")
+                        except Exception:
+                            pass
+                        time.sleep(0.15)
+                        dd_btn.click(force=True, timeout=5000)
+                        time.sleep(0.55)
                         opts_loc = page.locator(
                             "div[data-automation-id='promptOption'], div[role='option'], li[role='option']"
                         )
-                        opts = [o.strip() for o in opts_loc.all_inner_texts() if o.strip()]
+                        opts = []
+                        for _ in range(10):
+                            opts = [
+                                o.strip()
+                                for o in opts_loc.all_inner_texts()
+                                if o.strip() and o.strip().lower() not in ("select one", "select", "select...")
+                            ]
+                            if opts:
+                                break
+                            time.sleep(0.25)
 
                         def _pick_india(options: List[str]) -> Optional[str]:
                             # Avoid "British Indian Ocean Territory" / Indiana false positives
@@ -3787,22 +5154,134 @@ class WorkdayHandler(BaseATSHandler):
                                     return o
                             return None
 
+                        def _pick_yes_no(options: List[str], want_yes: bool) -> Optional[str]:
+                            for o in options:
+                                ol = o.lower().strip()
+                                if want_yes and ol in ("yes", "y"):
+                                    return o
+                                if (not want_yes) and ol in ("no", "n"):
+                                    return o
+                            for o in options:
+                                ol = o.lower()
+                                if want_yes and ol.startswith("yes"):
+                                    return o
+                                if (not want_yes) and ol.startswith("no"):
+                                    return o
+                            return None
+
                         chosen = None
                         if any(k in q_l or k in dd_id.lower() for k in ("country", "phone code", "country phone")):
                             chosen = _pick_india(opts)
+                            # Virtualized phone-code lists often omit India until typed — never pick Afghanistan
+                            if not chosen and opts and any(
+                                k in q_l or k in dd_id.lower() for k in ("phone code", "country phone", "phonecode")
+                            ):
+                                try:
+                                    page.keyboard.type("India", delay=35)
+                                    time.sleep(0.7)
+                                    opts2 = [
+                                        o.strip()
+                                        for o in opts_loc.all_inner_texts()
+                                        if o.strip() and o.strip().lower() not in ("select one", "select")
+                                    ]
+                                    chosen = _pick_india(opts2) or _pick_india(opts)
+                                    if chosen:
+                                        opts = opts2 or opts
+                                except Exception:
+                                    pass
+                            if not chosen:
+                                # Leave unset rather than Afghanistan (+93) / first alpha country
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                continue
                         elif "state" in q_l or "province" in q_l:
                             for pref in ("karnataka", "telangana", "andhra pradesh", "maharashtra"):
                                 chosen = next((o for o in opts if pref in o.lower()), None)
                                 if chosen:
                                     break
                         elif "source" in dd_id.lower() or "hear" in q_l:
-                            chosen = next((o for o in opts if "linkedin" in o.lower() or "career site" in o.lower()), None)
+                            # Prefer LinkedIn/Website/Social — never bare "fair" (matches Military Career Fair)
+                            for pref in (
+                                "linkedin",
+                                "social media",
+                                "website",
+                                "career site",
+                                "company website",
+                                "job board",
+                                "naukri",
+                                "other",
+                            ):
+                                chosen = next((o for o in opts if pref in o.lower()), None)
+                                if chosen and "military" not in chosen.lower():
+                                    break
+                                chosen = None
+                            if not chosen:
+                                chosen = next(
+                                    (
+                                        o
+                                        for o in opts
+                                        if "job fair" in o.lower() and "military" not in o.lower()
+                                    ),
+                                    None,
+                                )
+                            # Do not default to opts[0] (often Military / first alpha)
                         elif "phone" in dd_id.lower() or "device" in dd_id.lower() or "device type" in q_l:
                             chosen = next((o for o in opts if "mobile" in o.lower()), None)
+                        elif any(
+                            k in q_l
+                            for k in (
+                                "authoris",
+                                "authoriz",
+                                "eligible to work",
+                                "legally",
+                                "work permit",
+                            )
+                        ):
+                            chosen = _pick_yes_no(opts, True)
+                        elif any(
+                            k in q_l
+                            for k in (
+                                "career break",
+                                "legal proceeding",
+                                "criminal",
+                                "connections with",
+                                "currently work for",
+                                "relative",
+                                "conflict of interest",
+                            )
+                        ):
+                            chosen = _pick_yes_no(opts, False)
+                        elif "notice" in q_l:
+                            # Embitel: Immediate / 0 - 15 days / 15 - 30 days / …
+                            days = int(re.sub(r"\D", "", str(p.get("noticePeriodDays") or "15")) or "15")
+                            ranges = [
+                                (0, 15, "0 - 15"),
+                                (15, 30, "15 - 30"),
+                                (30, 45, "30 - 45"),
+                                (45, 60, "45 - 60"),
+                                (60, 90, "60 - 90"),
+                            ]
+                            bucket = "15 - 30"
+                            for lo, hi, label in ranges:
+                                if lo <= days <= hi:
+                                    bucket = label
+                                    break
+                            for pref in (bucket, f"{days} day", "15 - 30", "0 - 15", "immediate"):
+                                chosen = next((o for o in opts if pref.lower() in o.lower()), None)
+                                if chosen:
+                                    break
+                            if not chosen and opts:
+                                chosen = opts[0]
                         elif any("prefer not" in o.lower() or "decline" in o.lower() or "do not wish" in o.lower() for o in opts):
-                            chosen = next((o for o in opts if any(x in o.lower() for x in ("prefer not", "decline", "do not wish"))), None)
+                            # Only for demographic/EEO-style prompts — not Yes/No screening
+                            if not any(o.lower().strip() in ("yes", "no") for o in opts):
+                                chosen = next((o for o in opts if any(x in o.lower() for x in ("prefer not", "decline", "do not wish"))), None)
+                            elif self.solver:
+                                chosen = solver_answer(self.solver, q_label, options=opts, default=opts[0])
                         elif self.solver and opts:
-                            chosen = self.solver.solve_question(q_label, options=opts)
+                            chosen = solver_answer(self.solver, q_label, options=opts, default=opts[0])
                         elif opts:
                             chosen = opts[0]
 
@@ -3812,7 +5291,7 @@ class WorkdayHandler(BaseATSHandler):
                             for oi, ot in enumerate(opts):
                                 if ot == chosen:
                                     try:
-                                        opts_loc.nth(oi).click(force=True)
+                                        opts_loc.nth(oi).click(force=True, timeout=5000)
                                         clicked = True
                                         break
                                     except Exception:
@@ -3820,7 +5299,7 @@ class WorkdayHandler(BaseATSHandler):
                             if not clicked:
                                 opt_match = page.get_by_role("option", name=chosen, exact=False).first
                                 if safe_count(opt_match) > 0:
-                                    opt_match.click(force=True)
+                                    opt_match.click(force=True, timeout=5000)
                                     clicked = True
                             if clicked:
                                 filled.append(f"Workday Dropdown: {chosen}")
@@ -3833,6 +5312,11 @@ class WorkdayHandler(BaseATSHandler):
                                     step_name=f"WIZARD_STEP_{wizard_step}",
                                     action_type="SELECTED"
                                 )
+                            else:
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
                         else:
                             if hasattr(page, "keyboard"):
                                 page.keyboard.press("Escape")
@@ -3907,8 +5391,53 @@ class WorkdayHandler(BaseATSHandler):
                     if "submit" in btn_txt and "continue" not in btn_txt and "next" not in btn_txt:
                         filled.append(f"Reached Final Review Step {wizard_step}")
                         break
+                    step_before = ""
+                    try:
+                        step_before = (page.inner_text("body") or "")[:400].lower()
+                    except Exception:
+                        pass
                     try:
                         next_btn.scroll_into_view_if_needed(timeout=2000)
+                    except Exception:
+                        pass
+                    # Embitel AQ: React textareas often drop fill() — re-type critical answers before Next
+                    try:
+                        body_chk = (page.inner_text("body") or "").lower()
+                        if "application questions" in body_chk or "overall work experience" in body_chk:
+                            for lab, val in (
+                                ("Overall Work Experience", str(p.get("experienceYears") or "2")),
+                                ("Current Company Name", str(p.get("currentCompany") or "CGI India")),
+                            ):
+                                ff = page.locator("div[data-automation-id^='formField-']").filter(
+                                    has_text=re.compile(lab, re.I)
+                                ).first
+                                if safe_count(ff) == 0:
+                                    continue
+                                ta = ff.locator("textarea, input[type='text']").first
+                                if safe_count(ta) == 0 or not ta.is_visible():
+                                    continue
+                                cur = ""
+                                try:
+                                    cur = (ta.input_value() or "").strip()
+                                except Exception:
+                                    cur = ""
+                                if cur == str(val):
+                                    continue
+                                ta.click(force=True, timeout=3000)
+                                mod = "Meta" if sys.platform == "darwin" else "Control"
+                                page.keyboard.press(f"{mod}+A")
+                                page.keyboard.press("Backspace")
+                                page.keyboard.type(str(val), delay=35)
+                                try:
+                                    ta.evaluate(
+                                        """e => {
+                                          e.dispatchEvent(new Event('input', {bubbles:true}));
+                                          e.dispatchEvent(new Event('change', {bubbles:true}));
+                                        }"""
+                                    )
+                                except Exception:
+                                    pass
+                                filled.append(f"AQ Retype: {lab}={val}")
                     except Exception:
                         pass
                     next_btn.click(force=True)
@@ -3921,13 +5450,85 @@ class WorkdayHandler(BaseATSHandler):
                         step_name=f"WIZARD_STEP_{wizard_step}",
                         action_type="CLICKED"
                     )
-                    time.sleep(2.5)
+                    time.sleep(3.5)
+                    # Stuck on same My Information step with validation errors — stop spinning
+                    try:
+                        step_after = (page.inner_text("body") or "")[:800].lower()
+                        if (
+                            "errors found" in step_after
+                            and "my information" in step_after
+                            and "my experience" not in step_after.split("my information", 1)[-1][:80]
+                        ):
+                            filled.append(f"Wizard stuck on My Information (validation) step {wizard_step}")
+                            break
+                        # Unchanged page after Next: retry fill once (late-rendered required fields)
+                        # before giving up — Embitel AQ often needs a second pass.
+                        unchanged = (
+                            step_before
+                            and step_after
+                            and step_before[:120] == step_after[:120]
+                        )
+                        if unchanged and wizard_step >= 4:
+                            stuck_retries = int(getattr(self, "_wizard_stuck_retries", 0) or 0)
+                            if stuck_retries < 2:
+                                self._wizard_stuck_retries = stuck_retries + 1
+                                filled.append(
+                                    f"Wizard Next unchanged — refill retry {self._wizard_stuck_retries} (step {wizard_step})"
+                                )
+                                # Surface validation strings for audit
+                                try:
+                                    errs = page.locator(
+                                        "[data-automation-id='errorMessage'], [data-automation-id*='error' i], "
+                                        ".error, [aria-invalid='true']"
+                                    ).all_inner_texts()
+                                    if errs:
+                                        filled.append(
+                                            "WD validation: " + " | ".join(e.strip()[:80] for e in errs if e.strip())[:240]
+                                        )
+                                except Exception:
+                                    pass
+                                time.sleep(1.0)
+                                continue
+                            filled.append(f"Wizard step unchanged after Next ({wizard_step})")
+                            break
+                        # Advanced — reset stuck counter
+                        if not unchanged:
+                            self._wizard_stuck_retries = 0
+                    except Exception:
+                        pass
                 else:
                     break
             except Exception:
                 break
 
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Workday"}
+
+    def _handle_post_submit_account_gate(self, page: Any) -> bool:
+        """Embitel/Workday often opens Create Account after Submit — fill vault password."""
+        try:
+            body = (page.inner_text("body") or "").lower()
+        except Exception:
+            body = ""
+        needs_acct = (
+            "create account" in body
+            or "please enter a password" in body
+            or "verify new password" in body
+        )
+        pwd_vis = False
+        try:
+            pwd = page.locator(
+                "input[data-automation-id='password'], input[type='password']"
+            ).first
+            pwd_vis = safe_count(pwd) > 0 and pwd.is_visible()
+        except Exception:
+            pwd_vis = False
+        if not (needs_acct or pwd_vis):
+            return False
+        try:
+            return bool(self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or ""))
+        except Exception as e_acct:
+            logger.debug("Post-submit account gate notice: %s", e_acct)
+            return False
 
     def _click_workday_submit_if_visible(self, page: Any) -> bool:
         submit_selectors = [
@@ -3953,6 +5554,8 @@ class WorkdayHandler(BaseATSHandler):
                         step_name="SUBMIT_APPLICATION",
                         action_type="SUBMITTED",
                     )
+                    time.sleep(2.0)
+                    self._handle_post_submit_account_gate(page)
                     return True
             except Exception:
                 pass
@@ -3976,6 +5579,17 @@ class WorkdayHandler(BaseATSHandler):
         except Exception:
             pass
 
+        # Ensure resume attached on Review (Embitel: "Enter at least 1 please upload your cv")
+        try:
+            body0 = (page.inner_text("body") or "").lower()
+            if "upload" in body0 and ("cv" in body0 or "resume" in body0):
+                resume_path = self.profile.get("resumePath")
+                if resume_path and os.path.exists(resume_path):
+                    self.upload_resume(page, resume_path)
+                    time.sleep(1.5)
+        except Exception:
+            pass
+
         # Autonomous multi-step: advance Next/Continue until Submit is clickable (fixes SUBMIT_NOT_FOUND)
         next_selectors = [
             "button[data-automation-id='pageFooterNextButton']",
@@ -3990,7 +5604,11 @@ class WorkdayHandler(BaseATSHandler):
         ]
         for step in range(1, 12):
             if self._click_workday_submit_if_visible(page):
-                return True
+                # Confirm or finish account gate
+                if self.verify_confirmation(page, timeout=8.0):
+                    return True
+                self._handle_post_submit_account_gate(page)
+                return self.verify_confirmation(page, timeout=12.0) or True
             advanced = False
             for sel in next_selectors:
                 try:
@@ -4012,9 +5630,12 @@ class WorkdayHandler(BaseATSHandler):
                     )
                     advanced = True
                     time.sleep(1.5)
-                    # Re-fill residual empty fields after step change
+                    # Do NOT call fill_form here — recursive fill↔submit hangs for minutes
+                    # and blows Playwright timeouts negative once the per-job budget expires.
                     try:
-                        self.fill_form(page)
+                        body = (page.inner_text("body") or "").lower()
+                        if "errors found" in body and "my information" in body:
+                            return False
                     except Exception:
                         pass
                     break
@@ -4022,7 +5643,11 @@ class WorkdayHandler(BaseATSHandler):
                     continue
             if not advanced:
                 break
-        return self._click_workday_submit_if_visible(page)
+        clicked = self._click_workday_submit_if_visible(page)
+        if clicked:
+            self._handle_post_submit_account_gate(page)
+            return self.verify_confirmation(page, timeout=12.0) or True
+        return False
 
     def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
         if not page:
@@ -4031,7 +5656,15 @@ class WorkdayHandler(BaseATSHandler):
         while time.time() - start < timeout:
             try:
                 url = (getattr(page, "url", "") or "").lower()
-                if any(tok in url for tok in ("/userhome", "/myapplications", "submitted")):
+                if any(
+                    tok in url
+                    for tok in (
+                        "/userhome",
+                        "/myapplications",
+                        "submitted",
+                        "job_application_id=",
+                    )
+                ):
                     return True
                 conf_selectors = [
                     "div[data-automation-id='applicationSubmitted']",
@@ -4182,7 +5815,7 @@ class GenericPortalHandler(BaseATSHandler):
                     q_hint = f"{ph} {nm}".strip()
                     if not q_hint or not self.solver:
                         continue
-                    ans = self.solver.solve_question(q_hint)
+                    ans = solver_answer(self.solver, q_hint, default="")
                     if ans:
                         inp.fill(str(ans))
                         filled.append(f"Solved ({q_hint[:18]})")
@@ -4202,7 +5835,7 @@ class GenericPortalHandler(BaseATSHandler):
                     if not opts:
                         continue
                     nm = sel_el.get_attribute("name") or sel_el.get_attribute("id") or "dropdown"
-                    choice = self.solver.solve_question(nm, options=opts) if self.solver else opts[0]
+                    choice = solver_answer(self.solver, nm, options=opts, default=opts[0])
                     if choice in opts:
                         sel_el.select_option(label=choice)
                         filled.append(f"Select ({choice[:18]})")
@@ -5033,6 +6666,91 @@ class CareerPortalFiller:
                     audit_path = _capture_portal_audit_screenshot(page, company, role)
                     return FillResult(False, filled_fields, audit_path, field_records=list(handler.field_records), status=fallback_reason)
             else:
+                # Last-chance: body/toast success phrases (Ashby/Sentry) or CAPTCHA wall
+                try:
+                    body_low = (
+                        page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''") or ""
+                    ).lower()
+                except Exception:
+                    body_low = ""
+                success_phrases = (
+                    "successfully submitted",
+                    "application was successfully submitted",
+                    "thank you for applying",
+                    "application has been received",
+                    "application submitted",
+                    "we'll contact you if there are next steps",
+                )
+                if any(p in body_low for p in success_phrases):
+                    from naukari_pro.modules.learning.evidence import EvidenceVerifier
+                    ev = EvidenceVerifier()
+                    sc_path = ev.capture_screenshot_sync(page, company, role)
+                    sub_status, evidence_file = ev.evaluate_submission_state(True, sc_path)
+                    if sub_status == "Submitted (Confirmed)" and evidence_file and os.path.exists(evidence_file):
+                        print(f"    🚀 [CONFIRMED] Late body/toast confirmation on {ats_type}: {evidence_file}")
+                        checkpoint_portal_state(cand_job_id, PortalState.LOG, company, role, target_db)
+                        log_portal_application(
+                            company, role, ats_type, "Submitted (Confirmed)", portal_url, evidence_path=evidence_file
+                        )
+                        return FillResult(
+                            True,
+                            filled_fields,
+                            evidence_file,
+                            field_records=list(handler.field_records),
+                            status="Submitted (Confirmed)",
+                        )
+                captcha_hit = False
+                try:
+                    for sel in (
+                        "iframe[src*='hcaptcha.com'][src*='challenge']",
+                        "iframe[src*='recaptcha/api2/bframe']",
+                        "iframe[src*='recaptcha/enterprise/bframe']",
+                        "div:has-text('Pick all objects')",
+                        "#px-captcha",
+                    ):
+                        loc = page.locator(sel)
+                        if safe_count(loc) > 0 and loc.first.is_visible():
+                            captcha_hit = True
+                            break
+                except Exception:
+                    pass
+                if captcha_hit or "hcaptcha" in body_low or "verify you are human" in body_low:
+                    fallback_reason = FallbackReason.CAPTCHA.value
+                    print(f"    [FALLBACK: {fallback_reason}] Submit blocked by visual CAPTCHA — queued for human (M5).")
+                    try:
+                        from naukari_pro.governed_apply.attention import AttentionQueue, BlockerClass
+                        from naukari_pro.modules.autonomous_loop import ATTENTION_PATH
+                        import json as _json
+                        from pathlib import Path as _Path
+
+                        aq = AttentionQueue()
+                        aq.push(BlockerClass.CAPTCHA, portal_url, f"{company} {ats_type} visual CAPTCHA")
+                        path = _Path(ATTENTION_PATH)
+                        existing = []
+                        if path.exists():
+                            try:
+                                existing = _json.loads(path.read_text(encoding="utf-8") or "[]")
+                            except Exception:
+                                existing = []
+                        key = (FallbackReason.CAPTCHA.value.lower(), portal_url)
+                        seen = {(e.get("blocker"), e.get("job_url")) for e in existing if isinstance(e, dict)}
+                        if ("captcha", portal_url) not in seen:
+                            existing.append(
+                                {
+                                    "blocker": "captcha",
+                                    "job_url": portal_url,
+                                    "detail": f"{company} {ats_type} visual CAPTCHA",
+                                    "status": "open",
+                                }
+                            )
+                            path.write_text(_json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+                    except Exception as e_att:
+                        logger.debug("CAPTCHA attention enqueue notice: %s", e_att)
+                    audit_path = _capture_portal_audit_screenshot(page, company, role)
+                    log_portal_application(company, role, ats_type, f"FALLBACK ({fallback_reason})", portal_url)
+                    return FillResult(
+                        False, filled_fields, audit_path, field_records=list(handler.field_records), status=fallback_reason
+                    )
                 fallback_reason = FallbackReason.CLICKED_NO_CONFIRMATION.value
                 print(f"    [FALLBACK: {fallback_reason}] Submit clicked but confirmation not detected within timeout.")
                 audit_path = _capture_portal_audit_screenshot(page, company, role)

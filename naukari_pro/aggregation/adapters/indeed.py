@@ -40,6 +40,8 @@ def _rss_url_from_source(source: SourceRecord) -> str:
             loc = parts[1]
     elif ident:
         q = ident
+    # Historical RSS endpoint (often 301→in.indeed.com/rss→404 as of 2026-11).
+    # fetch_jobs maps 404 to board_missing; do not invent job rows from HTML here.
     return (
         "https://www.indeed.co.in/rss?"
         f"q={quote_plus(q)}&l={quote_plus(loc)}"
@@ -70,9 +72,16 @@ class IndeedAdapter(BaseATSAdapter):
                 timeout=self.timeout,
             )
             if code == 404:
-                return FetchResult(error="rss_not_found", status_code=404, board_missing=True)
+                # Indeed shut down public RSS (redirects to a 404 page).
+                return FetchResult(error="indeed_rss_deprecated", status_code=404, board_missing=True)
+            if code in (401, 403):
+                return FetchResult(error="indeed_blocked", status_code=code, board_missing=True)
             if code != 200 or not raw:
                 return FetchResult(error=f"http_{code}", status_code=code)
+            # Redirect-followed HTML error pages sometimes return 200 with <title>Not Found
+            head = raw[:500].decode("utf-8", errors="replace").lower()
+            if "<rss" not in head and "<rdf:rdf" not in head:
+                return FetchResult(error="indeed_rss_deprecated", status_code=code, board_missing=True)
             try:
                 root = ET.fromstring(raw)
             except ET.ParseError as exc:
