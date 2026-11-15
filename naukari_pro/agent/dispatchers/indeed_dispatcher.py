@@ -129,7 +129,8 @@ class IndeedDispatcher(BasePlatformDispatcher):
             return {"success": True, "status": "DRY_RUN", "url": job_url}
 
         from playwright.sync_api import sync_playwright
-        from naukari_pro.session import get_stealth_context, PORTALS_SESSION_DIR
+        from naukari_pro.session import get_stealth_context
+        from naukari_pro.modules.career_portals import PORTALS_SESSION_DIR
 
         external_url = None
         try:

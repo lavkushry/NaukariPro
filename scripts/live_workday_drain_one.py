@@ -50,6 +50,7 @@ def main() -> int:
 
     filler = CareerPortalFiller()
     try:
+        # Incomplete rows are already in applied_jobs — must allow_retry or DEDUP skips forever
         res = filler.fill(
             portal_url=url,
             company=company,
@@ -58,6 +59,7 @@ def main() -> int:
             dry_run=False,
             match_score=int(float(pick.get("match_score") or 75)),
             auto_submit=True,
+            allow_retry=True,
         )
     except Exception:
         traceback.print_exc()

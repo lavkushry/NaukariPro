@@ -105,6 +105,37 @@ if _raw_locs:
 else:
     LOCATIONS = CANONICAL_LOCATIONS
 
+# Prefer high-yield Azure DE terms first so limit=1/2 runs don't burn 10+ minutes
+# walking the full keyword × city × jobAge grid before any apply attempt.
+_PRIORITY_KEYWORDS = (
+    "Azure Data Engineer",
+    "Data Engineer",
+    "Azure Databricks",
+    "PySpark",
+    "ADF",
+    "Azure Data Factory",
+    "Databricks",
+    "Data Engineering",
+)
+
+
+def _phase3_search_plan(limit: int) -> tuple:
+    """Bound Phase-3 keyword/location/age/page fan-out for small daily limits."""
+    locs = list(LOCATIONS if LOCATIONS else CANONICAL_LOCATIONS)
+    kws = list(DEFAULT_KEYWORDS)
+    # De-dupe while putting priority terms first
+    ordered = []
+    for k in list(_PRIORITY_KEYWORDS) + kws:
+        if k and k not in ordered:
+            ordered.append(k)
+    lim = max(1, int(limit or 1))
+    if lim <= 2:
+        # Fast path for smoke / Always-on channel proofs
+        return ordered[:8], locs[:2], (1,), 1, max(12, lim * 10)
+    if lim <= 5:
+        return ordered[:16], locs[:3], (1,), 2, max(24, lim * 10)
+    return ordered, locs, (1, 7), 3, max(60, lim * 12)
+
 
 async def safe_close_tab(tab, timeout: float = 5.0):
     """Safely closes a Playwright page or context with timeout and bypasses onbeforeunload to prevent hangs."""
@@ -1451,90 +1482,105 @@ class NativeChromeRunner:
         })()
         """
 
-        search_locs = LOCATIONS if LOCATIONS else CANONICAL_LOCATIONS
-        for job_age in (1, 7):
-            if total_applied >= limit:
+        search_kws, search_locs, job_ages, max_pages, max_scans = _phase3_search_plan(limit)
+        idle_scans = 0
+        scans_done = 0
+        for job_age in job_ages:
+            if total_applied >= limit or scans_done >= max_scans:
                 break
             for loc in search_locs:
-                if total_applied >= limit:
+                if total_applied >= limit or scans_done >= max_scans:
                     break
-                for kw in DEFAULT_KEYWORDS:
-                    if total_applied >= limit:
+                for kw in search_kws:
+                    if total_applied >= limit or scans_done >= max_scans:
                         break
 
-                    for page_num in range(1, 4):
-                        if total_applied >= limit:
+                    for page_num in range(1, max_pages + 1):
+                        if total_applied >= limit or scans_done >= max_scans:
                             break
 
                         url = build_search_url(kw, loc, page_num, job_age=job_age)
-                    print(f"\n[*] Scanning keyword: '{kw}' ({loc}, page {page_num}) -> {url}")
+                        print(f"\n[*] Scanning keyword: '{kw}' ({loc}, page {page_num}) -> {url}")
+                        scans_done += 1
+                        applied_before = total_applied
 
-                    jobs_raw = self.exec_js_in_tab(url, search_js, wait_sec=4)
-                    if not jobs_raw:
-                        break
-
-                    try:
-                        jobs = json.loads(jobs_raw)
-                    except Exception:
-                        jobs = []
-
-                    if not jobs:
-                        break
-
-                    for job in jobs:
-                        if total_applied >= limit:
+                        jobs_raw = self.exec_js_in_tab(url, search_js, wait_sec=4)
+                        if not jobs_raw:
                             break
 
-                        title = job.get("title", "")
-                        comp = job.get("company", "")
-                        salary = job.get("sal", "Undisclosed")
-                        job_url = job.get("href", "")
-                        raw_jd = f"{job.get('desc', '')} {job.get('tags', '')}".strip()
-
-                        if not job_url or make_job_id(title, comp) in self.skip_list:
-                            continue
-
-                        acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
-                        if not acceptable:
-                            self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
-                            continue
-
-                        # Match Scoring Gate (>= 70%) (Feature 10)
-                        is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
-                        if not is_match:
-                            print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
-                            self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
-                            continue
-
-                        if self.dry_run:
-                            print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {comp} ({salary}) [Score: {score}%]")
-                            print(f"    • URL: {job_url}")
-                            print(f"    • Simulated Answers: exp={EXPERIENCE_YEARS}y, notice={NOTICE_PERIOD}d, current_ctc={CURRENT_CTC}L, expected_ctc={EXPECTED_CTC}L")
-                            print(f"    • Simulated Excel Row: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {comp}, {title}, '{score}%', 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_MATCH', {job_url}]")
-                            total_applied += 1
-                            continue
-
-                        print(f"\n  → Applying to: {title} @ {comp} ({salary}) [Score: {score}%]")
                         try:
-                            success, msg = self.apply_to_job(job_url, title, comp, salary, raw_jd=raw_jd, match_score=score)
-                        except SecurityChallengeError as sce:
-                            print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
+                            jobs = json.loads(jobs_raw)
+                        except Exception:
+                            jobs = []
+
+                        if not jobs:
                             break
 
-                        if success:
-                            total_applied += 1
-                            print(f"    ✓ Successfully applied to {title} @ {comp}!")
-                            log_to_excel(title, comp, "Submitted (Pending)", match_score=score, app_type="1-Click Direct", salary=salary, url=job_url)
-                            self.skip_list = add_to_skip(self.skip_list, title, comp, "already-applied")
-                        else:
-                            print(f"    ⚠️ Could not submit direct apply ({msg}).")
-                            if "company portal" in msg.lower() or "external" in msg.lower():
-                                log_to_excel(title, comp, "External Redirect", match_score=score, app_type="External Employer Portal", salary=salary, url=job_url)
-                                self.skip_list = add_to_skip(self.skip_list, title, comp, "external-redirect")
-                            else:
-                                self.skip_list = add_to_skip(self.skip_list, title, comp, "no-direct-apply")
+                        for job in jobs:
+                            if total_applied >= limit:
+                                break
 
-                        time.sleep(1.5)
+                            title = job.get("title", "")
+                            comp = job.get("company", "")
+                            salary = job.get("sal", "Undisclosed")
+                            job_url = job.get("href", "")
+                            raw_jd = f"{job.get('desc', '')} {job.get('tags', '')}".strip()
+
+                            if not job_url or make_job_id(title, comp) in self.skip_list:
+                                continue
+
+                            acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                            if not acceptable:
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                                continue
+
+                            # Match Scoring Gate (>= 70%) (Feature 10)
+                            is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
+                            if not is_match:
+                                print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
+                                continue
+
+                            if self.dry_run:
+                                print(f"\n  [DRY-RUN] Eligible Vacancy Matched: {title} @ {comp} ({salary}) [Score: {score}%]")
+                                print(f"    • URL: {job_url}")
+                                print(f"    • Simulated Answers: exp={EXPERIENCE_YEARS}y, notice={NOTICE_PERIOD}d, current_ctc={CURRENT_CTC}L, expected_ctc={EXPECTED_CTC}L")
+                                print(f"    • Simulated Excel Row: [{datetime.now().strftime('%Y-%m-%d %H:%M')}, {comp}, {title}, '{score}%', 'Azure Data Engineer', '2-5 Yrs', 'Hyderabad / Bengaluru', '1-Click Direct (Dry Run)', 'DRY_RUN_MATCH', {job_url}]")
+                                total_applied += 1
+                                continue
+
+                            print(f"\n  → Applying to: {title} @ {comp} ({salary}) [Score: {score}%]")
+                            try:
+                                success, msg = self.apply_to_job(job_url, title, comp, salary, raw_jd=raw_jd, match_score=score)
+                            except SecurityChallengeError as sce:
+                                print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
+                                break
+
+                            if success:
+                                total_applied += 1
+                                print(f"    ✓ Successfully applied to {title} @ {comp}!")
+                                log_to_excel(title, comp, "Submitted (Pending)", match_score=score, app_type="1-Click Direct", salary=salary, url=job_url)
+                                self.skip_list = add_to_skip(self.skip_list, title, comp, "already-applied")
+                            else:
+                                print(f"    ⚠️ Could not submit direct apply ({msg}).")
+                                if "company portal" in msg.lower() or "external" in msg.lower():
+                                    log_to_excel(title, comp, "External Redirect", match_score=score, app_type="External Employer Portal", salary=salary, url=job_url)
+                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "external-redirect")
+                                else:
+                                    self.skip_list = add_to_skip(self.skip_list, title, comp, "no-direct-apply")
+
+                            time.sleep(1.5)
+
+                        if total_applied > applied_before:
+                            idle_scans = 0
+                        else:
+                            idle_scans += 1
+                            if idle_scans >= max(6, max_scans // 2):
+                                print(
+                                    f"    [SCAN] Early-exit Phase 3 after {idle_scans} idle scans "
+                                    f"(limit={limit}, applied={total_applied})."
+                                )
+                                scans_done = max_scans
 
         print("\n" + "=" * 65)
         status_label = "Simulated Applications" if self.dry_run else "Applications Submitted"
@@ -2352,157 +2398,207 @@ class PlaywrightRunner:
                 print("\n" + "-" * 65)
                 print("  🔍 [PHASE 3] Scanning Freshness-Sorted Search Results...")
                 print("-" * 65)
-                search_locs = LOCATIONS if LOCATIONS else CANONICAL_LOCATIONS
-                for job_age in (1, 7):
-                    if total_applied >= limit:
+                search_kws, search_locs, job_ages, max_pages, max_scans = _phase3_search_plan(limit)
+                idle_scans = 0
+                scans_done = 0
+                print(
+                    f"  Plan: {len(search_kws)} keywords × {len(search_locs)} locs × "
+                    f"ages={job_ages} × pages≤{max_pages} (cap {max_scans} scans)"
+                )
+                for job_age in job_ages:
+                    if total_applied >= limit or scans_done >= max_scans:
                         break
                     for loc in search_locs:
-                        if total_applied >= limit:
+                        if total_applied >= limit or scans_done >= max_scans:
                             break
-                        for kw in DEFAULT_KEYWORDS:
-                            if total_applied >= limit:
+                        for kw in search_kws:
+                            if total_applied >= limit or scans_done >= max_scans:
                                 break
 
-                            for page_num in range(1, 4):
-                                if total_applied >= limit:
+                            for page_num in range(1, max_pages + 1):
+                                if total_applied >= limit or scans_done >= max_scans:
                                     break
 
                                 url = build_search_url(kw, loc, page_num, job_age=job_age)
-                            print(f"\n[*] Scanning keyword: '{kw}' ({loc}, page {page_num}) -> {url}")
+                                print(f"\n[*] Scanning keyword: '{kw}' ({loc}, page {page_num}) -> {url}")
+                                scans_done += 1
+                                applied_before = total_applied
 
-                            try:
-                                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                                await page.wait_for_timeout(3000)
+                                try:
+                                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                                    await page.wait_for_timeout(3000)
 
-                                jobs = await page.evaluate("""() => {
-                                    const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple, article.jobTuple'));
-                                    return items.map(it => {
-                                        const title = it.querySelector('a.title, a[class*="title"]');
-                                        const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
-                                        const exp = it.querySelector('.exp-wrap, [class*="exp"], span.ni-job-tuple-icon-srp-experience + span');
-                                        const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
-                                        const desc = it.querySelector('.job-desc, .row4, .job-description, .ellipsis');
-                                        const tags = Array.from(it.querySelectorAll('.tag-li, .tags-gt li, ul.tags li')).map(t => t.innerText.trim()).join(' ');
-                                        return {
-                                            title: title ? title.innerText.trim() : '',
-                                            href: title ? title.href : '',
-                                            company: comp ? comp.innerText.trim() : '',
-                                            exp: exp ? exp.innerText.trim() : '',
-                                            sal: sal ? sal.innerText.trim() : 'Undisclosed',
-                                            desc: (desc ? desc.innerText.trim() : '') + ' ' + (it.innerText || '').trim(),
-                                            tags: tags || ''
-                                        };
-                                    });
-                                }""")
-
-                                if not jobs:
-                                    break
-
-                                seen_urls = set()
-                                for job in jobs:
-                                    if total_applied >= limit:
-                                        break
-
-                                    title = job.get("title", "")
-                                    comp = job.get("company", "")
-                                    salary = job.get("sal", "Undisclosed")
-                                    job_url = job.get("href", "")
-                                    raw_jd = f"{job.get('desc', '')} {job.get('tags', '')}".strip()
-
-                                    if not job_url or job_url in seen_urls or make_job_id(title, comp) in self.skip_list:
-                                        continue
-                                    seen_urls.add(job_url)
-
-                                    # Persistent DB duplicate check
-                                    from naukari_pro.modules.db import is_job_already_applied
-                                    if not self.dry_run and is_job_already_applied(title=title, company=comp, job_url=job_url):
-                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
-                                        continue
-
-                                    is_universal = getattr(self, "universal_apply", True)
-
-                                    # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
-                                    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
-                                    is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, company=comp)
-                                    if not is_role_ok:
-                                        print(f"  ⛔ Skipped Search (Non-Target Role): {title} @ {comp} ({role_reason})")
-                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
-                                        continue
-
-                                    if not is_universal:
-                                        # Upfront Experience Verification Gate
-                                        is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
-                                            exp_text=job.get("exp", ""),
-                                            jd_text=raw_jd,
-                                            title=title,
-                                            url=job_url,
-                                            candidate_exp=CANDIDATE_EXPERIENCE,
-                                            max_allowed=MAX_EXPERIENCE_THRESHOLD
+                                    # Akamai / edgesuite soft-block — do not burn the scan budget
+                                    try:
+                                        denied = await page.evaluate(
+                                            """() => {
+                                              const t = ((document.title || '') + ' ' + (document.body ? document.body.innerText : '')).toLowerCase();
+                                              return t.includes('access denied') || t.includes('errors.edgesuite.net')
+                                                || t.includes(\"you don't have permission to access\");
+                                            }"""
                                         )
-                                        if not is_exp_ok:
-                                            print(f"  ⛔ Skipped Search Experience: {title} @ {comp} ({exp_reason})")
-                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
-                                            continue
-
-                                        acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
-                                        if not acceptable:
-                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
-                                            continue
-
-                                    # Compute match score for telemetry
-                                    is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
-                                    card_lower = f"{title} {raw_jd}".lower()
-                                    is_candidate_role = score >= 25 or any(
-                                        term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake")
-                                    )
-                                    if not is_universal and not is_match and is_candidate_role and not self.dry_run:
-                                        detail_tab = await context.new_page()
+                                    except Exception:
+                                        denied = False
+                                    if denied:
+                                        print(
+                                            "  🚨 NAUKRI CHANNEL HALTED: Akamai Access Denied on search "
+                                            "(queued for human; no silent bypass)."
+                                        )
                                         try:
-                                            await detail_tab.goto(job_url, wait_until="domcontentloaded", timeout=25000)
-                                            await detail_tab.wait_for_timeout(1800)
-                                            full_body = await detail_tab.evaluate("() => document.body ? document.body.innerText : ''")
-                                            if full_body:
-                                                fb_low = full_body.lower()
-                                                synonym_tags = []
-                                                if any(k in fb_low for k in ("adf", "data factory", "synapse", "fabric", "azure")):
-                                                    synonym_tags.append("azure")
-                                                if any(k in fb_low for k in ("delta", "lakehouse", "medallion", "parquet", "etl", "data pipeline")):
-                                                    synonym_tags.append("delta lake")
-                                                raw_jd = f"{raw_jd} {full_body} {' '.join(synonym_tags)}".strip()
-                                                is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
+                                            from naukari_pro.governed_apply.attention import AttentionQueue, BlockerClass
+                                            AttentionQueue().push(
+                                                BlockerClass.AUTH,
+                                                url,
+                                                "Naukri Akamai Access Denied on Phase-3 search",
+                                            )
                                         except Exception:
                                             pass
-                                        finally:
-                                            await safe_close_tab(detail_tab)
+                                        raise SecurityChallengeError(
+                                            challenge_type="Naukri Akamai Access Denied",
+                                            details=f"URL: {url}",
+                                        )
 
-                                    # Match Scoring Gate (>= 70%) (Feature 10 - legacy mode only)
-                                    if not is_universal and not is_match:
-                                        print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
-                                        self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
-                                        continue
+                                    jobs = await page.evaluate("""() => {
+                                        const items = Array.from(document.querySelectorAll('.srp-jobtuple-wrapper, .cust-job-tuple, .job-tuple, article.jobTuple'));
+                                        return items.map(it => {
+                                            const title = it.querySelector('a.title, a[class*="title"]');
+                                            const comp = it.querySelector('a.comp-name, span.comp-nameText, a.subTitle');
+                                            const exp = it.querySelector('.exp-wrap, [class*="exp"], span.ni-job-tuple-icon-srp-experience + span');
+                                            const sal = it.querySelector('span.sal-wrap, [class*="sal"], span.ni-job-tuple-icon-srp-rupee + span');
+                                            const desc = it.querySelector('.job-desc, .row4, .job-description, .ellipsis');
+                                            const tags = Array.from(it.querySelectorAll('.tag-li, .tags-gt li, ul.tags li')).map(t => t.innerText.trim()).join(' ');
+                                            return {
+                                                title: title ? title.innerText.trim() : '',
+                                                href: title ? title.href : '',
+                                                company: comp ? comp.innerText.trim() : '',
+                                                exp: exp ? exp.innerText.trim() : '',
+                                                sal: sal ? sal.innerText.trim() : 'Undisclosed',
+                                                desc: (desc ? desc.innerText.trim() : '') + ' ' + (it.innerText || '').trim(),
+                                                tags: tags || ''
+                                            };
+                                        });
+                                    }""")
 
-                                    if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
-                                        print(f"  ⛔ Skipped Search (Zero Score): {title} @ {comp} (Score: 0%)")
-                                        self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
-                                        continue
+                                    if not jobs:
+                                        idle_scans += 1
+                                        break
 
-                                    applied_ok, _ = await self.apply_to_job_async(
-                                        context,
-                                        job_url,
-                                        title,
-                                        comp,
-                                        salary,
-                                        raw_jd=raw_jd,
-                                        match_score=score,
-                                        proxy=active_proxy
-                                    )
-                                    if applied_ok:
-                                        total_applied += 1
-                            except SecurityChallengeError as sce:
-                                print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
-                                return total_applied
-                            except Exception as e:
-                                print(f"Search warning: {e}")
+                                    seen_urls = set()
+                                    for job in jobs:
+                                        if total_applied >= limit:
+                                            break
+
+                                        title = job.get("title", "")
+                                        comp = job.get("company", "")
+                                        salary = job.get("sal", "Undisclosed")
+                                        job_url = job.get("href", "")
+                                        raw_jd = f"{job.get('desc', '')} {job.get('tags', '')}".strip()
+
+                                        if not job_url or job_url in seen_urls or make_job_id(title, comp) in self.skip_list:
+                                            continue
+                                        seen_urls.add(job_url)
+
+                                        # Persistent DB duplicate check
+                                        from naukari_pro.modules.db import is_job_already_applied
+                                        if not self.dry_run and is_job_already_applied(title=title, company=comp, job_url=job_url):
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "already-in-db")
+                                            continue
+
+                                        is_universal = getattr(self, "universal_apply", True)
+
+                                        # UNCONDITIONAL ROLE GUARD: Never apply to non-data / non-cloud roles
+                                        from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                                        is_role_ok, role_reason = is_strictly_data_or_cloud_role(title, raw_jd, company=comp)
+                                        if not is_role_ok:
+                                            print(f"  ⛔ Skipped Search (Non-Target Role): {title} @ {comp} ({role_reason})")
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
+                                            continue
+
+                                        if not is_universal:
+                                            # Upfront Experience Verification Gate
+                                            is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
+                                                exp_text=job.get("exp", ""),
+                                                jd_text=raw_jd,
+                                                title=title,
+                                                url=job_url,
+                                                candidate_exp=CANDIDATE_EXPERIENCE,
+                                                max_allowed=MAX_EXPERIENCE_THRESHOLD
+                                            )
+                                            if not is_exp_ok:
+                                                print(f"  ⛔ Skipped Search Experience: {title} @ {comp} ({exp_reason})")
+                                                self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
+                                                continue
+
+                                            acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                                            if not acceptable:
+                                                self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                                                continue
+
+                                        # Compute match score for telemetry
+                                        is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
+                                        card_lower = f"{title} {raw_jd}".lower()
+                                        is_candidate_role = score >= 25 or any(
+                                            term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake")
+                                        )
+                                        if not is_universal and not is_match and is_candidate_role and not self.dry_run:
+                                            detail_tab = await context.new_page()
+                                            try:
+                                                await detail_tab.goto(job_url, wait_until="domcontentloaded", timeout=25000)
+                                                await detail_tab.wait_for_timeout(1800)
+                                                full_body = await detail_tab.evaluate("() => document.body ? document.body.innerText : ''")
+                                                if full_body:
+                                                    fb_low = full_body.lower()
+                                                    synonym_tags = []
+                                                    if any(k in fb_low for k in ("adf", "data factory", "synapse", "fabric", "azure")):
+                                                        synonym_tags.append("azure")
+                                                    if any(k in fb_low for k in ("delta", "lakehouse", "medallion", "parquet", "etl", "data pipeline")):
+                                                        synonym_tags.append("delta lake")
+                                                    raw_jd = f"{raw_jd} {full_body} {' '.join(synonym_tags)}".strip()
+                                                    is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
+                                            except Exception:
+                                                pass
+                                            finally:
+                                                await safe_close_tab(detail_tab)
+
+                                        # Match Scoring Gate (>= 70%) (Feature 10 - legacy mode only)
+                                        if not is_universal and not is_match:
+                                            print(f"  ⛔ Skipped: {title} @ {comp} ({match_reason})")
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
+                                            continue
+
+                                        if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+                                            print(f"  ⛔ Skipped Search (Zero Score): {title} @ {comp} (Score: 0%)")
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
+                                            continue
+
+                                        applied_ok, _ = await self.apply_to_job_async(
+                                            context,
+                                            job_url,
+                                            title,
+                                            comp,
+                                            salary,
+                                            raw_jd=raw_jd,
+                                            match_score=score,
+                                            proxy=active_proxy
+                                        )
+                                        if applied_ok:
+                                            total_applied += 1
+                                    if total_applied > applied_before:
+                                        idle_scans = 0
+                                    else:
+                                        idle_scans += 1
+                                        if idle_scans >= max(6, max_scans // 2):
+                                            print(
+                                                f"    [SCAN] Early-exit Phase 3 after {idle_scans} idle scans "
+                                                f"(limit={limit}, applied={total_applied})."
+                                            )
+                                            scans_done = max_scans
+                                except SecurityChallengeError as sce:
+                                    print(f"  🚨 NAUKRI CHANNEL HALTED: Security challenge encountered: {sce}")
+                                    return total_applied
+                                except Exception as e:
+                                    print(f"Search warning: {e}")
+                                    idle_scans += 1
 
                 await safe_close_tab(context)
                 return total_applied

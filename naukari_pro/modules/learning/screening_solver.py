@@ -407,6 +407,17 @@ class FactMatrixScreeningSolver:
                 raw_question=raw
             )
 
+        # 4b. Age confirmation (Ashby/Lever common required Yes/No)
+        if re.search(r"\b(over\s+the\s+age\s+of\s+18|at\s+least\s+18|18\s+years\s+of\s+age|age\s+of\s+18)\b", q_lower):
+            return ScreeningDecision(
+                answer="Yes",
+                confidence=1.0,
+                is_ambiguous=False,
+                category=ScreeningCategory.LEGAL_BACKGROUND,
+                rationale="Candidate is over 18 years of age",
+                raw_question=raw,
+            )
+
         # 5. Policy Consent & Background Checks
         if POLICY_CONSENT_AFFIRMATIVE_REGEX.search(q_lower):
             return ScreeningDecision(

@@ -354,11 +354,15 @@ class FallbackReason(str, Enum):
     TIMEOUT_240S = "TIMEOUT_240S"
     CLOSED_OR_EXPIRED = "CLOSED_OR_EXPIRED"
     ALREADY_APPLIED = "SKIPPED_ALREADY_APPLIED"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 # Workday multi-page apply (auth → My Info → application questions → review) routinely
 # exceeds 4 minutes; 15 minutes matches live Embitel/Fractal runs without false TIMEOUT.
 PER_JOB_TIME_BUDGET_SEC: float = 900.0
+# Single wizard step hard cap — Expedia hung >12m inside one step with deadline only
+# checked at step begin; abort so Always-on can drain other boards.
+WD_WIZARD_STEP_BUDGET_SEC: float = 180.0
 
 
 def checkpoint_portal_state(
@@ -635,6 +639,24 @@ class BaseATSHandler:
                         return f"CAPTCHA Challenge detected ({sel})"
                 except Exception:
                     pass
+            # Image CAPTCHA (Keka / Zoho / legacy HRMS) — only when error text is shown
+            # (empty Captcha inputs are normal pre-submit; post-submit path handles those)
+            try:
+                body_low = (
+                    page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''") or ""
+                ).lower()
+            except Exception:
+                body_low = ""
+            if any(
+                p in body_low
+                for p in (
+                    "invalid captcha",
+                    "please enter the captcha",
+                    "captcha does not match",
+                    "wrong captcha",
+                )
+            ):
+                return "CAPTCHA Challenge detected (image captcha text)"
         except Exception:
             pass
         return None
@@ -1101,7 +1123,20 @@ class GreenhouseHandler(BaseATSHandler):
                                 if not ans_to_fill:
                                     if "linkedin" in q_lower:
                                         ans_to_fill = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
-                                    elif any(k in q_lower for k in ["github", "portfolio", "website", "artifact", "code", "project", "work"]):
+                                    elif any(
+                                        k in q_lower
+                                        for k in (
+                                            "sponsorship",
+                                            "work authorization",
+                                            "visa support",
+                                            "type of support",
+                                            "immigration assistance",
+                                        )
+                                    ):
+                                        # Pinterest: free-text "list the type of support" — never GitHub URL
+                                        ans_to_fill = "None — I do not require sponsorship or work-authorization assistance."
+                                    elif any(k in q_lower for k in ["github", "portfolio", "website", "artifact", "code", "project"]):
+                                        # Do NOT match bare "work" — it hits "work authorization" sponsorship textboxes
                                         ans_to_fill = p.get("portfolioUrl", "https://github.com/lavkush-kumar")
                                     elif any(k in q_lower for k in ["country", "timezone", "time zone"]):
                                         ans_to_fill = "India (IST, UTC+5:30)"
@@ -1115,11 +1150,44 @@ class GreenhouseHandler(BaseATSHandler):
                                         ans_to_fill = "Python"
                                     elif any(k in q_lower for k in ["adjustment", "accommodation"]):
                                         ans_to_fill = "None"
-                                    elif any(k in q_lower for k in ["legal name", "preferred name", "preferred first", "other name"]):
-                                        # Optional identity fields — leave blank; never dump "Yes"
-                                        ans_to_fill = None
+                                    elif any(k in q_lower for k in ["preferred first", "preferred name", "preferred last", "legal name", "other name"]):
+                                        # Twilio/GH often require Preferred First Name — mirror legal first/last
+                                        if "last" in q_lower:
+                                            ans_to_fill = p.get("lastName") or "Kumar"
+                                        else:
+                                            ans_to_fill = p.get("firstName") or "Lavkush"
+                                    elif any(
+                                        k in q_lower
+                                        for k in (
+                                            "why do you want",
+                                            "why are you interested",
+                                            "why join",
+                                            "why figma",
+                                            "why this role",
+                                            "motivation",
+                                            "cover letter",
+                                            "additional information",
+                                        )
+                                    ) or (("why" in q_lower) and any(x in q_lower for x in ("join", "apply", "company", "role", "interested"))):
+                                        company_hint = (p.get("targetCompany") or "").strip()
+                                        ans_to_fill = (
+                                            "I am an Azure Data Engineer (2.5 YOE) focused on Databricks, PySpark, Delta Lake, "
+                                            "and production data platforms. I want to join because the product and engineering "
+                                            "culture emphasize scalable systems, strong observability, and real impact on customers. "
+                                            "I am eager to contribute to reliable pipelines, platform automation, and high-quality delivery."
+                                        )
+                                        if company_hint:
+                                            ans_to_fill = ans_to_fill.replace("join because", f"join {company_hint} because")
+                                    elif "*" in lbl_text or inp.get_attribute("required") is not None or (
+                                        inp.get_attribute("aria-required") or ""
+                                    ).lower() in ("true", "1"):
+                                        # Required free-text with no better match — short truthful default
+                                        ans_to_fill = (
+                                            "Azure Data Engineer (2.5 YOE) specializing in Databricks, PySpark, "
+                                            "Delta Lake, ADF, and production streaming pipelines."
+                                        )
                                     else:
-                                        # Do not invent answers for unknown free-text screening
+                                        # Do not invent answers for optional unknown free-text
                                         ans_to_fill = None
                                 if ans_to_fill:
                                     inp.fill(str(ans_to_fill))
@@ -1236,9 +1304,53 @@ class GreenhouseHandler(BaseATSHandler):
                             if opt.lower() == "no":
                                 target_choice = opt
                                 break
+                    elif any(
+                        k in lbl_lower
+                        for k in (
+                            "hybrid in-office",
+                            "work from our office",
+                            "3 days per week",
+                            "email me about future",
+                            "future job openings",
+                            "future opportunities",
+                            "talent community",
+                            "join braze",
+                            "receive newsletters",
+                            "regularly commute",
+                            "commute and work in an office",
+                        )
+                    ):
+                        for opt in opts:
+                            if opt.lower() == "yes":
+                                target_choice = opt
+                                break
                     elif "previously worked" in lbl_lower:
                         for opt in opts:
                             if opt.lower() == "no":
+                                target_choice = opt
+                                break
+                    elif any(
+                        k in lbl_lower
+                        for k in (
+                            "interviewed at",
+                            "interviewed before",
+                            "ever interviewed",
+                            "employed at",
+                            "employed before",
+                            "worked at",
+                            "worked for us",
+                        )
+                    ):
+                        for opt in opts:
+                            if opt.lower() == "no":
+                                target_choice = opt
+                                break
+                    elif any(
+                        k in lbl_lower
+                        for k in ("paid in crypto", "payment in crypto", "ok with being paid")
+                    ):
+                        for opt in opts:
+                            if opt.lower() == "yes":
                                 target_choice = opt
                                 break
                     elif "country" in lbl_lower and "relocat" not in lbl_lower:
@@ -1256,22 +1368,100 @@ class GreenhouseHandler(BaseATSHandler):
                                     if "india" in opt.lower():
                                         target_choice = opt.strip()
                                         break
-                    elif "eligible to work" in lbl_lower or "authorized to work" in lbl_lower:
+                    elif any(
+                        k in lbl_lower
+                        for k in (
+                            "eligible to work",
+                            "authorized to work",
+                            "legally authorized",
+                            "legally authorised",
+                            "authorised to work",
+                        )
+                    ):
                         for opt in opts:
                             if opt.lower() == "yes":
                                 target_choice = opt
                                 break
+                    # US export-control / sanctioned-country screens (Intercom etc.)
+                    # Q1 "citizen of Iran/Cuba/NK/Syria" → No; follow-ups → N/A when offered
+                    elif any(
+                        k in lbl_lower
+                        for k in (
+                            "export control",
+                            "iran",
+                            "cuba",
+                            "north korea",
+                            "syria",
+                            "sanctioned",
+                            "embargo",
+                        )
+                    ):
+                        if any(
+                            k in lbl_lower
+                            for k in (
+                                "additional citizenship",
+                                "additional nationality",
+                                "any other country",
+                                "in which country",
+                                "obtain citizenship",
+                                "obtained citizenship",
+                                "first?",
+                            )
+                        ):
+                            for opt in opts:
+                                ol = opt.lower()
+                                if ol in ("n/a", "na", "not applicable") or "n/a" in ol:
+                                    target_choice = opt
+                                    break
+                        if not target_choice:
+                            for opt in opts:
+                                if opt.lower() == "no":
+                                    target_choice = opt
+                                    break
+                        if not target_choice:
+                            for opt in opts:
+                                ol = opt.lower()
+                                if ol in ("n/a", "na", "not applicable") or "n/a" in ol:
+                                    target_choice = opt
+                                    break
+
+                    elif "pronoun" in lbl_lower:
+                        for opt in opts:
+                            ol = opt.lower()
+                            if "he/him" in ol or ol in ("he", "he/him/his"):
+                                target_choice = opt
+                                break
+                        if not target_choice:
+                            target_choice = next((o for o in opts if "he" in o.lower() and "she" not in o.lower()), None)
+                    elif "gender" in lbl_lower and "pronoun" not in lbl_lower:
+                        for opt in opts:
+                            if opt.lower() in ("male", "man", "m"):
+                                target_choice = opt
+                                break
                     elif any("prefer not" in o.lower() or "do not wish" in o.lower() for o in opts):
+                        # EEO prefer-not — but never for pronouns/gender (handled above)
                         for opt in opts:
                             if "prefer not" in opt.lower() or "do not wish" in opt.lower():
                                 target_choice = opt
                                 break
                     elif opts:
-                        # Never guess when label unresolved — leave for validation rather than wrong answer
+                        # Never guess Yes/No or country lists when label unresolved
                         if lbl_lower.startswith("select "):
                             target_choice = None
                         else:
-                            target_choice = opts[1] if len(opts) > 1 and opts[0].lower() in ["select...", "select an option"] else opts[0]
+                            clean = [
+                                o
+                                for o in opts
+                                if o.lower() not in ("select...", "select", "select an option", "")
+                            ]
+                            yes_no = {o.lower() for o in clean}
+                            # Blind opts[1] previously answered Intercom export-control "Iran/Cuba…" as Yes
+                            if yes_no <= {"yes", "no"} or (
+                                "yes" in yes_no and "no" in yes_no and len(clean) <= 3
+                            ):
+                                target_choice = None
+                            else:
+                                target_choice = clean[0] if clean else None
 
                     if target_choice:
                         if click_react_select_option(page, target_choice):
@@ -1310,6 +1500,84 @@ class GreenhouseHandler(BaseATSHandler):
                     ("sponsorship", "immigration sponsorship", "require immigration", "visa sponsorship"),
                     ("no", "will not", "do not require", "not require"),
                     "No",
+                ),
+                (
+                    (
+                        "export control",
+                        "citizen, national or permanent resident of iran",
+                        "iran, cuba, north korea",
+                        "iran, cuba",
+                    ),
+                    ("no",),
+                    "No",
+                ),
+                (
+                    (
+                        "additional citizenship",
+                        "additional nationality",
+                        "any other country that is not iran",
+                        "in which country did you obtain",
+                    ),
+                    ("n/a", "na", "not applicable"),
+                    "N/A",
+                ),
+                (
+                    (
+                        "hybrid in-office",
+                        "work from our office",
+                        "3 days per week",
+                        "willing to work from our office",
+                    ),
+                    ("yes",),
+                    "Yes",
+                ),
+                (
+                    (
+                        "email me about future",
+                        "future job openings",
+                        "future opportunities",
+                    ),
+                    ("yes",),
+                    "Yes",
+                ),
+                (
+                    (
+                        "talent community",
+                        "join braze",
+                        "receive newsletters",
+                    ),
+                    ("yes",),
+                    "Yes",
+                ),
+                (
+                    (
+                        "regularly commute",
+                        "commute and work in an office",
+                        "work in an office in job posting",
+                    ),
+                    ("yes",),
+                    "Yes",
+                ),
+                (
+                    (
+                        "interviewed at",
+                        "interviewed before",
+                        "ever interviewed",
+                        "employed at",
+                        "employed before",
+                        "worked at",
+                    ),
+                    ("no",),
+                    "No",
+                ),
+                (
+                    (
+                        "paid in crypto",
+                        "payment in crypto",
+                        "ok with being paid",
+                    ),
+                    ("yes",),
+                    "Yes",
                 ),
             )
             for label_keys, opt_keys, fallback in required_pairs:
@@ -1710,9 +1978,10 @@ class GreenhouseHandler(BaseATSHandler):
         if not submit_clicked:
             return False
 
-        # If validation errors remain (e.g. Degree), repair and click Submit once more
+        # If validation errors remain (Degree / Preferred Name / Why join), repair and resubmit
         try:
             time.sleep(1.2)
+            repaired = False
             deg_needed = page.locator(
                 ".field-error:has-text('Degree'), li.error:has-text('Degree'), "
                 "div:has-text('Degree is required')"
@@ -1720,6 +1989,233 @@ class GreenhouseHandler(BaseATSHandler):
             if safe_count(deg_needed) > 0 and deg_needed.first.is_visible():
                 print("    🎓 Degree validation failed — repairing and resubmitting...")
                 self._repair_greenhouse_degree(page)
+                repaired = True
+            # Fill empty required text/textarea / React-Select still showing field-error
+            try:
+                err_fields = page.locator(
+                    ".field:has(.field-error), .field-wrapper:has(.field-error), "
+                    "div:has(> .field-error), li:has(.error), "
+                    ".field:has-text('This field is required'), "
+                    "div:has-text('This field is required')"
+                )
+                n_err = min(safe_count(err_fields), 16)
+                p = self.profile
+                for ei in range(n_err):
+                    try:
+                        box = err_fields.nth(ei)
+                        if not box.is_visible():
+                            continue
+                        lab = ""
+                        try:
+                            lab = (box.locator("label").first.inner_text() or "").strip().lower()
+                        except Exception:
+                            lab = (box.inner_text() or "")[:160].lower()
+                        # Pinterest duplicate "legally authorized" React-Select left on Select...
+                        sel_ctrl = box.locator(".select__control").first
+                        if safe_count(sel_ctrl) > 0 and sel_ctrl.is_visible():
+                            cur_sel = (sel_ctrl.inner_text() or "").strip().lower()
+                            if cur_sel in ("", "select...", "select", "select an option"):
+                                want = None
+                                if any(
+                                    k in lab
+                                    for k in (
+                                        "legally authorized",
+                                        "legally authorised",
+                                        "authorized to work",
+                                        "authorised to work",
+                                        "eligible to work",
+                                    )
+                                ) and "export control" not in lab and "iran" not in lab:
+                                    want = "Yes"
+                                elif "sponsorship" in lab or "immigration" in lab:
+                                    want = "No"
+                                elif any(
+                                    k in lab
+                                    for k in (
+                                        "export control",
+                                        "iran",
+                                        "cuba",
+                                        "north korea",
+                                        "syria",
+                                    )
+                                ):
+                                    if any(
+                                        k in lab
+                                        for k in (
+                                            "additional",
+                                            "any other country",
+                                            "in which country",
+                                            "obtain citizenship",
+                                        )
+                                    ):
+                                        want = "N/A"
+                                    else:
+                                        want = "No"
+                                elif any(
+                                    k in lab
+                                    for k in (
+                                        "hybrid in-office",
+                                        "work from our office",
+                                        "3 days per week",
+                                        "email me about future",
+                                        "future job openings",
+                                        "talent community",
+                                        "join braze",
+                                        "receive newsletters",
+                                        "regularly commute",
+                                        "commute and work",
+                                        "paid in crypto",
+                                        "ok with being paid",
+                                    )
+                                ):
+                                    want = "Yes"
+                                elif any(
+                                    k in lab
+                                    for k in (
+                                        "interviewed at",
+                                        "interviewed before",
+                                        "ever interviewed",
+                                        "employed at",
+                                        "employed before",
+                                        "worked at",
+                                    )
+                                ):
+                                    want = "No"
+                                if want:
+                                    try:
+                                        sel_ctrl.click(force=True, timeout=3000)
+                                        time.sleep(0.35)
+                                        if click_react_select_option(page, want):
+                                            repaired = True
+                                            print(f"    🛠️ Pre-submit repair Select: {lab[:40]}={want}")
+                                            continue
+                                    except Exception:
+                                        pass
+                        # Never free-text into export-control / citizenship selects
+                        if any(
+                            k in lab
+                            for k in (
+                                "export control",
+                                "iran",
+                                "cuba",
+                                "north korea",
+                                "syria",
+                                "citizenship",
+                                "nationality",
+                            )
+                        ) and safe_count(box.locator(".select__control")) > 0:
+                            continue
+                        inp = box.locator("textarea, input[type='text'], input:not([type])").first
+                        if safe_count(inp) == 0 or not inp.is_visible():
+                            continue
+                        cur = ""
+                        try:
+                            cur = (inp.input_value() or "").strip()
+                        except Exception:
+                            cur = ""
+                        if cur:
+                            continue
+                        if "preferred" in lab and "last" in lab:
+                            val = p.get("lastName") or "Kumar"
+                        elif "preferred" in lab or "first name" in lab:
+                            val = p.get("firstName") or "Lavkush"
+                        elif any(
+                            k in lab
+                            for k in (
+                                "earliest possible date",
+                                "earliest date",
+                                "start date",
+                                "d/m/year",
+                                "dd/mm",
+                                "join date",
+                            )
+                        ):
+                            # Binance etc. — never dump bio into date fields
+                            val = "01/06/2026"
+                        elif any(
+                            k in lab
+                            for k in (
+                                "address from which you plan",
+                                "plan on working",
+                                "working address",
+                            )
+                        ):
+                            val = "relocating"
+                        elif "why" in lab or "cover" in lab or "additional" in lab or "interest" in lab:
+                            val = (
+                                "I am an Azure Data Engineer (2.5 YOE) focused on Databricks, PySpark, and "
+                                "production data platforms. I want to contribute to scalable systems and high-quality delivery."
+                            )
+                        elif any(k in lab for k in ("sponsorship", "work authorization", "type of support")):
+                            val = "None — I do not require sponsorship or work-authorization assistance."
+                        elif any(
+                            k in lab
+                            for k in (
+                                "export control",
+                                "iran",
+                                "cuba",
+                                "citizenship",
+                                "nationality",
+                                "hybrid in-office",
+                                "work from our office",
+                                "future job openings",
+                                "email me about future",
+                                "interviewed at",
+                                "employed at",
+                                "paid in crypto",
+                            )
+                        ):
+                            continue
+                        else:
+                            val = (
+                                "Azure Data Engineer (2.5 YOE) specializing in Databricks, PySpark, "
+                                "Delta Lake, and production pipelines."
+                            )
+                        inp.fill(val)
+                        repaired = True
+                        print(f"    🛠️ Pre-submit repair filled required field: {lab[:40] or 'unnamed'}")
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            # Sweep ANY remaining Select... controls under legally-authorized labels (duplicate fields)
+            try:
+                for ctrl in page.locator(".select__control").all():
+                    try:
+                        if not ctrl.is_visible():
+                            continue
+                        txt = (ctrl.inner_text() or "").strip().lower()
+                        if txt not in ("", "select...", "select", "select an option"):
+                            continue
+                        near = (
+                            ctrl.evaluate(
+                                """el => {
+                                  const root = el.closest('.field,.field-wrapper,div,li,fieldset') || el.parentElement;
+                                  return ((root && root.innerText) || '').slice(0, 220).toLowerCase();
+                                }"""
+                            )
+                            or ""
+                        )
+                        if any(
+                            k in near
+                            for k in (
+                                "legally authorized",
+                                "legally authorised",
+                                "authorized to work",
+                                "authorised to work",
+                                "eligible to work",
+                            )
+                        ):
+                            ctrl.click(force=True, timeout=3000)
+                            time.sleep(0.3)
+                            if click_react_select_option(page, "Yes"):
+                                repaired = True
+                                print("    🛠️ Pre-submit repair: duplicate legally-authorized → Yes")
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            if repaired:
                 time.sleep(0.6)
                 for sel in submit_selectors:
                     try:
@@ -2064,14 +2560,23 @@ class LeverHandler(BaseATSHandler):
             "button#btn-submit",
             "button[type='submit']",
             "button:has-text('Submit application')",
+            "button:has-text('Submit Application')",
+            "button:has-text('Submit')",
+            "button:has-text('Apply for this job')",
             "button:has-text('Apply')",
-            ".postings-btn"
+            "a.postings-btn:has-text('Submit')",
+            ".postings-btn",
+            "input[type='submit']",
         ]
         for sel in submit_selectors:
             try:
                 btn = page.locator(sel).first
                 if safe_count(btn) > 0 and btn.is_visible():
-                    btn.click(timeout=5000)
+                    try:
+                        btn.scroll_into_view_if_needed()
+                    except Exception:
+                        pass
+                    btn.click(timeout=5000, force=True)
                     self.record_field(
                         label="Submit Application Button",
                         value="CLICKED",
@@ -2103,17 +2608,23 @@ class LeverHandler(BaseATSHandler):
                         ).lower()
                 except Exception:
                     pass
-                # Ashby toast: "Your application was successfully submitted!"
+                # Ashby/Lever toast: "Your application was successfully submitted!"
                 if any(
                     phrase in body_txt
                     for phrase in (
                         "successfully submitted",
                         "application was successfully submitted",
                         "thank you for applying",
+                        "thanks for applying",
                         "application has been received",
                         "application submitted",
+                        "application received",
+                        "we've received your application",
+                        "we have received your application",
                         "we'll contact you if there are next steps",
                         "we will contact you if there are next steps",
+                        "you applied to",
+                        "application complete",
                     )
                 ):
                     return True
@@ -2126,8 +2637,11 @@ class LeverHandler(BaseATSHandler):
                     "h3:has-text('Thank you')",
                     "h2:has-text('Application Submitted')",
                     "div:has-text('Thank you for applying')",
+                    "div:has-text('Thanks for applying')",
                     "div:has-text('Your application has been received')",
                     "div:has-text('successfully submitted')",
+                    "div:has-text('Application complete')",
+                    "div:has-text('You applied')",
                 ]
                 for sel in conf_selectors:
                     try:
@@ -2177,7 +2691,12 @@ class AshbyHandler(BaseATSHandler):
         if not page or not resume_path or not os.path.exists(resume_path):
             return False
         try:
-            file_input = page.locator("input#_systemfield_resume, input[type='file']").first
+            # Prefer Ashby system resume field — generic file inputs include autofill upload
+            file_input = page.locator("input#_systemfield_resume").first
+            if safe_count(file_input) == 0:
+                file_input = page.locator("input[type='file']").nth(1)  # skip autofill slot when present
+            if safe_count(file_input) == 0:
+                file_input = page.locator("input[type='file']").first
             if safe_count(file_input) > 0:
                 file_input.set_input_files(resume_path)
                 self.record_field(
@@ -2189,7 +2708,17 @@ class AshbyHandler(BaseATSHandler):
                     step_name="RESUME_ATTACHMENT",
                     action_type="UPLOADED"
                 )
-                time.sleep(2)
+                time.sleep(2.5)
+                # Confirm file stuck on the required system field (Triomics blocks submit otherwise)
+                try:
+                    sys_resume = page.locator("input#_systemfield_resume").first
+                    if safe_count(sys_resume) > 0:
+                        files = sys_resume.evaluate("el => (el.files && el.files.length) || 0")
+                        if not files:
+                            sys_resume.set_input_files(resume_path)
+                            time.sleep(1.0)
+                except Exception:
+                    pass
                 return True
         except Exception:
             pass
@@ -2285,6 +2814,74 @@ class AshbyHandler(BaseATSHandler):
                             "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
                             f"'{label.lower()}')]/following::input[1]"
                         ).first
+                    # Novo / India Ashby: Notice Period is often radio / select / combobox
+                    if "notice" in label.lower():
+                        try:
+                            # Radio group: "90 days" / "60/45 days" / "30 /15 days" / "Immediately available"
+                            fs = page.locator(
+                                "fieldset.ashby-application-form-input-radio-group, "
+                                "fieldset[class*='radio']"
+                            ).filter(has_text=re.compile(r"notice\s*period", re.I)).first
+                            if safe_count(fs) > 0 and fs.is_visible():
+                                days_i = int(re.sub(r"\D", "", str(notice_days) or "15") or "15")
+                                prefs = []
+                                if days_i <= 7:
+                                    prefs = [r"immediate", r"30\s*/?\s*15", r"15\s*days"]
+                                elif days_i <= 30:
+                                    prefs = [r"30\s*/?\s*15", r"15\s*days", r"30\s*days", r"immediate"]
+                                elif days_i <= 60:
+                                    prefs = [r"60\s*/?\s*45", r"60\s*days", r"30\s*/?\s*15"]
+                                else:
+                                    prefs = [r"90\s*days", r"60\s*/?\s*45"]
+                                picked = False
+                                for pref in prefs:
+                                    opt = fs.locator("label, [class*='option']").filter(
+                                        has_text=re.compile(pref, re.I)
+                                    ).first
+                                    if safe_count(opt) == 0:
+                                        continue
+                                    try:
+                                        opt.click(force=True, timeout=2500)
+                                        filled.append(f"{label} (radio)")
+                                        picked = True
+                                        break
+                                    except Exception:
+                                        try:
+                                            inp = opt.locator("input[type='radio']").first
+                                            if safe_count(inp) > 0:
+                                                inp.check(force=True, timeout=2500)
+                                                filled.append(f"{label} (radio)")
+                                                picked = True
+                                                break
+                                        except Exception:
+                                            continue
+                                if picked:
+                                    continue
+                        except Exception:
+                            pass
+                        try:
+                            sel = page.get_by_label(pat).first
+                            tag = ""
+                            try:
+                                tag = (sel.evaluate("el => el.tagName") or "").lower()
+                            except Exception:
+                                tag = ""
+                            if safe_count(sel) > 0 and sel.is_visible() and tag == "select":
+                                for opt in (f"{notice_days} days", f"{notice_days} Days", notice_days, "15 days", "30 days"):
+                                    try:
+                                        sel.select_option(label=opt)
+                                        filled.append(f"{label} (select)")
+                                        break
+                                    except Exception:
+                                        try:
+                                            sel.select_option(value=opt)
+                                            filled.append(f"{label} (select)")
+                                            break
+                                        except Exception:
+                                            continue
+                                continue
+                        except Exception:
+                            pass
                     if safe_count(loc) == 0 or not loc.is_visible():
                         continue
                     cur = ""
@@ -2317,29 +2914,73 @@ class AshbyHandler(BaseATSHandler):
             major_v = "Computer Science"
             if "computer" in degree_v.lower():
                 major_v = "Computer Science and Engineering"
+            # Prefer school autocomplete inside Education History (not Location)
             school_inp = page.locator(
-                "input[placeholder*='Search schools' i], input.ashby-application-form-input-autocomplete"
+                "input[placeholder*='Search schools' i]"
             ).first
+            if safe_count(school_inp) == 0:
+                school_inp = page.locator("input.ashby-application-form-input-autocomplete").nth(1)
             if safe_count(school_inp) > 0 and school_inp.is_visible():
                 try:
                     cur_s = school_inp.input_value() or ""
                 except Exception:
                     cur_s = ""
-                if not cur_s.strip():
+                # Re-bind when empty OR not Maharshi Dayanand / mdu (exclude Markandeshwar/Sagar/DAV)
+                cur_l = cur_s.lower()
+                good_school = (
+                    ("maharshi dayanand university" in cur_l or cur_l.strip() == "maharshi dayanand university")
+                    and "markandeshwar" not in cur_l
+                    and "saraswati" not in cur_l
+                    and "sagar" not in cur_l
+                )
+                needs_school = (not cur_s.strip()) or not good_school
+                if needs_school:
                     school_inp.click()
                     school_inp.fill("")
-                    # Short searchable token (Ashby school taxonomy)
-                    token = "Maharishi" if "maharishi" in school_q.lower() else school_q.split("(")[0].strip()[:40]
+                    # Ashby taxonomy spelling is "Maharshi Dayanand University" (mdu.ac.in), not Maharishi*
+                    token = (
+                        "Maharshi Dayanand University"
+                        if any(k in school_q.lower() for k in ("maharishi", "maharshi", "dayanand", "mdu"))
+                        else school_q.split("(")[0].strip()[:40]
+                    )
                     school_inp.type(token, delay=40)
-                    time.sleep(1.2)
-                    opt = page.locator("[role='option'], [role='listbox'] div, [role='listbox'] li").first
-                    if safe_count(opt) > 0 and opt.is_visible():
-                        opt.click()
-                        filled.append("Education School")
-                    else:
-                        # Keep typed value if no taxonomy hit
-                        school_inp.fill(school_q)
-                        filled.append("Education School (typed)")
+                    time.sleep(1.4)
+                    opts = page.locator("[role='option'], [role='listbox'] div, [role='listbox'] li")
+                    picked = False
+                    for i in range(min(safe_count(opts), 12)):
+                        try:
+                            ot = (opts.nth(i).inner_text() or "").strip()
+                            ot_l = ot.lower()
+                            # Prefer exact MDU Rohtak taxonomy hit
+                            if "mdu.ac.in" in ot_l or (
+                                "maharshi dayanand university" in ot_l and "saraswati" not in ot_l and "markandeshwar" not in ot_l
+                            ):
+                                opts.nth(i).click()
+                                filled.append(f"Education School ({ot.split(chr(10))[0][:40]})")
+                                picked = True
+                                break
+                        except Exception:
+                            continue
+                    if not picked:
+                        for i in range(min(safe_count(opts), 12)):
+                            try:
+                                ot = (opts.nth(i).inner_text() or "").strip()
+                                ot_l = ot.lower()
+                                if "dayanand" in ot_l and "sagar" not in ot_l:
+                                    opts.nth(i).click()
+                                    filled.append(f"Education School ({ot.split(chr(10))[0][:40]})")
+                                    picked = True
+                                    break
+                            except Exception:
+                                continue
+                    if not picked:
+                        opt = opts.first
+                        if safe_count(opt) > 0 and opt.is_visible():
+                            opt.click()
+                            filled.append("Education School")
+                        else:
+                            school_inp.fill(school_q)
+                            filled.append("Education School (typed)")
             deg = page.locator("input#_systemfield_education_history-degree").first
             if safe_count(deg) > 0 and deg.is_visible():
                 try:
@@ -2358,6 +2999,91 @@ class AshbyHandler(BaseATSHandler):
                 except Exception:
                     maj.fill(major_v)
                     filled.append("Education Major")
+            # Start/End month+year <select>s — Triomics rejects "Invalid value: Education History" without them
+            try:
+                start_raw = str(edu0.get("startDate") or edu0.get("dates") or "2020-06")
+                end_raw = str(edu0.get("endDate") or "2023-05")
+                years = re.findall(r"20\d{2}", f"{start_raw} {end_raw} {edu0.get('dates') or ''}")
+                start_y = years[0] if years else "2020"
+                end_y = years[-1] if years else "2023"
+                month_names = [
+                    "", "January", "February", "March", "April", "May", "June",
+                    "July", "August", "September", "October", "November", "December",
+                ]
+
+                def _month_label(raw: str, default: str) -> str:
+                    m = re.search(r"20\d{2}-(\d{1,2})", raw)
+                    if m:
+                        mi = int(m.group(1))
+                        if 1 <= mi <= 12:
+                            return month_names[mi]
+                    for name in month_names[1:]:
+                        if name.lower()[:3] in raw.lower():
+                            return name
+                    return default
+
+                start_m = _month_label(start_raw, "June")
+                end_m = _month_label(end_raw, "May")
+                # Scope to education block: first Month/Year = start, second = end
+                edu_selects = page.locator(
+                    "select.ashby-application-form-input-dropdown-select"
+                )
+                month_sels = []
+                year_sels = []
+                for i in range(min(safe_count(edu_selects), 12)):
+                    sel = edu_selects.nth(i)
+                    try:
+                        if not sel.is_visible():
+                            continue
+                        opts = sel.locator("option").all_inner_texts()
+                        joined = " ".join(opts[:5]).lower()
+                        if "january" in joined or "month" in joined:
+                            month_sels.append(sel)
+                        elif re.search(r"20\d{2}", " ".join(opts[:8])):
+                            year_sels.append(sel)
+                    except Exception:
+                        continue
+                if len(month_sels) >= 1:
+                    try:
+                        month_sels[0].select_option(label=start_m)
+                        filled.append(f"Education Start Month ({start_m})")
+                    except Exception:
+                        try:
+                            month_sels[0].select_option(index=6)  # June
+                            filled.append("Education Start Month")
+                        except Exception:
+                            pass
+                if len(year_sels) >= 1:
+                    try:
+                        year_sels[0].select_option(label=start_y)
+                        filled.append(f"Education Start Year ({start_y})")
+                    except Exception:
+                        pass
+                if len(month_sels) >= 2:
+                    try:
+                        month_sels[1].select_option(label=end_m)
+                        filled.append(f"Education End Month ({end_m})")
+                    except Exception:
+                        try:
+                            month_sels[1].select_option(index=5)  # May
+                            filled.append("Education End Month")
+                        except Exception:
+                            pass
+                if len(year_sels) >= 2:
+                    try:
+                        year_sels[1].select_option(label=end_y)
+                        filled.append(f"Education End Year ({end_y})")
+                    except Exception:
+                        pass
+                # Ensure "Still student?" is unchecked for completed degree
+                try:
+                    cur_cb = page.locator("input#_systemfield_education_history-isCurrent").first
+                    if safe_count(cur_cb) > 0 and cur_cb.is_checked():
+                        cur_cb.uncheck(force=True)
+                except Exception:
+                    pass
+            except Exception as e_dates:
+                logger.debug("Ashby education dates notice: %s", e_dates)
         except Exception as e_edu:
             logger.debug("Ashby education history notice: %s", e_edu)
 
@@ -2441,6 +3167,22 @@ class AshbyHandler(BaseATSHandler):
                         # Triomics expects numeric days; keep digits-only when label says Days
                         ans_to_fill = notice_days if "day" in lt else f"{notice_days} Days"
                         filled.append("Notice Period")
+                    elif "when can you start" in lt or ("start a new role" in lt) or ("earliest start" in lt):
+                        # OpenAI uses a date picker (placeholder Pick date...) — not free text
+                        itype = (inp.get_attribute("type") or "").lower()
+                        ph = (inp.get_attribute("placeholder") or "").lower()
+                        if "date" in ph or "pick date" in ph or itype == "date":
+                            # ~notice_days from today — MM/DD/YYYY works for Ashby date inputs
+                            try:
+                                from datetime import datetime, timedelta
+
+                                start_dt = datetime.now() + timedelta(days=max(int(notice_days or "15"), 15))
+                                ans_to_fill = start_dt.strftime("%m/%d/%Y")
+                            except Exception:
+                                ans_to_fill = "12/15/2026"
+                        else:
+                            ans_to_fill = f"{notice_days} days notice / available to start after notice period"
+                        filled.append("Start Date Availability")
                     elif any(k in lt for k in ("school", "university", "college", "institution")) and "email" not in lt:
                         ans_to_fill = str(edu0.get("institution") or "Maharishi Dayanand University (MDU), Rohtak")
                         filled.append("Education Institution")
@@ -2504,11 +3246,26 @@ class AshbyHandler(BaseATSHandler):
         except Exception:
             pass
 
-        # 5. Yes/No button widgets (+ radio Yes/No for Triomics-style disclosures)
+        # 5. Yes/No button widgets (+ Triomics field-entry Yes/No)
         try:
-            for container in page.locator("div.ashby-application-form-input-yesno").all():
+            yesno_roots = page.locator(
+                "div.ashby-application-form-input-yesno, div.ashby-application-form-field-entry"
+            )
+            for i in range(min(safe_count(yesno_roots), 40)):
                 try:
-                    txt = container.locator("xpath=ancestor::div[2]").first.inner_text().lower()
+                    container = yesno_roots.nth(i)
+                    if not container.is_visible():
+                        continue
+                    # Prefer field-entry own text (scoped) over deep ancestors that mix questions
+                    try:
+                        txt = (container.inner_text() or "").lower()
+                    except Exception:
+                        txt = ""
+                    if not txt or safe_count(container.locator("button[data-option]")) == 0:
+                        continue
+                    # Skip huge aggregates that contain many questions
+                    if txt.count("yes") > 3 and len(txt) > 400:
+                        continue
                     want_yes = any(
                         w in txt
                         for w in (
@@ -2522,92 +3279,103 @@ class AshbyHandler(BaseATSHandler):
                             "buy out",
                             "buyout",
                             "buy-out",
+                            "option of buy",
+                            "hsr layout",
+                            "5 days in a week",
+                            "authorized to work",
+                            "legally authorized",
+                            "eligible to work",
+                            "work authorization",
+                            "authorized to work in the country",
                         )
                     )
-                    want_no = any(w in txt for w in ("sponsorship", "require visa", "visa sponsorship"))
+                    want_no = any(
+                        w in txt
+                        for w in (
+                            "sponsorship",
+                            "require visa",
+                            "visa sponsorship",
+                            "require sponsorship",
+                            "sponsorship to work",
+                            "work in the united states",
+                            "immigration",
+                            "polygraph",
+                            "security clearance",
+                            "full scope polygraph",
+                        )
+                    )
+                    if want_yes and want_no:
+                        # Sponsorship questions that also mention office/hybrid → still No
+                        want_yes = False
                     if want_yes:
                         yes_btn = container.locator("button[data-option='yes']").first
                         if safe_count(yes_btn) > 0:
-                            yes_btn.click()
-                            filled.append("Yes/No disclosure (Yes)")
-                            self.record_field(
-                                label="Yes/No disclosure",
-                                value="Yes",
-                                field_name="yes_no_button",
-                                field_type="button_toggle",
-                                step=1,
-                                step_name="CUSTOM_SCREENING",
-                                action_type="CLICKED",
-                            )
+                            # Ashby Yes/No toggles — re-clicking active Yes clears the answer
+                            pressed = (yes_btn.get_attribute("aria-pressed") or "").lower()
+                            if pressed != "true":
+                                yes_btn.click(force=True)
+                                filled.append(f"Yes/No disclosure (Yes): {txt.strip().splitlines()[0][:40]}")
+                                self.record_field(
+                                    label="Yes/No disclosure",
+                                    value="Yes",
+                                    field_name="yes_no_button",
+                                    field_type="button_toggle",
+                                    step=1,
+                                    step_name="CUSTOM_SCREENING",
+                                    action_type="CLICKED",
+                                )
                     elif want_no:
                         no_btn = container.locator("button[data-option='no']").first
                         if safe_count(no_btn) > 0:
-                            no_btn.click()
-                            filled.append("Visa Sponsorship (No)")
-                            self.record_field(
-                                label="Visa Sponsorship",
-                                value="No",
-                                field_name="yes_no_button",
-                                field_type="button_toggle",
-                                step=1,
-                                step_name="CUSTOM_SCREENING",
-                                action_type="CLICKED",
-                            )
+                            pressed = (no_btn.get_attribute("aria-pressed") or "").lower()
+                            if pressed != "true":
+                                no_btn.click(force=True)
+                                filled.append("Visa Sponsorship (No)")
+                                self.record_field(
+                                    label="Visa Sponsorship",
+                                    value="No",
+                                    field_name="yes_no_button",
+                                    field_type="button_toggle",
+                                    step=1,
+                                    step_name="CUSTOM_SCREENING",
+                                    action_type="CLICKED",
+                                )
                 except Exception:
                     pass
         except Exception:
             pass
 
-        # 5b. Field-level Yes/No radios (commute / buy-out / authorization)
+        # 5b. Explicit Triomics required Yes/No labels (buy-out + HSR commute)
         try:
-            for ff in page.locator("div[class*='field'], fieldset, div.ashby-application-form-field-entry").all():
+            for label_pat, ans in (
+                (r"option of buy\s*out", "yes"),
+                (r"comfortable commuting", "yes"),
+                (r"hsr layout", "yes"),
+                (r"5 days in a week", "yes"),
+                (r"over the age of 18|at least 18", "yes"),
+            ):
                 try:
-                    if not ff.is_visible():
+                    lab = page.locator("label").filter(has_text=re.compile(label_pat, re.I)).first
+                    if safe_count(lab) == 0:
                         continue
-                    ftxt = (ff.inner_text() or "").lower()
-                    if not ftxt:
-                        continue
-                    radios = ff.locator("input[type='radio'], button[data-option]")
-                    if safe_count(radios) == 0:
-                        continue
-                    pick_yes = any(
-                        k in ftxt
-                        for k in (
-                            "comfortable commuting",
-                            "commuting to this location",
-                            "buy out",
-                            "buyout",
-                            "on-site position",
-                            "onsite position",
-                        )
-                    )
-                    pick_no = any(k in ftxt for k in ("sponsorship", "require visa", "authorized to work")) and "comfortable" not in ftxt
-                    if "authorized to work" in ftxt or "legally authorized" in ftxt or "eligible to work" in ftxt:
-                        pick_yes, pick_no = True, False
-                    if not pick_yes and not pick_no:
-                        continue
-                    target = "yes" if pick_yes else "no"
-                    btn = ff.locator(f"button[data-option='{target}']").first
+                    entry = lab.locator(
+                        "xpath=ancestor::div[contains(@class,'ashby-application-form-field-entry') "
+                        "or contains(@class,'fieldEntry') or contains(@class,'field-entry')][1]"
+                    ).first
+                    if safe_count(entry) == 0:
+                        entry = lab.locator("xpath=ancestor::div[2]").first
+                    btn = entry.locator(f"button[data-option='{ans}']").first
                     if safe_count(btn) > 0 and btn.is_visible():
-                        btn.click()
-                        filled.append(f"Disclosure radio ({target})")
-                        continue
-                    # Native radios labeled Yes/No
-                    lab = ff.get_by_label(re.compile(rf"^{target}$", re.I)).first
-                    if safe_count(lab) > 0:
-                        lab.click(force=True)
-                        filled.append(f"Disclosure radio ({target})")
-                        continue
-                    opt = ff.locator(f"label:has-text('{target.title()}'), text={target.title()}").first
-                    if safe_count(opt) > 0:
-                        opt.click(force=True)
-                        filled.append(f"Disclosure radio ({target})")
+                        pressed = (btn.get_attribute("aria-pressed") or "").lower()
+                        if pressed != "true":
+                            btn.click(force=True)
+                            filled.append(f"Required Yes/No ({ans}): {label_pat[:28]}")
                 except Exception:
                     continue
         except Exception:
             pass
 
-        # 5c. Technical skills checklist — check relevant production infra skills
+        # 5c. Technical skills checklist — check only skills the candidate can honestly claim
         try:
             skill_needles = (
                 "python",
@@ -2625,19 +3393,53 @@ class AshbyHandler(BaseATSHandler):
                 "monitoring",
                 "prometheus",
                 "grafana",
+                # Triomics-style qualification rows (infra/production only — not GenAI modeling)
+                "backend infrastructure",
+                "scalable backend",
+                "ml system in production",
+                "production",
+                "data pipeline",
+                "devops",
+                "platform",
+            )
+            # Never auto-claim GenAI research skills not in candidate fact matrix
+            skip_needles = (
+                "prompt engineering",
+                "rag pipeline",
+                "fine-tuning",
+                "lora",
+                "sft",
+                "dpo",
+                "agentic",
+                "embeddings",
+                "vector database",
+                "re-ranking",
             )
             for cb in page.locator("input[type='checkbox']").all():
                 try:
                     if not cb.is_visible() or cb.is_checked():
                         continue
-                    parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
-                    txt = (parent.inner_text() if safe_count(parent) > 0 else "") or ""
+                    txt = ""
+                    for xp in (
+                        "xpath=ancestor::label[1]",
+                        "xpath=ancestor::div[contains(@class,'checkbox') or contains(@class,'option')][1]",
+                        "xpath=following-sibling::*[1]",
+                        "xpath=ancestor::div[1]",
+                    ):
+                        try:
+                            parent = cb.locator(xp).first
+                            if safe_count(parent) > 0:
+                                t = (parent.inner_text() or "").strip()
+                                if t and len(t) > len(txt):
+                                    txt = t
+                        except Exception:
+                            continue
                     tl = txt.lower()
-                    if "technical skills" in tl or "checklist" in tl or any(n in tl for n in skill_needles):
-                        # Only auto-check when the option itself matches a known skill
-                        if any(n in tl for n in skill_needles):
-                            cb.check(force=True)
-                            filled.append(f"Skill checklist: {txt.strip()[:40]}")
+                    if not tl or any(s in tl for s in skip_needles):
+                        continue
+                    if any(n in tl for n in skill_needles):
+                        cb.check(force=True)
+                        filled.append(f"Skill checklist: {txt.strip()[:60]}")
                 except Exception:
                     continue
         except Exception:
@@ -2700,6 +3502,8 @@ class AshbyHandler(BaseATSHandler):
                         target_opt = next((o for o in opts if o.lower() == "no" or "not require" in o.lower()), None)
                     elif "authorized" in lbl_lower or "eligible" in lbl_lower or "legally" in lbl_lower:
                         target_opt = next((o for o in opts if o.lower() == "yes" or "authorized" in o.lower()), None)
+                    elif any(k in lbl_lower for k in ("over the age of 18", "age of 18", "18 years", "at least 18")):
+                        target_opt = next((o for o in opts if o.lower() == "yes"), None)
                     elif any(k in lbl_lower for k in ["country", "location", "reside"]):
                         target_opt = next((o for o in opts if "india" in o.lower()), None)
                     elif any("prefer not" in o.lower() or "decline" in o.lower() for o in opts):
@@ -2736,35 +3540,120 @@ class AshbyHandler(BaseATSHandler):
         except Exception as e_ashby_sel:
             logger.debug("Ashby custom dropdown notice: %s", e_ashby_sel)
 
-        # 8. Ashby Checkboxes (Consents, Terms, Background Check)
+        # 8. Ashby Checkboxes (Consents, Terms, Background Check, OpenAI certify statement)
         try:
             for cb in page.locator("input[type='checkbox']").all():
                 try:
-                    if not cb.is_checked():
-                        parent = cb.locator("xpath=ancestor::label | ancestor::div[1]").first
-                        txt = parent.inner_text().lower() if safe_count(parent) > 0 else ""
-                        if any(k in txt for k in ["consent", "privacy", "terms", "agree", "certify", "acknowledge", "background check"]) or cb.get_attribute("required") is not None:
+                    if cb.is_checked():
+                        continue
+                    parent = cb.locator("xpath=ancestor::label | ancestor::div[1] | ancestor::fieldset[1]").first
+                    txt = parent.inner_text().lower() if safe_count(parent) > 0 else ""
+                    name = (cb.get_attribute("name") or "").lower()
+                    if any(
+                        k in txt or k in name
+                        for k in (
+                            "consent",
+                            "privacy",
+                            "terms",
+                            "agree",
+                            "certify",
+                            "acknowledge",
+                            "background check",
+                            "knowingly withheld",
+                            "hereby certify",
+                            "true and complete",
+                            "i confirm i have read",
+                            "confirm i have read the above",
+                        )
+                    ) or cb.get_attribute("required") is not None:
+                        try:
                             cb.check(force=True)
-                            filled.append("Consent Checkbox")
-                            self.record_field(
-                                label="Consent Checkbox",
-                                value="Checked",
-                                field_name="checkbox",
-                                field_type="checkbox",
-                                step=1,
-                                step_name="DISCLOSURES",
-                                action_type="CHECKED"
-                            )
+                        except Exception:
+                            # OpenAI certify: checkbox often visually wrapped — click option container
+                            opt = cb.locator(
+                                "xpath=ancestor::div[contains(@class,'checkbox-group-option') "
+                                "or contains(@class,'option')][1]"
+                            ).first
+                            if safe_count(opt) > 0:
+                                opt.click(force=True)
+                            else:
+                                cb.click(force=True)
+                        filled.append("Consent Checkbox")
+                        self.record_field(
+                            label="Consent Checkbox",
+                            value="Checked",
+                            field_name="checkbox",
+                            field_type="checkbox",
+                            step=1,
+                            step_name="DISCLOSURES",
+                            action_type="CHECKED"
+                        )
                 except Exception:
                     pass
         except Exception as e_acb:
             logger.debug("Ashby checkbox notice: %s", e_acb)
+
+        # 8a. OpenAI date picker by placeholder (when label→input mapping misses)
+        try:
+            for date_inp in page.locator("input[placeholder*='Pick date' i], input[placeholder*='pick date' i]").all():
+                try:
+                    if not date_inp.is_visible():
+                        continue
+                    cur = ""
+                    try:
+                        cur = date_inp.input_value() or ""
+                    except Exception:
+                        cur = ""
+                    if cur.strip():
+                        continue
+                    from datetime import datetime, timedelta
+
+                    start_dt = datetime.now() + timedelta(days=max(int(notice_days or "15"), 15))
+                    val = start_dt.strftime("%m/%d/%Y")
+                    date_inp.click()
+                    date_inp.fill(val)
+                    try:
+                        page.keyboard.press("Enter")
+                    except Exception:
+                        pass
+                    filled.append(f"Start Date Picker ({val})")
+                except Exception:
+                    continue
+        except Exception as e_dp:
+            logger.debug("Ashby date picker notice: %s", e_dp)
+
+        # 8b. OpenAI-style required Yes/No not caught above (polygraph=No, work auth=Yes)
+        try:
+            for label_pat, ans in (
+                (r"authorized to work in the country", "yes"),
+                (r"polygraph clearance", "no"),
+                (r"full scope polygraph", "no"),
+                (r"security clearance", "no"),
+            ):
+                lab = page.locator("label").filter(has_text=re.compile(label_pat, re.I)).first
+                if safe_count(lab) == 0:
+                    continue
+                entry = lab.locator(
+                    "xpath=ancestor::div[contains(@class,'ashby-application-form-field-entry')"
+                    " or contains(@class,'fieldEntry')][1]"
+                ).first
+                if safe_count(entry) == 0:
+                    entry = lab.locator("xpath=ancestor::div[2]").first
+                btn = entry.locator(f"button[data-option='{ans}']").first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    pressed = (btn.get_attribute("aria-pressed") or "").lower()
+                    if pressed != "true":
+                        btn.click(force=True)
+                        filled.append(f"OpenAI-style Yes/No ({ans}): {label_pat[:28]}")
+        except Exception as e_oai:
+            logger.debug("Ashby OpenAI screening notice: %s", e_oai)
 
         return {"filled": filled, "field_records": list(self.field_records), "ats": "Ashby"}
 
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+        self._api_submit_confirmed = False
 
         # Pre-submit: Remove any residual required constraint from empty non-file inputs
         try:
@@ -2783,14 +3672,44 @@ class AshbyHandler(BaseATSHandler):
         submit_selectors = [
             "button.ashby-application-form-submit-button",
             "button:has-text('Submit Application')",
-            "button[type='submit']",
-            "button:has-text('Apply')"
+            "button:has-text('Submit application')",
+            "button:has-text('Apply')",
         ]
         for sel in submit_selectors:
             try:
                 btn = page.locator(sel).first
                 if safe_count(btn) > 0 and btn.is_visible():
-                    btn.click(timeout=5000)
+                    # Avoid Upload File type=submit false positives
+                    try:
+                        btxt = (btn.inner_text() or "").strip().lower()
+                    except Exception:
+                        btxt = ""
+                    if "upload" in btxt:
+                        continue
+                    try:
+                        btn.scroll_into_view_if_needed()
+                    except Exception:
+                        pass
+                    try:
+                        with page.expect_response(
+                            lambda r: (
+                                "non-user-graphql" in (r.url or "")
+                                and any(
+                                    op in (r.url or "").lower()
+                                    for op in ("submit", "applies", "createapplication", "apisubmit")
+                                )
+                                and r.status < 400
+                            ),
+                            timeout=20000,
+                        ) as resp_info:
+                            btn.click(timeout=5000, force=True)
+                        try:
+                            _ = resp_info.value
+                            self._api_submit_confirmed = True
+                        except Exception:
+                            pass
+                    except Exception:
+                        btn.click(timeout=5000, force=True)
                     self.record_field(
                         label="Submit Application Button",
                         value="CLICKED",
@@ -2808,6 +3727,8 @@ class AshbyHandler(BaseATSHandler):
     def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
         if not page:
             return False
+        if getattr(self, "_api_submit_confirmed", False):
+            return True
         start = time.time()
         while time.time() - start < timeout:
             try:
@@ -3518,11 +4439,61 @@ class WorkdayHandler(BaseATSHandler):
 
             acct_pwd = _normalize_pwd(pwd_candidates[0])
 
-            # If SignInWithEmailButton or 'Sign in with email' is visible
+            # Email/password only — never click Google/LinkedIn SSO (no silent SSO bypass)
+            def _on_sso_idp() -> bool:
+                try:
+                    u = (getattr(page, "url", "") or "").lower()
+                except Exception:
+                    u = ""
+                return any(
+                    tok in u
+                    for tok in (
+                        "accounts.google.com",
+                        "linkedin.com/oauth",
+                        "linkedin.com/uas",
+                        "login.microsoftonline.com",
+                        "appleid.apple.com",
+                        "facebook.com/login",
+                    )
+                )
+
+            def _click_sign_in_with_email_only() -> bool:
+                # Exact email path only — do NOT use broad :has-text('Email') (ambiguous)
+                candidates = [
+                    "[data-automation-id='SignInWithEmailButton']",
+                    "button:has-text('Sign in with email')",
+                    "a:has-text('Sign in with email')",
+                    "button:has-text('Sign In with Email')",
+                    "a:has-text('Sign In with Email')",
+                ]
+                for sel in candidates:
+                    try:
+                        btn = page.locator(sel).first
+                        if safe_count(btn) == 0 or not btn.is_visible():
+                            continue
+                        label = ((btn.inner_text() or "") + " " + (btn.get_attribute("aria-label") or "")).strip().lower()
+                        if any(bad in label for bad in ("google", "linkedin", "microsoft", "apple", "facebook", "sso", "oidc")):
+                            continue
+                        if "email" not in label and "SignInWithEmail" not in sel:
+                            continue
+                        btn.click(force=True, timeout=5000)
+                        return True
+                    except Exception:
+                        continue
+                # Playwright role exact match (NVIDIA / modern WD)
+                try:
+                    role_btn = page.get_by_role("button", name="Sign in with email", exact=True)
+                    if safe_count(role_btn) > 0 and role_btn.first.is_visible():
+                        role_btn.first.click(force=True, timeout=5000)
+                        return True
+                except Exception:
+                    pass
+                return False
+
             email_btn_sel = (
                 "[data-automation-id='SignInWithEmailButton'], "
                 "button:has-text('Sign in with email'), a:has-text('Sign in with email'), "
-                "button:has-text('Sign In with Email'), button:has-text('Email')"
+                "button:has-text('Sign In with Email')"
             )
             try:
                 page.wait_for_selector(
@@ -3534,9 +4505,7 @@ class WorkdayHandler(BaseATSHandler):
             # Cookie banner can reappear after Apply redirect — dismiss again before fill
             self.dismiss_workday_overlays(page, max_rounds=3)
 
-            email_sign_in_btn = page.locator(email_btn_sel).first
-            if safe_count(email_sign_in_btn) > 0 and email_sign_in_btn.is_visible():
-                email_sign_in_btn.click()
+            if _click_sign_in_with_email_only():
                 self.record_field(
                     label="Sign In With Email Button",
                     value="CLICKED",
@@ -3546,11 +4515,56 @@ class WorkdayHandler(BaseATSHandler):
                     step_name="VAULT_AUTH",
                     action_type="CLICKED"
                 )
+                time.sleep(1.5)
+                # If IdP hijacked the click → back out; never fill Google/LinkedIn credentials
+                if _on_sso_idp():
+                    logger.warning("Workday vault: SSO IdP opened after email click — aborting (no silent SSO)")
+                    try:
+                        page.go_back(wait_until="domcontentloaded", timeout=15000)
+                        time.sleep(1.0)
+                    except Exception:
+                        pass
+                    try:
+                        from naukari_pro.governed_apply.attention import AttentionQueue, BlockerClass
+                        from naukari_pro.modules.autonomous_loop import ATTENTION_PATH
+                        import json as _json
+                        from pathlib import Path as _Path
+
+                        AttentionQueue().push(
+                            BlockerClass.AUTH,
+                            job_url or (getattr(page, "url", "") or ""),
+                            "Workday Google/LinkedIn SSO required — human login (no silent bypass)",
+                        )
+                        path = _Path(ATTENTION_PATH)
+                        existing = []
+                        if path.exists():
+                            try:
+                                existing = _json.loads(path.read_text(encoding="utf-8") or "[]")
+                            except Exception:
+                                existing = []
+                        entry = {
+                            "blocker": "sso",
+                            "job_url": job_url or (getattr(page, "url", "") or ""),
+                            "detail": "Workday OAuth SSO (Google/LinkedIn) — needs human; no silent bypass",
+                            "status": "open",
+                        }
+                        if not any(
+                            isinstance(e, dict) and e.get("blocker") == "sso" and e.get("job_url") == entry["job_url"]
+                            for e in existing
+                        ):
+                            existing.append(entry)
+                            path.write_text(_json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+                    except Exception as e_att:
+                        logger.debug("SSO attention enqueue notice: %s", e_att)
+                    return False
                 try:
                     page.wait_for_selector("input[data-automation-id='email']", timeout=8000)
                 except Exception:
                     time.sleep(2)
                 self.dismiss_workday_overlays(page, max_rounds=2)
+            elif _on_sso_idp():
+                logger.warning("Workday vault: already on SSO IdP — aborting (no silent SSO)")
+                return False
 
             email_loc = page.locator(
                 "input[data-automation-id='email'], input[type='email'], "
@@ -4010,28 +5024,441 @@ class WorkdayHandler(BaseATSHandler):
             logger.debug("Workday resume upload notice: %s", e_wu)
         return False
 
+    def _fill_workday_work_experience(self, page: Any, p: Dict[str, Any]) -> List[str]:
+        """Add at least one Work Experience row on My Experience (required for Embitel Next)."""
+        filled: List[str] = []
+        if not page:
+            return filled
+        try:
+            body = (page.inner_text("body", timeout=5000) or "").lower()
+        except Exception:
+            body = ""
+        if "work experience" not in body:
+            return filled
+        # Already has an entry if current/previous company title appears under the section
+        hist = p.get("workHistory") or []
+        first = hist[0] if hist and isinstance(hist[0], dict) else {}
+        company = str(first.get("company") or p.get("currentCompany") or "CGI India")
+        title = str(first.get("title") or p.get("currentTitle") or "DevOps Engineer")
+        from_err = "from is required" in body or "error-from" in body
+        start_empty = False
+        try:
+            start_inp = page.locator(
+                "div[data-automation-id='formField-startDate'] "
+                "input[data-automation-id='dateSectionMonth-input']"
+            ).first
+            if safe_count(start_inp) > 0:
+                start_empty = not (start_inp.input_value() or "").strip()
+        except Exception:
+            start_empty = False
+        # Skip only when a saved WE row exists and From is not still required/empty
+        we_editor_open = False
+        try:
+            we_editor_open = (
+                safe_count(
+                    page.locator(
+                        "div[data-automation-id='formField-startDate'] "
+                        "input[data-automation-id='dateSectionMonth-input']"
+                    )
+                )
+                > 0
+            )
+        except Exception:
+            we_editor_open = False
+        if (
+            company.lower()[:12] in body
+            and title.lower()[:10] in body
+            and not from_err
+            and not start_empty
+            and not we_editor_open
+        ):
+            return filled
+
+        def _fill_by_labels(pairs: List[Tuple[str, str]]) -> None:
+            for lab, val in pairs:
+                if not val:
+                    continue
+                try:
+                    ff = page.locator("div[data-automation-id^='formField-']").filter(
+                        has_text=re.compile(lab, re.I)
+                    ).first
+                    if safe_count(ff) == 0:
+                        continue
+                    inp = ff.locator("input[type='text'], textarea, input:not([type])").first
+                    if safe_count(inp) == 0 or not inp.is_visible():
+                        continue
+                    inp.click(force=True, timeout=3000)
+                    inp.fill(str(val))
+                    filled.append(f"WE {lab}={val[:40]}")
+                except Exception:
+                    continue
+
+        def _fill_mm_yyyy(scope, month_mm: str, year_yyyy: str, label: str) -> bool:
+            """Workday Embitel From uses MM/YYYY spinbuttons under formField-startDate."""
+            try:
+                month_inp = scope.locator("input[data-automation-id='dateSectionMonth-input']").first
+                year_inp = scope.locator("input[data-automation-id='dateSectionYear-input']").first
+                if safe_count(month_inp) == 0:
+                    return False
+                # Click display wrapper first — spinbutton input can report not-visible
+                try:
+                    disp = scope.locator("[data-automation-id='dateSectionMonth-display']").first
+                    if safe_count(disp) > 0:
+                        disp.click(force=True, timeout=3000)
+                    else:
+                        month_inp.click(force=True, timeout=3000)
+                except Exception:
+                    month_inp.click(force=True, timeout=3000)
+                time.sleep(0.15)
+                def _type_spin(inp, display_sel: str, digits: str) -> None:
+                    try:
+                        disp = scope.locator(display_sel).first
+                        if safe_count(disp) > 0:
+                            disp.click(force=True, timeout=3000)
+                        else:
+                            inp.click(force=True, timeout=3000)
+                    except Exception:
+                        inp.click(force=True, timeout=3000)
+                    time.sleep(0.12)
+                    try:
+                        inp.fill("")
+                    except Exception:
+                        pass
+                    # Select-all then type — Workday spinbuttons often ignore fill()
+                    page.keyboard.press("Meta+a")
+                    page.keyboard.type(digits, delay=50)
+                    time.sleep(0.15)
+
+                _type_spin(month_inp, "[data-automation-id='dateSectionMonth-display']", month_mm.zfill(2))
+                if safe_count(year_inp) > 0:
+                    _type_spin(year_inp, "[data-automation-id='dateSectionYear-display']", year_yyyy)
+                    page.keyboard.press("Tab")
+                    time.sleep(0.25)
+                # Commit via JS + input events when displayed value still incomplete
+                try:
+                    cur_m = (month_inp.input_value() or "").strip()
+                    cur_y = (year_inp.input_value() or "").strip() if safe_count(year_inp) > 0 else year_yyyy
+                    # Accept "6" or "06"; year must be 4 digits
+                    if len(cur_y) != 4 or not cur_m:
+                        page.evaluate(
+                            """([mm, yy]) => {
+                              const root = document.querySelector("[data-automation-id='formField-startDate']")
+                                || document.querySelector("[id*='--startDate']");
+                              if (!root) return false;
+                              const mi = root.querySelector("input[data-automation-id='dateSectionMonth-input']");
+                              const yi = root.querySelector("input[data-automation-id='dateSectionYear-input']");
+                              const set = (el, v) => {
+                                if (!el) return;
+                                el.focus();
+                                const proto = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                                if (proto && proto.set) proto.set.call(el, v); else el.value = v;
+                                el.dispatchEvent(new InputEvent('input', { bubbles: true, data: v, inputType: 'insertText' }));
+                                el.dispatchEvent(new Event('change', { bubbles: true }));
+                                el.dispatchEvent(new KeyboardEvent('keyup', { key: '0', bubbles: true }));
+                                el.blur();
+                              };
+                              set(mi, mm);
+                              set(yi, yy);
+                              return true;
+                            }""",
+                            [month_mm.zfill(2), year_yyyy],
+                        )
+                        time.sleep(0.3)
+                        # Retype year once more if still empty
+                        try:
+                            if len((year_inp.input_value() or "").strip()) != 4:
+                                _type_spin(year_inp, "[data-automation-id='dateSectionYear-display']", year_yyyy)
+                                page.keyboard.press("Tab")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                filled.append(f"WE {label}={month_mm.zfill(2)}/{year_yyyy}")
+                return True
+            except Exception as e_mm:
+                filled.append(f"WE {label} fill err: {e_mm}")
+                return False
+
+        if not we_editor_open:
+            # Click Add under Work Experience (Embitel: heading + sibling Add)
+            add_btn = None
+            for sel in (
+                "div[data-automation-id='workExperienceSection'] button:has-text('Add')",
+                "div[data-automation-id='Work-Experience-section'] button:has-text('Add')",
+                "button[aria-label*='Add Work Experience' i]",
+                "button:has-text('Add Another')",
+                "xpath=//*[normalize-space()='Work Experience']/following::button[contains(.,'Add')][1]",
+                "xpath=//h3[contains(.,'Work Experience')]/following::button[contains(.,'Add')][1]",
+                "xpath=//h2[contains(.,'Work Experience')]/following::button[contains(.,'Add')][1]",
+            ):
+                loc = page.locator(sel).first
+                if safe_count(loc) > 0 and loc.is_visible():
+                    add_btn = loc
+                    break
+            if add_btn is None:
+                try:
+                    handle = page.evaluate_handle(
+                        """() => {
+                          const nodes = Array.from(document.querySelectorAll('h1,h2,h3,h4,div,span,label'));
+                          const head = nodes.find(n => /^\\s*work experience\\s*$/i.test((n.innerText||'').trim()));
+                          if (!head) return null;
+                          let root = head.parentElement;
+                          for (let i = 0; i < 6 && root; i++) {
+                            const btn = Array.from(root.querySelectorAll('button')).find(b => /^\\s*add\\s*$/i.test((b.innerText||'').trim()));
+                            if (btn) return btn;
+                            root = root.parentElement;
+                          }
+                          const allBtn = Array.from(document.querySelectorAll('button'));
+                          const after = allBtn.find(b => {
+                            const pos = head.compareDocumentPosition(b);
+                            return (pos & Node.DOCUMENT_POSITION_FOLLOWING) && /^\\s*add\\s*$/i.test((b.innerText||'').trim());
+                          });
+                          return after || null;
+                        }"""
+                    )
+                    if handle:
+                        add_btn = handle.as_element()
+                except Exception:
+                    add_btn = None
+            if add_btn is None:
+                filled.append("WE Add button not found")
+                return filled
+            try:
+                if hasattr(add_btn, "click"):
+                    add_btn.click(force=True, timeout=5000)
+                else:
+                    page.locator(
+                        "xpath=//*[normalize-space()='Work Experience']/following::button[contains(.,'Add')][1]"
+                    ).first.click(force=True, timeout=5000)
+                time.sleep(1.5)
+                filled.append("WE Add clicked")
+            except Exception as e_add:
+                filled.append(f"WE Add click failed: {e_add}")
+                return filled
+        else:
+            filled.append("WE editor open — repairing From date")
+
+        if not we_editor_open or from_err or start_empty:
+            _fill_by_labels(
+                [
+                    ("Job Title", title),
+                    ("Company", company.split("(")[0].strip()),
+                    ("Location", str(first.get("location") or p.get("city") or "Bangalore, India")),
+                ]
+            )
+        # Currently work here — prefer label click (Embitel checkbox often not labeled via el.labels)
+        try:
+            if first.get("current") or not first.get("endDate"):
+                clicked_cur = False
+                for sel in (
+                    "label:has-text('Currently Work Here')",
+                    "label:has-text('I currently work here')",
+                    "text=Currently Work Here",
+                    "xpath=//*[contains(.,'Currently Work Here')]/ancestor::label[1]",
+                ):
+                    try:
+                        loc = page.locator(sel).first
+                        if safe_count(loc) > 0 and loc.is_visible():
+                            loc.click(force=True, timeout=3000)
+                            clicked_cur = True
+                            filled.append("WE Currently Work Here")
+                            time.sleep(0.4)
+                            break
+                    except Exception:
+                        continue
+                if not clicked_cur:
+                    for cb in page.locator("input[type='checkbox']").all():
+                        if not cb.is_visible() or cb.is_checked():
+                            continue
+                        lab = ""
+                        try:
+                            lab = (
+                                cb.evaluate(
+                                    "el => (el.labels && el.labels[0] && el.labels[0].innerText) || "
+                                    "(el.getAttribute('aria-label')||'') || "
+                                    "((el.closest('label')||el.parentElement||{}).innerText||'')"
+                                )
+                                or ""
+                            ).lower()
+                        except Exception:
+                            lab = ""
+                        if "current" in lab or "present" in lab or "work here" in lab:
+                            cb.check(force=True)
+                            filled.append("WE Currently Work Here")
+                            break
+        except Exception:
+            pass
+        # Dates YYYY-MM — Embitel From = MM/YYYY spinbuttons (formField-startDate)
+        start = str(first.get("startDate") or "2026-06")
+        try:
+            y, m = start.split("-")[:2]
+            start_scope = page.locator("div[data-automation-id='formField-startDate']").first
+            if safe_count(start_scope) == 0:
+                start_scope = page.locator("[id*='startDate'][data-automation-id='dateInputWrapper']").first
+            if safe_count(start_scope) == 0:
+                start_scope = page
+            if not _fill_mm_yyyy(start_scope, m, y, "From"):
+                # Last resort: first month/year pair on page (start before end)
+                months = page.locator("input[data-automation-id='dateSectionMonth-input']")
+                years = page.locator("input[data-automation-id='dateSectionYear-input']")
+                if safe_count(months) > 0:
+                    try:
+                        months.first.click(force=True, timeout=3000)
+                        months.first.fill(m.zfill(2))
+                        if safe_count(years) > 0:
+                            years.first.click(force=True, timeout=3000)
+                            years.first.fill(y)
+                        filled.append(f"WE From last-resort={m.zfill(2)}/{y}")
+                    except Exception as e_lr:
+                        filled.append(f"WE From last-resort err: {e_lr}")
+            # If current-job checkbox left To date half-filled, clear endDate spinbuttons
+            try:
+                end_ff = page.locator("div[data-automation-id='formField-endDate']").first
+                if safe_count(end_ff) > 0 and end_ff.is_visible():
+                    for auto in ("dateSectionMonth-input", "dateSectionYear-input"):
+                        inp = end_ff.locator(f"input[data-automation-id='{auto}']").first
+                        if safe_count(inp) == 0:
+                            continue
+                        val = (inp.input_value() or "").strip()
+                        if val:
+                            inp.click(force=True, timeout=2000)
+                            page.keyboard.press("Meta+a")
+                            page.keyboard.press("Backspace")
+                    filled.append("WE cleared partial To date")
+            except Exception:
+                pass
+        except Exception as e_dt:
+            filled.append(f"WE date notice: {e_dt}")
+        # Save / Done on panel if present
+        for sel in (
+            "button:has-text('Save')",
+            "button:has-text('Done')",
+            "button[data-automation-id='bottom-navigation-next-button']",
+        ):
+            try:
+                b = page.locator(sel).first
+                if safe_count(b) > 0 and b.is_visible():
+                    txt = ((b.inner_text() or "") + (b.get_attribute("aria-label") or "")).lower()
+                    if "next" in txt and "save" not in txt and "done" not in txt:
+                        continue
+                    if "save" in txt or "done" in txt:
+                        b.click(force=True, timeout=4000)
+                        time.sleep(1.0)
+                        filled.append("WE Saved")
+                        break
+            except Exception:
+                continue
+        return filled
+
+    def _fill_workday_education(self, page: Any, p: Dict[str, Any]) -> List[str]:
+        """Add Education row on My Experience when empty."""
+        filled: List[str] = []
+        if not page:
+            return filled
+        try:
+            body = (page.inner_text("body", timeout=5000) or "").lower()
+        except Exception:
+            body = ""
+        if "education" not in body:
+            return filled
+        edu_list = p.get("education") or []
+        edu0 = edu_list[0] if edu_list and isinstance(edu_list[0], dict) else {}
+        school = str(edu0.get("institution") or edu0.get("school") or "Maharishi Dayanand University")
+        degree = str(edu0.get("degree") or "B.Tech in Computer Science and Engineering")
+        if school.lower()[:16] in body:
+            return filled
+        add_btn = None
+        for sel in (
+            "div[data-automation-id='educationSection'] button:has-text('Add')",
+            "button[aria-label*='Add Education' i]",
+        ):
+            loc = page.locator(sel).first
+            if safe_count(loc) > 0 and loc.is_visible():
+                add_btn = loc
+                break
+        if add_btn is None:
+            try:
+                # Second Add on My Experience is usually Education
+                adds = [b for b in page.locator("button:has-text('Add')").all() if b.is_visible()]
+                if len(adds) >= 2:
+                    add_btn = adds[1]
+                elif len(adds) == 1 and "work experience" not in (
+                    adds[0].evaluate(
+                        "el => ((el.closest('section,div')||el.parentElement).innerText||'').toLowerCase().slice(0,60)"
+                    ) or ""
+                ):
+                    add_btn = adds[0]
+            except Exception:
+                pass
+        if add_btn is None:
+            return filled
+        try:
+            add_btn.click(force=True, timeout=5000)
+            time.sleep(1.2)
+        except Exception:
+            return filled
+        for lab, val in (
+            ("School", school),
+            ("Degree", degree),
+            ("Field of Study", "Computer Science"),
+            ("Major", "Computer Science"),
+        ):
+            try:
+                ff = page.locator("div[data-automation-id^='formField-']").filter(
+                    has_text=re.compile(lab, re.I)
+                ).first
+                if safe_count(ff) == 0:
+                    continue
+                inp = ff.locator("input[type='text'], textarea, input:not([type])").first
+                if safe_count(inp) > 0 and inp.is_visible():
+                    inp.click(force=True, timeout=3000)
+                    inp.fill(val)
+                    filled.append(f"EDU {lab}={val[:40]}")
+            except Exception:
+                continue
+        for sel in ("button:has-text('Save')", "button:has-text('Done')"):
+            try:
+                b = page.locator(sel).first
+                if safe_count(b) > 0 and b.is_visible():
+                    b.click(force=True, timeout=4000)
+                    time.sleep(1.0)
+                    filled.append("EDU Saved")
+                    break
+            except Exception:
+                continue
+        return filled
+
     def fill_form(self, page: Any, schema_plan: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         filled = []
         p = self.profile
+        # Use full per-job budget (was capped at 480s — Embitel WE+AQ+VD needs more after From-date repair)
+        _wd_fill_deadline = time.time() + float(PER_JOB_TIME_BUDGET_SEC)
         if not page:
             return {"filled": filled, "ats": "Workday"}
 
+        print("    [WD] open_apply_modal_if_needed...", flush=True)
         self.open_apply_modal_if_needed(page)
+        print("    [WD] wait_for_workday_auth_or_form...", flush=True)
         stage = self.wait_for_workday_auth_or_form(page, timeout_sec=15.0)
+        print(f"    [WD] auth stage={stage}", flush=True)
 
         # Workday Vault Sign-in / Create Account step if needed
         try:
             if stage == "signin" or "/login" in self._workday_url_path(page):
+                print("    [WD] vault sign-in...", flush=True)
                 signed = self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
+                print(f"    [WD] vault signed={signed}", flush=True)
                 if signed:
                     self.wait_for_workday_auth_or_form(page, timeout_sec=12.0)
                 elif stage == "signin":
                     return {"filled": filled, "field_records": list(self.field_records), "ats": "Workday"}
             elif stage != "form":
+                print("    [WD] vault attempt (non-form stage)...", flush=True)
                 self.attempt_vault_sign_in(page, job_url=getattr(page, "url", "") or "")
                 self.wait_for_workday_auth_or_form(page, timeout_sec=10.0)
         except Exception:
             pass
+        print("    [WD] entering wizard fill loop...", flush=True)
 
         def _india_national_phone(raw: Optional[str]) -> str:
             """National digits only — never lstrip('+91') (char-class strip mangles numbers)."""
@@ -4115,7 +5542,27 @@ class WorkdayHandler(BaseATSHandler):
                 return False
 
         # Multi-Step Wizard Engine (Loops up to 9 steps until Review/Submit)
+        def _wd_budget_exceeded(step: int, where: str = "") -> bool:
+            if time.time() > _wd_fill_deadline:
+                filled.append(f"Workday fill deadline hit at wizard step {step}{(' '+where) if where else ''}")
+                print(f"    [FALLBACK: TIMEOUT] Workday wizard deadline at step {step}{(' '+where) if where else ''}", flush=True)
+                return True
+            step_elapsed = time.time() - _wd_step_t0
+            if step_elapsed > float(WD_WIZARD_STEP_BUDGET_SEC):
+                filled.append(f"Workday step budget ({int(WD_WIZARD_STEP_BUDGET_SEC)}s) at step {step}{(' '+where) if where else ''}")
+                print(
+                    f"    [FALLBACK: TIMEOUT] Workday wizard step budget at step {step}"
+                    f" ({int(step_elapsed)}s){(' '+where) if where else ''}",
+                    flush=True,
+                )
+                return True
+            return False
+
         for wizard_step in range(1, 10):
+            _wd_step_t0 = time.time()
+            print(f"    [WD] wizard step {wizard_step} begin", flush=True)
+            if _wd_budget_exceeded(wizard_step, "begin"):
+                break
             # Check if final Submit button is reached
             if wizard_step > 1:
                 submit_visible = False
@@ -4595,22 +6042,74 @@ class WorkdayHandler(BaseATSHandler):
             except Exception as e_pc:
                 logger.debug("Workday country phone code fill notice: %s", e_pc)
 
+            if _wd_budget_exceeded(wizard_step, "pre-experience"):
+                break
+
+            # 1c2. My Experience panel — Work Experience + Education required before Next (Embitel)
+            try:
+                body_me = (page.inner_text("body", timeout=5000) or "").lower()
+            except Exception:
+                body_me = ""
+            if "my experience" in body_me or "work experience" in body_me:
+                try:
+                    exp_added = self._fill_workday_work_experience(page, p)
+                    if exp_added:
+                        filled.extend(exp_added)
+                except Exception as e_we:
+                    logger.debug("Workday work experience notice: %s", e_we)
+                try:
+                    edu_added = self._fill_workday_education(page, p)
+                    if edu_added:
+                        filled.extend(edu_added)
+                except Exception as e_ed:
+                    logger.debug("Workday education notice: %s", e_ed)
+
             # 1d. Skills (Embitel formField-skills) — type + Enter triggers /skillsearch, then Space-select
             try:
                 skills_ff = page.locator("div[data-automation-id='formField-skills']").first
                 if safe_count(skills_ff) > 0 and skills_ff.is_visible():
-                    sk_txt = (skills_ff.inner_text() or "").lower()
-                    needs_skills = "0 items selected" in sk_txt or "error" in sk_txt or "item selected" not in sk_txt
+                    sk_txt = (skills_ff.inner_text() or "")
+                    sk_low = sk_txt.lower()
+                    garbage = (
+                        "pygame", "pyside", "factory work", "adobe flash", "oil pipelines",
+                        "line pipes", "construction engineering", "apache ant", "apache orc",
+                        "delta programmable", "sql delta", "re engineering",
+                    )
+                    has_garbage = any(g in sk_low for g in garbage)
+                    needs_skills = (
+                        "0 items selected" in sk_low
+                        or "error" in sk_low
+                        or "item selected" not in sk_low
+                        or has_garbage
+                    )
                     if needs_skills:
+                        # Remove wrong / all pills so taxonomy search can re-seed honest skills
+                        if has_garbage or "items selected" in sk_low:
+                            for _ in range(24):
+                                rm = skills_ff.locator(
+                                    "button[aria-label*='Remove' i], button[aria-label*='remove' i], "
+                                    "[data-automation-id='DELETE_charm'], [data-automation-id*='delete' i]"
+                                ).first
+                                if safe_count(rm) == 0 or not rm.is_visible():
+                                    break
+                                try:
+                                    rm.click(force=True, timeout=2000)
+                                    time.sleep(0.2)
+                                except Exception:
+                                    break
+                            filled.append("Cleared Workday skill pills")
                         skill_list = p.get("skills") or []
                         # Prefer searchable short tokens that hit Workday skillsearch taxonomy
                         skill_queries = []
                         for s in skill_list:
                             if isinstance(s, str) and s.strip():
                                 skill_queries.append(s.strip())
-                        for extra in ("Python", "Kubernetes", "Docker", "AWS", "Terraform", "SQL", "MLOps"):
+                        for extra in ("Python", "Azure", "Databricks", "PySpark", "Kubernetes", "Docker", "SQL", "MLOps"):
                             if extra not in skill_queries:
                                 skill_queries.append(extra)
+                        # Prefer short exact tokens first (avoid "Delta" → PLC garbage)
+                        preferred = ["Python", "Azure", "Databricks", "PySpark", "Kubernetes", "Docker", "SQL", "Terraform"]
+                        skill_queries = preferred + [s for s in skill_queries if s not in preferred]
                         container = skills_ff.locator(
                             "[data-automation-id='multiselectInputContainer'], "
                             "[data-automation-id='multiSelectContainer']"
@@ -4635,12 +6134,19 @@ class WorkdayHandler(BaseATSHandler):
                             if safe_count(inp) == 0 or not inp.is_visible():
                                 break
                             try:
-                                # Use first significant token for search (e.g. "Azure Databricks" → "Databricks")
+                                # Prefer exact short skills; avoid bare "Delta"/"Spark" which match junk taxonomy
                                 token = q
-                                parts = re.split(r"[\s/()]+", q)
-                                parts = [x for x in parts if len(x) > 2 and x.lower() not in ("and", "the", "for")]
-                                if parts:
-                                    token = max(parts, key=len)[:40]
+                                if q.lower() in ("delta lake",):
+                                    token = "Databricks"
+                                elif q.lower() in ("apache spark", "spark sql"):
+                                    token = "PySpark"
+                                else:
+                                    parts = re.split(r"[\s/()]+", q)
+                                    parts = [x for x in parts if len(x) > 2 and x.lower() not in ("and", "the", "for", "delta")]
+                                    if parts:
+                                        token = max(parts, key=len)[:40]
+                                if token.lower() in ("delta", "spark", "lake", "factory", "pipeline", "pipelines"):
+                                    continue
                                 inp.click()
                                 inp.fill("")
                                 inp.type(token, delay=40)
@@ -4648,6 +6154,7 @@ class WorkdayHandler(BaseATSHandler):
                                 time.sleep(1.2)
                                 # wait for real options (not "No Items.")
                                 ready = False
+                                opts = []
                                 for _ in range(12):
                                     opts = page.evaluate(
                                         """() => Array.from(
@@ -4660,23 +6167,21 @@ class WorkdayHandler(BaseATSHandler):
                                     time.sleep(0.25)
                                 if not ready:
                                     continue
-                                page.keyboard.press("ArrowDown")
-                                time.sleep(0.12)
+                                # Pick option that contains the token; skip obvious junk
+                                junk = ("plc", "pygame", "flash", "oil", "pipe", "factory", "ant", "orc", "construction")
+                                pick_idx = 0
+                                for i, ot in enumerate(opts):
+                                    ol = ot.lower()
+                                    if any(j in ol for j in junk):
+                                        continue
+                                    if token.lower() in ol or ol.startswith(token.lower()[:4]):
+                                        pick_idx = i
+                                        break
+                                for _ in range(pick_idx + 1):
+                                    page.keyboard.press("ArrowDown")
+                                    time.sleep(0.08)
                                 page.keyboard.press("Space")
                                 time.sleep(0.45)
-                                # hierarchical leaf if still open with children
-                                cur_mid = (skills_ff.inner_text() or "").lower()
-                                if "item selected" not in cur_mid or "0 items" in cur_mid:
-                                    more = page.evaluate(
-                                        """() => Array.from(
-                                          document.querySelectorAll('[data-automation-id=menuItem][role=option]')
-                                        ).map(e => (e.innerText||'').trim()).filter(Boolean)"""
-                                    ) or []
-                                    if more:
-                                        page.keyboard.press("ArrowDown")
-                                        time.sleep(0.1)
-                                        page.keyboard.press("Space")
-                                        time.sleep(0.35)
                                 try:
                                     page.keyboard.press("Escape")
                                 except Exception:
@@ -4738,7 +6243,7 @@ class WorkdayHandler(BaseATSHandler):
                             if bad:
                                 ans = None
                                 if "overall work experience" in q_l or ("work experience" in q_l and "fresher" in q_l):
-                                    ans = str(p.get("experienceYears") or "2")
+                                    ans = str(p.get("experienceYears") or "2.5")
                                 elif "current company" in q_l:
                                     ans = str(p.get("currentCompany") or "CGI India")
                                 else:
@@ -4746,13 +6251,22 @@ class WorkdayHandler(BaseATSHandler):
                                 if ans and ans.lower() not in ("yes", "no"):
                                     try:
                                         ta.click(force=True, timeout=3000)
-                                        ta.fill("")
-                                        ta.type(str(ans), delay=25)
+                                        mod = "Meta" if sys.platform == "darwin" else "Control"
+                                        page.keyboard.press(f"{mod}+A")
+                                        page.keyboard.press("Backspace")
+                                        page.keyboard.type(str(ans), delay=40)
                                         ta.evaluate(
-                                            """e => {
-                                              e.dispatchEvent(new Event('input', {bubbles:true}));
+                                            """(e, v) => {
+                                              const proto = Object.getOwnPropertyDescriptor(
+                                                window.HTMLInputElement.prototype, 'value'
+                                              ) || Object.getOwnPropertyDescriptor(
+                                                window.HTMLTextAreaElement.prototype, 'value'
+                                              );
+                                              if (proto && proto.set) proto.set.call(e, v); else e.value = v;
+                                              e.dispatchEvent(new InputEvent('input', {bubbles:true, data:v, inputType:'insertText'}));
                                               e.dispatchEvent(new Event('change', {bubbles:true}));
-                                            }"""
+                                            }""",
+                                            str(ans),
                                         )
                                         page.keyboard.press("Tab")
                                     except Exception:
@@ -5250,6 +6764,12 @@ class WorkdayHandler(BaseATSHandler):
                                 "currently work for",
                                 "relative",
                                 "conflict of interest",
+                                "reside in new york",
+                                "new york city",
+                                "live in the united states",
+                                "based in the us",
+                                "us citizen",
+                                "united states citizen",
                             )
                         ):
                             chosen = _pick_yes_no(opts, False)
@@ -5356,6 +6876,9 @@ class WorkdayHandler(BaseATSHandler):
             except Exception:
                 pass
 
+            if _wd_budget_exceeded(wizard_step, "pre-next"):
+                break
+
             # Advance to Next Step (Fractal uses pageFooterNextButton = Save and Continue)
             try:
                 next_btn = None
@@ -5400,12 +6923,209 @@ class WorkdayHandler(BaseATSHandler):
                         next_btn.scroll_into_view_if_needed(timeout=2000)
                     except Exception:
                         pass
-                    # Embitel AQ: React textareas often drop fill() — re-type critical answers before Next
+                    # DXC / US tenants: "Do you reside in New York City, NY?" — force No before Next
+                    try:
+                        nyc_ff = page.locator("div[data-automation-id^='formField-']").filter(
+                            has_text=re.compile(r"New York City|reside in New York", re.I)
+                        ).first
+                        if safe_count(nyc_ff) > 0 and nyc_ff.is_visible():
+                            btn = nyc_ff.locator("button").first
+                            btn_t = ((btn.inner_text() or "") if safe_count(btn) > 0 else "").strip().lower()
+                            if safe_count(btn) > 0 and ("select" in btn_t or btn_t in ("", "select one")):
+                                btn.click(force=True, timeout=2500)
+                                time.sleep(0.35)
+                                opt = page.locator("[role='option'], [data-automation-id='promptOption']").filter(
+                                    has_text=re.compile(r"^No$", re.I)
+                                ).first
+                                if safe_count(opt) > 0 and opt.is_visible():
+                                    opt.click(force=True, timeout=2500)
+                                    filled.append("WD NYC residence: No")
+                                else:
+                                    page.keyboard.press("Escape")
+                    except Exception:
+                        pass
+                    # Embitel AQ/VD: only buttons still labeled Select One (cap 6 — full formField scan hung)
+                    try:
+                        select_btns = page.locator("button").filter(
+                            has_text=re.compile(r"^\s*Select One\s*$", re.I)
+                        )
+                        n_sel = min(safe_count(select_btns), 8)
+                        for i in range(n_sel):
+                            try:
+                                btn = select_btns.nth(i)
+                                if not btn.is_visible():
+                                    continue
+                                q_l = ""
+                                try:
+                                    q_l = (
+                                        btn.evaluate(
+                                            """el => {
+                                              const ff = el.closest('[data-automation-id^="formField-"]');
+                                              return ((ff && ff.innerText) || el.innerText || '').split('\\n')[0].trim();
+                                            }"""
+                                        )
+                                        or ""
+                                    ).lower()
+                                except Exception:
+                                    q_l = ""
+                                # Prefer full formField text for geography questions
+                                try:
+                                    ff_txt = (
+                                        btn.evaluate(
+                                            """el => {
+                                              const ff = el.closest('[data-automation-id^="formField-"]');
+                                              return (ff && ff.innerText) || '';
+                                            }"""
+                                        )
+                                        or ""
+                                    ).lower()
+                                    if ff_txt:
+                                        q_l = ff_txt[:200]
+                                except Exception:
+                                    pass
+                                want = "No"
+                                if any(k in q_l for k in ("authoris", "authoriz", "eligible to work", "work permit")):
+                                    want = "Yes"
+                                elif any(
+                                    k in q_l
+                                    for k in (
+                                        "reside in new york",
+                                        "new york city",
+                                        "live in the united states",
+                                        "based in the us",
+                                        "us citizen",
+                                        "united states citizen",
+                                    )
+                                ):
+                                    want = "No"
+                                elif "gender" in q_l and "identity" not in q_l:
+                                    want = "Male"
+                                btn.click(force=True, timeout=2500)
+                                time.sleep(0.35)
+                                opt = page.locator("[role='option'], [data-automation-id='promptOption']").filter(
+                                    has_text=re.compile(rf"^{re.escape(want)}$", re.I)
+                                ).first
+                                if safe_count(opt) > 0 and opt.is_visible():
+                                    opt.click(force=True, timeout=2500)
+                                    filled.append(f"AQ/VD SelectOne fix: {q_l[:36]}={want}")
+                                else:
+                                    page.keyboard.press("Escape")
+                            except Exception:
+                                try:
+                                    page.keyboard.press("Escape")
+                                except Exception:
+                                    pass
+                                continue
+                    except Exception:
+                        pass
+                    # Embitel VD: Primary Nationality (often Select One after Citizenship)
+                    try:
+                        body_nat = (page.inner_text("body") or "").lower()
+                        if "primary nationality" in body_nat and (
+                            "select one" in body_nat or "nationality is required" in body_nat or "errors found" in body_nat
+                        ):
+                            nat_ff = page.locator("div[data-automation-id^='formField-']").filter(
+                                has_text=re.compile(r"Primary Nationality", re.I)
+                            ).first
+                            if safe_count(nat_ff) > 0 and nat_ff.is_visible():
+                                btn = nat_ff.locator("button").first
+                                if safe_count(btn) > 0 and "select" in ((btn.inner_text() or "").lower()):
+                                    btn.click(force=True, timeout=2500)
+                                    time.sleep(0.35)
+                                    for pref in ("India", "Indian", "India (IN)"):
+                                        opt = page.locator("[role='option'], [data-automation-id='promptOption']").filter(
+                                            has_text=re.compile(rf"^{re.escape(pref)}$", re.I)
+                                        ).first
+                                        if safe_count(opt) > 0 and opt.is_visible():
+                                            opt.click(force=True, timeout=2500)
+                                            filled.append(f"VD Primary Nationality: {pref}")
+                                            break
+                                    else:
+                                        inp = nat_ff.locator("input").first
+                                        if safe_count(inp) > 0 and inp.is_visible():
+                                            inp.type("India", delay=40)
+                                            page.keyboard.press("Enter")
+                                            time.sleep(0.6)
+                                            opt = page.locator("[role='option']").filter(
+                                                has_text=re.compile(r"India", re.I)
+                                            ).first
+                                            if safe_count(opt) > 0:
+                                                opt.click(force=True, timeout=2500)
+                                                filled.append("VD Primary Nationality: India")
+                                    try:
+                                        page.keyboard.press("Escape")
+                                    except Exception:
+                                        pass
+                    except Exception:
+                        pass
+                    # Embitel VD: Citizenship Status multiselect (required — Select One placeholder)
+                    try:
+                        body_cit = (page.inner_text("body") or "").lower()
+                        if "citizenship" in body_cit and (
+                            "select one" in body_cit or "citizenship status is required" in body_cit or "errors found" in body_cit
+                        ):
+                            cit_ff = page.locator("div[data-automation-id^='formField-']").filter(
+                                has_text=re.compile(r"Citizenship Status", re.I)
+                            ).first
+                            if safe_count(cit_ff) > 0 and cit_ff.is_visible():
+                                already = (cit_ff.inner_text() or "").lower()
+                                if "item selected" not in already or "0 items" in already or "select one" in already:
+                                    try:
+                                        page.keyboard.press("Escape")
+                                    except Exception:
+                                        pass
+                                    mc = cit_ff.locator(
+                                        "[data-automation-id='multiselectInputContainer'], "
+                                        "button, [aria-haspopup='listbox']"
+                                    ).first
+                                    if safe_count(mc) > 0:
+                                        mc.click(force=True, timeout=3000)
+                                        time.sleep(0.4)
+                                        inp = cit_ff.locator("input").first
+                                        if safe_count(inp) > 0 and inp.is_visible():
+                                            inp.click(force=True)
+                                            inp.fill("")
+                                            inp.type("India", delay=40)
+                                            page.keyboard.press("Enter")
+                                            time.sleep(1.0)
+                                        picked = False
+                                        for pref in ("Citizen (India)", "Indian Citizen", "Citizen"):
+                                            opt = page.locator("[role='option'], [data-automation-id='promptOption']").filter(
+                                                has_text=re.compile(rf"^{re.escape(pref)}$", re.I)
+                                            ).first
+                                            if safe_count(opt) == 0:
+                                                opt = page.locator("[role='option']").filter(
+                                                    has_text=re.compile(re.escape(pref), re.I)
+                                                ).first
+                                            if safe_count(opt) > 0 and opt.is_visible():
+                                                # Prefer exact Citizen (India) — skip NRI / Non Citizen
+                                                ot = (opt.inner_text() or "").lower()
+                                                if "nri" in ot or "non citizen" in ot or "non-citizen" in ot:
+                                                    continue
+                                                opt.click(force=True, timeout=3000)
+                                                picked = True
+                                                filled.append(f"VD Citizenship: {pref}")
+                                                break
+                                        if not picked:
+                                            leaf = page.locator("[role='option']").filter(
+                                                has_text=re.compile(r"^Citizen\s*\(\s*India\s*\)$", re.I)
+                                            ).first
+                                            if safe_count(leaf) > 0:
+                                                leaf.click(force=True, timeout=3000)
+                                                filled.append("VD Citizenship: Citizen (India)")
+                                                picked = True
+                                        try:
+                                            page.keyboard.press("Escape")
+                                        except Exception:
+                                            pass
+                    except Exception:
+                        pass
+                    # Embitel AQ: React often shows input_value set but still "required" — always force-commit
                     try:
                         body_chk = (page.inner_text("body") or "").lower()
                         if "application questions" in body_chk or "overall work experience" in body_chk:
                             for lab, val in (
-                                ("Overall Work Experience", str(p.get("experienceYears") or "2")),
+                                ("Overall Work Experience", str(p.get("experienceYears") or "2.5")),
                                 ("Current Company Name", str(p.get("currentCompany") or "CGI India")),
                             ):
                                 ff = page.locator("div[data-automation-id^='formField-']").filter(
@@ -5413,31 +7133,36 @@ class WorkdayHandler(BaseATSHandler):
                                 ).first
                                 if safe_count(ff) == 0:
                                     continue
-                                ta = ff.locator("textarea, input[type='text']").first
+                                ta = ff.locator(
+                                    "textarea, input[type='text'], input:not([type]), input[type='number']"
+                                ).first
                                 if safe_count(ta) == 0 or not ta.is_visible():
-                                    continue
-                                cur = ""
-                                try:
-                                    cur = (ta.input_value() or "").strip()
-                                except Exception:
-                                    cur = ""
-                                if cur == str(val):
                                     continue
                                 ta.click(force=True, timeout=3000)
                                 mod = "Meta" if sys.platform == "darwin" else "Control"
                                 page.keyboard.press(f"{mod}+A")
                                 page.keyboard.press("Backspace")
-                                page.keyboard.type(str(val), delay=35)
+                                time.sleep(0.1)
+                                page.keyboard.type(str(val), delay=40)
                                 try:
                                     ta.evaluate(
-                                        """e => {
-                                          e.dispatchEvent(new Event('input', {bubbles:true}));
+                                        """(e, v) => {
+                                          const proto = Object.getOwnPropertyDescriptor(
+                                            window.HTMLInputElement.prototype, 'value'
+                                          ) || Object.getOwnPropertyDescriptor(
+                                            window.HTMLTextAreaElement.prototype, 'value'
+                                          );
+                                          if (proto && proto.set) proto.set.call(e, v); else e.value = v;
+                                          e.dispatchEvent(new InputEvent('input', {bubbles:true, data:v, inputType:'insertText'}));
                                           e.dispatchEvent(new Event('change', {bubbles:true}));
-                                        }"""
+                                          e.blur();
+                                        }""",
+                                        str(val),
                                     )
                                 except Exception:
                                     pass
-                                filled.append(f"AQ Retype: {lab}={val}")
+                                page.keyboard.press("Tab")
+                                filled.append(f"AQ ForceCommit: {lab}={val}")
                     except Exception:
                         pass
                     next_btn.click(force=True)
@@ -5468,9 +7193,14 @@ class WorkdayHandler(BaseATSHandler):
                             and step_after
                             and step_before[:120] == step_after[:120]
                         )
-                        if unchanged and wizard_step >= 4:
+                        aq_stuck = (
+                            "overall work experience" in step_after
+                            and "errors found" in step_after
+                            and "current step 3" in step_after
+                        )
+                        if (unchanged and wizard_step >= 3) or aq_stuck:
                             stuck_retries = int(getattr(self, "_wizard_stuck_retries", 0) or 0)
-                            if stuck_retries < 2:
+                            if stuck_retries < 5:
                                 self._wizard_stuck_retries = stuck_retries + 1
                                 filled.append(
                                     f"Wizard Next unchanged — refill retry {self._wizard_stuck_retries} (step {wizard_step})"
@@ -5536,6 +7266,8 @@ class WorkdayHandler(BaseATSHandler):
             "button[data-automation-id='bottom-navigation-submit-button']",
             "button[data-automation-id='pageFooterNextButton']:has-text('Submit')",
             "button[data-automation-id='bottom-navigation-next-button']:has-text('Submit')",
+            "button[data-automation-id='pageFooterNextButton'][aria-label*='Submit' i]",
+            "button[data-automation-id='bottom-navigation-next-button'][aria-label*='Submit' i]",
             "div[data-automation-id='click_filter'][aria-label*='Submit' i]",
             "button:has-text('Submit Application')",
             "button:has-text('Submit')",
@@ -5559,6 +7291,41 @@ class WorkdayHandler(BaseATSHandler):
                     return True
             except Exception:
                 pass
+        # Footer Next often relabels to Submit via aria-label / nested span (Fractal/Embitel)
+        try:
+            for btn in page.locator(
+                "button[data-automation-id='pageFooterNextButton'], "
+                "button[data-automation-id='bottom-navigation-next-button'], "
+                "button[data-automation-id*='submit' i]"
+            ).all():
+                if not btn.is_visible():
+                    continue
+                label = (
+                    (btn.inner_text() or "")
+                    + " "
+                    + (btn.get_attribute("aria-label") or "")
+                    + " "
+                    + (btn.get_attribute("data-automation-id") or "")
+                ).strip().lower()
+                if "submit" not in label:
+                    continue
+                if any(x in label for x in ("submit another", "don't submit", "do not submit")):
+                    continue
+                btn.click(timeout=5000)
+                self.record_field(
+                    label="Submit Application Button",
+                    value="CLICKED",
+                    field_name="workday_footer_submit_scan",
+                    field_type="button",
+                    step=1,
+                    step_name="SUBMIT_APPLICATION",
+                    action_type="SUBMITTED",
+                )
+                time.sleep(2.0)
+                self._handle_post_submit_account_gate(page)
+                return True
+        except Exception:
+            pass
         return False
 
     def submit_form(self, page: Any) -> bool:
@@ -5726,12 +7493,16 @@ class GenericPortalHandler(BaseATSHandler):
 
     def _fill_ctx_fields(self, ctx: Any, page: Any, filled: List[str], step: int = 1) -> None:
         p = self.profile
+        raw_phone = str(p.get("phone") or "+91-9122036484")
+        phone_digits = re.sub(r"\D", "", raw_phone) or "919122036484"
+        # Prefer 10-digit Indian mobile when country code is separate / digits-only portals
+        phone_national = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
         field_map = [
             ("input[autocomplete='given-name'], input[data-automation-id*='firstName' i], input[name*='first_name' i], input[name*='firstName' i], #first_name, input[placeholder*='first name' i]", p.get("firstName", "Lavkush"), "First Name"),
             ("input[autocomplete='family-name'], input[data-automation-id*='lastName' i], input[name*='last_name' i], input[name*='lastName' i], #last_name, input[placeholder*='last name' i]", p.get("lastName", "Kumar"), "Last Name"),
             ("input[autocomplete='name'], input[data-automation-id*='fullName' i], input[name*='full_name' i], input[name*='fullName' i], input[name='name'], #name, input[placeholder*='full name' i]", p.get("fullName", "Lavkush Kumar"), "Full Name"),
             ("input[type='email'], input[autocomplete='email'], input[data-automation-id*='email' i], input[name*='email' i], #email, input[placeholder*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
-            ("input[type='tel'], input[autocomplete='tel'], input[data-automation-id*='phone' i], input[name*='phone' i], input[name*='mobile' i], #phone, input[placeholder*='phone' i], input[placeholder*='mobile' i]", p.get("phone", "+91-9122036484"), "Phone"),
+            ("input[type='tel'], input[autocomplete='tel'], input[data-automation-id*='phone' i], input[name*='phone' i], input[name*='mobile' i], #phone, input[placeholder*='phone' i], input[placeholder*='mobile' i]", phone_national, "Phone"),
             ("input[autocomplete='address-level2'], input[data-automation-id*='city' i], input[data-automation-id*='location' i], input[name*='city' i], input[name*='location' i], #location, input[placeholder*='city' i]", p.get("city", "Hyderabad"), "Location"),
             ("input[autocomplete='organization'], input[data-automation-id*='company' i], input[name*='company' i], input[name*='org' i], input[placeholder*='company' i]", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Company"),
             ("input[autocomplete='organization-title'], input[data-automation-id*='title' i], input[name*='title' i], input[name*='designation' i], input[placeholder*='job title' i]", p.get("currentTitle", "DevOps Engineer / Azure Data Engineer"), "Title"),
@@ -5747,12 +7518,19 @@ class GenericPortalHandler(BaseATSHandler):
                         cur = loc.input_value() if hasattr(loc, "input_value") else ""
                     except Exception:
                         cur = ""
+                    use_val = str(val)
+                    if label == "Phone":
+                        # Digits-only portals (Relevance Lab pattern=[0-9]+) reject +91-...
+                        use_val = phone_national
+                        # Always overwrite mangled international / prior fills
+                        if cur and re.sub(r"\D", "", cur) != phone_national:
+                            cur = ""
                     if not cur:
-                        loc.fill(str(val))
+                        loc.fill(use_val)
                         filled.append(label)
                         self.record_field(
                             label=label,
-                            value=val,
+                            value=use_val,
                             field_name=selector,
                             field_type="text",
                             step=step,
@@ -5767,8 +7545,9 @@ class GenericPortalHandler(BaseATSHandler):
             ("First Name", p.get("firstName", "Lavkush")),
             ("Last Name", p.get("lastName", "Kumar")),
             ("Email", p.get("email", "lav84095@gmail.com")),
-            ("Phone", p.get("phone", "+91-9122036484")),
-            ("Mobile", p.get("phone", "+91-9122036484")),
+            ("Phone", phone_national),
+            ("Mobile", phone_national),
+            ("Phone Number", phone_national),
             ("Current Company", p.get("currentCompany", "CGI India (PNC Bank GCC)")),
             ("LinkedIn", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")),
             ("GitHub", p.get("githubUrl", "https://github.com/lavkush-kumar")),
@@ -5776,7 +7555,10 @@ class GenericPortalHandler(BaseATSHandler):
             ("Current CTC", "12"),
             ("Expected CTC", "22"),
             ("Notice Period", "15"),
+            ("Notice - Period", "15 Days"),
             ("Current Location", p.get("city", "Hyderabad")),
+            ("Preferred Location", p.get("city", "Hyderabad")),
+            ("Preferred Locations", p.get("city", "Hyderabad")),
         ]
         for lbl_name, val in label_fallbacks:
             if lbl_name not in filled:
@@ -5810,15 +7592,26 @@ class GenericPortalHandler(BaseATSHandler):
                     cur = inp.input_value() if hasattr(inp, "input_value") else ""
                     if cur:
                         continue
-                    ph = inp.get_attribute("placeholder") or ""
+                    ph = (inp.get_attribute("placeholder") or "").strip()
                     nm = inp.get_attribute("name") or inp.get_attribute("id") or ""
                     q_hint = f"{ph} {nm}".strip()
-                    if not q_hint or not self.solver:
-                        continue
-                    ans = solver_answer(self.solver, q_hint, default="")
+                    ph_l = ph.lower()
+                    # Direct heuristics for common Indian career-portal placeholders (Tavant etc.)
+                    if any(k in ph_l for k in ("preferred location", "preferred city", "current location")):
+                        ans = p.get("city", "Hyderabad")
+                    elif any(k in ph_l for k in ("notice", "notice period", "notice - period")):
+                        ans = "15"
+                    elif any(k in ph_l for k in ("expected ctc", "expected salary")):
+                        ans = "22"
+                    elif any(k in ph_l for k in ("current ctc", "current salary")):
+                        ans = "12"
+                    elif q_hint and self.solver:
+                        ans = solver_answer(self.solver, q_hint, default="")
+                    else:
+                        ans = ""
                     if ans:
                         inp.fill(str(ans))
-                        filled.append(f"Solved ({q_hint[:18]})")
+                        filled.append(f"Solved ({(ph or q_hint)[:18]})")
                 except Exception:
                     pass
         except Exception:
@@ -5834,11 +7627,62 @@ class GenericPortalHandler(BaseATSHandler):
                     opts = [o.strip() for o in opts if o.strip() and "select" not in o.lower()]
                     if not opts:
                         continue
-                    nm = sel_el.get_attribute("name") or sel_el.get_attribute("id") or "dropdown"
-                    choice = solver_answer(self.solver, nm, options=opts, default=opts[0])
+                    nm = (sel_el.get_attribute("name") or sel_el.get_attribute("id") or "dropdown").lower()
+                    choice = None
+                    if "notice" in nm:
+                        choice = next((o for o in opts if any(x in o.lower() for x in ("15", "immediate", "less than 1", "0-15", "1 month"))), None)
+                    if not choice:
+                        choice = solver_answer(self.solver, nm, options=opts, default=opts[0])
                     if choice in opts:
                         sel_el.select_option(label=choice)
                         filled.append(f"Select ({choice[:18]})")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Custom dropdowns — Notice Period on Tavant-style portals (placeholder input or select-like div)
+        try:
+            notice_clicked = False
+            for sel in (
+                "input[placeholder*='Notice' i]",
+                "[placeholder*='Notice - Period' i]",
+                "[placeholder*='Notice Period' i]",
+                "div.form-control:has-text('Notice')",
+                "div[class*='select']:has-text('Notice')",
+            ):
+                if notice_clicked:
+                    break
+                try:
+                    dd = ctx.locator(sel).first
+                    if safe_count(dd) == 0 or not dd.is_visible():
+                        continue
+                    dd.click(force=True)
+                    time.sleep(0.5)
+                    for opt_sel in (
+                        "li:has-text('15 Days')",
+                        "div[role='option']:has-text('15 Days')",
+                        "li:has-text('15')",
+                        "div[role='option']:has-text('15')",
+                        "li:has-text('Immediate')",
+                        "option:has-text('15')",
+                        "ul li >> text=/15/",
+                    ):
+                        opt = ctx.locator(opt_sel).first
+                        if safe_count(opt) > 0 and opt.is_visible():
+                            opt.click(force=True)
+                            filled.append("Notice Period dropdown")
+                            notice_clicked = True
+                            break
+                    if not notice_clicked and hasattr(ctx, "keyboard"):
+                        # typeahead fallback
+                        try:
+                            ctx.keyboard.type("15", delay=50)
+                            ctx.keyboard.press("Enter")
+                            filled.append("Notice Period typed")
+                            notice_clicked = True
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         except Exception:
@@ -5867,6 +7711,69 @@ class GenericPortalHandler(BaseATSHandler):
                     pass
         except Exception as e_cb:
             logger.debug("GenericPortalHandler checkbox notice: %s", e_cb)
+
+        # Keka / HRMS radios + conflict text (relocate Yes, conflict No)
+        try:
+            for radio_lbl in ctx.locator("label").all():
+                try:
+                    if not radio_lbl.is_visible():
+                        continue
+                    txt = (radio_lbl.inner_text() or "").strip().lower()
+                    if txt not in ("yes", "no"):
+                        continue
+                    # Walk up to find question context
+                    parent = radio_lbl.locator("xpath=ancestor::*[self::div or self::fieldset][1]").first
+                    qtxt = ""
+                    try:
+                        qtxt = (parent.inner_text() or "").lower() if safe_count(parent) > 0 else ""
+                    except Exception:
+                        qtxt = ""
+                    want_yes = any(k in qtxt for k in ("relocat", "willing to travel", "open to reloc"))
+                    want_no = any(k in qtxt for k in ("sponsorship", "visa", "conflict"))
+                    if want_yes and txt == "yes":
+                        radio_lbl.click(force=True)
+                        filled.append("Radio Yes (relocate/travel)")
+                        continue
+                    if want_no and txt == "no":
+                        radio_lbl.click(force=True)
+                        filled.append("Radio No (visa/conflict)")
+                except Exception:
+                    pass
+            # Conflict-of-interest / open textareas still empty
+            for ta in ctx.locator("textarea").all():
+                try:
+                    if not ta.is_visible():
+                        continue
+                    cur = ta.input_value() if hasattr(ta, "input_value") else ""
+                    if cur:
+                        continue
+                    ph = (ta.get_attribute("placeholder") or "").lower()
+                    nm = (ta.get_attribute("name") or ta.get_attribute("id") or "").lower()
+                    # nearest label text
+                    nearby = f"{ph} {nm}"
+                    try:
+                        lab = ta.locator("xpath=ancestor::div[1]//label | preceding::label[1]").first
+                        if safe_count(lab) > 0:
+                            nearby += " " + (lab.inner_text() or "").lower()
+                    except Exception:
+                        pass
+                    if any(k in nearby for k in ("conflict", "relationship", "employee", "referral", "additional")):
+                        ans = "No"
+                        ta.fill(ans)
+                        filled.append("Conflict/Additional textarea")
+                        self.record_field(
+                            label="Conflict / Additional",
+                            value=ans,
+                            field_name=nm or "textarea",
+                            field_type="textarea",
+                            step=step,
+                            step_name="CUSTOM_SCREENING",
+                            action_type="FILLED",
+                        )
+                except Exception:
+                    pass
+        except Exception as e_radio:
+            logger.debug("GenericPortalHandler radio/conflict notice: %s", e_radio)
 
     def upload_resume(self, page: Any, resume_path: Optional[str]) -> bool:
         if not page or not resume_path or not os.path.exists(resume_path):
@@ -5897,11 +7804,42 @@ class GenericPortalHandler(BaseATSHandler):
 
         # Open Zoho/Keka/corporate initial application CTA if form isn't already open
         try:
-            if safe_count(page.locator("input:not([type='hidden'])")) < 2:
+            # Dismiss Zoho cookie banner so I'm interested can open the application pane
+            try:
+                for cookie_sel in (
+                    "button:has-text('Accept all')",
+                    "button:has-text('Accept All')",
+                    "button:has-text('Decline non-essential')",
+                ):
+                    cb = page.locator(cookie_sel).first
+                    if safe_count(cb) > 0 and cb.is_visible():
+                        cb.click(force=True, timeout=2000)
+                        time.sleep(0.8)
+                        break
+            except Exception:
+                pass
+            # MROTEK: Apply Now hydrates hidden role/department/job_code before submit
+            mrotek_role = page.locator("#jobApplyRole, input[name='job_code']").first
+            needs_mrotek_prime = False
+            try:
+                if safe_count(page.locator("#jobApplyForm")) > 0:
+                    role_val = ""
+                    if safe_count(mrotek_role) > 0:
+                        role_val = (mrotek_role.input_value() or "").strip()
+                    needs_mrotek_prime = not role_val
+            except Exception:
+                needs_mrotek_prime = False
+            visible_inputs = safe_count(page.locator("input:not([type='hidden'])"))
+            zoho_interested = safe_count(page.locator("#detail-page-applybtn, lyte-button:has-text(\"I'm interested\"), button:has-text(\"I'm interested\")")) > 0
+            if visible_inputs < 2 or needs_mrotek_prime or (zoho_interested and visible_inputs < 5):
                 cta_selectors = [
+                    "#detail-page-applybtn button",
+                    "#detail-page-applybtn",
                     "lyte-button:has-text(\"I'm interested\")",
+                    "button.lyteSuccess:has-text(\"I'm interested\")",
                     "button:has-text(\"I'm interested\")",
                     "a:has-text(\"I'm interested\")",
+                    "button.cta-btn-w:has-text('Apply Now')",
                     "button:has-text('Apply Now')",
                     "a:has-text('Apply Now')",
                     "button:has-text('Apply for this job')",
@@ -5911,8 +7849,13 @@ class GenericPortalHandler(BaseATSHandler):
                 for cta_sel in cta_selectors:
                     cta = page.locator(cta_sel).first
                     if safe_count(cta) > 0 and cta.is_visible():
+                        print(f"    🔘 Priming application form via CTA: {cta_sel}...", flush=True)
                         cta.click(force=True)
-                        time.sleep(2.5)
+                        # Zoho Recruit SPA: application fields hydrate after I'm interested
+                        for _ in range(12):
+                            time.sleep(0.5)
+                            if safe_count(page.locator("input[name^='rec-form_'], input[placeholder*='Type below image' i], input:not([type='hidden'])")) >= 5:
+                                break
                         break
         except Exception:
             pass
@@ -5947,6 +7890,7 @@ class GenericPortalHandler(BaseATSHandler):
     def submit_form(self, page: Any) -> bool:
         if not page:
             return False
+        self._api_submit_confirmed = False
 
         contexts = []
         active_ctx = self._get_active_context(page)
@@ -5969,26 +7913,136 @@ class GenericPortalHandler(BaseATSHandler):
             except Exception:
                 pass
 
+        # MROTEK custom careers: POST /api/apply.php — treat 2xx JSON success as confirmation
+        try:
+            if safe_count(page.locator("#jobApplyForm, #jobApplySubmit")) > 0:
+                btn = page.locator("#jobApplySubmit, button.form-submit-btn:has-text('Submit Application')").first
+                if safe_count(btn) > 0 and btn.is_visible():
+                    try:
+                        btn.scroll_into_view_if_needed()
+                    except Exception:
+                        pass
+                    try:
+                        with page.expect_response(
+                            lambda r: "/api/apply.php" in (r.url or "") and r.status < 400,
+                            timeout=20000,
+                        ) as resp_info:
+                            btn.click(timeout=5000, force=True)
+                        resp = resp_info.value
+                        body = ""
+                        try:
+                            body = (resp.text() or "").lower()
+                        except Exception:
+                            body = ""
+                        if resp.status < 400 and (
+                            "success" in body
+                            or "thank" in body
+                            or "received" in body
+                            or "ok" in body
+                            or body.strip() in ("1", "true", '{"ok":true}', '{"success":true}')
+                            or body.strip().startswith("{")
+                        ):
+                            self._api_submit_confirmed = True
+                        self.record_field(
+                            label="Submit Application Button",
+                            value=f"CLICKED_API_{resp.status}",
+                            field_name="#jobApplySubmit",
+                            field_type="button",
+                            step=1,
+                            step_name="SUBMIT_APPLICATION",
+                            action_type="SUBMITTED",
+                        )
+                        return True
+                    except Exception as e_mro:
+                        logger.debug("MROTEK apply.php submit notice: %s", e_mro)
+                        try:
+                            btn.click(timeout=5000, force=True)
+                            self.record_field(
+                                label="Submit Application Button",
+                                value="CLICKED",
+                                field_name="#jobApplySubmit",
+                                field_type="button",
+                                step=1,
+                                step_name="SUBMIT_APPLICATION",
+                                action_type="SUBMITTED",
+                            )
+                            return True
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
         submit_selectors = [
             "lyte-button[data-zcqa*='submit' i] button",
             "lyte-button[data-zcqa*='submit' i]",
             "#zsSubmitButton",
+            "#jobApplySubmit",
+            "button.form-submit-btn:has-text('Submit Application')",
             "button[id*='submit' i]",
             "input[id*='submit' i][type='submit']",
+            "button:has-text('SUBMIT APPLICATION')",
             "button:has-text('Submit Application')",
-            "button:has-text('Submit')",
+            "button:has-text('Submit your application')",
+            "button:has-text('Send application')",
+            "input[type='submit'][value*='Submit' i]",
+            "input[type='submit'][value*='SUBMIT' i]",
             "button[type='submit']",
+            "button:has-text('Submit')",
             "input[type='submit']",
             "input[value*='Submit' i]",
             "a.btn-primary:has-text('Submit')",
             "button:has-text('Send Application')",
-            "button:has-text('Apply')"
+            "button:has-text('Apply Now')",
+            "button:has-text('Apply now')",
+            "button:has-text('Apply')",
+            "a:has-text('Submit Application')",
+            "a:has-text('Submit')",
+            "[data-test='submit-application'], [data-testid*='submit' i]",
+            "button.btn-primary:has-text('Submit')",
+            "button.btn-primary:has-text('Apply')",
         ]
         for ctx in contexts:
+            # Prefer native form.requestSubmit when a submit-labeled control exists
+            # Webflow (Relevance Lab): input/button.w-button type=submit inside wf-form-*
+            try:
+                if hasattr(ctx, "evaluate"):
+                    clicked = ctx.evaluate(
+                        """() => {
+                        const nodes = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button]'));
+                        const btn = nodes.find(b => /submit\\s*application/i.test((b.innerText || b.value || '').trim()))
+                          || document.querySelector('form[id*="Career" i] input[type=submit], form[id*="wf-form" i] input[type=submit], .carrer_form_submit, .w-button[type=submit]');
+                        if (!btn) return false;
+                        try { btn.scrollIntoView({block:'center'}); } catch (e) {}
+                        const form = btn.closest('form');
+                        if (form && typeof form.requestSubmit === 'function') {
+                          form.requestSubmit(btn);
+                          return true;
+                        }
+                        btn.click();
+                        return true;
+                    }"""
+                    )
+                    if clicked:
+                        self.record_field(
+                            label="Submit Application Button",
+                            value="CLICKED",
+                            field_name="form.requestSubmit",
+                            field_type="button",
+                            step=1,
+                            step_name="SUBMIT_APPLICATION",
+                            action_type="SUBMITTED",
+                        )
+                        return True
+            except Exception:
+                pass
             for sel in submit_selectors:
                 try:
                     btn = ctx.locator(sel).first
                     if safe_count(btn) > 0 and btn.is_visible():
+                        try:
+                            btn.scroll_into_view_if_needed()
+                        except Exception:
+                            pass
                         btn.click(timeout=5000, force=True)
                         self.record_field(
                             label="Submit Application Button",
@@ -6007,6 +8061,8 @@ class GenericPortalHandler(BaseATSHandler):
     def verify_confirmation(self, page: Any, timeout: float = 10.0) -> bool:
         if not page:
             return False
+        if getattr(self, "_api_submit_confirmed", False):
+            return True
         start = time.time()
         contexts = [self._get_active_context(page), page]
         while time.time() - start < timeout:
@@ -6015,6 +8071,36 @@ class GenericPortalHandler(BaseATSHandler):
                 for term in ["/confirm", "/thank", "/submitted", "/success", "/applied"]:
                     if term in url:
                         return True
+                body_txt = ""
+                try:
+                    body_txt = (
+                        page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''") or ""
+                    ).lower()
+                except Exception:
+                    body_txt = ""
+                if any(
+                    phrase in body_txt
+                    for phrase in (
+                        "successfully submitted",
+                        "application was successfully submitted",
+                        "thank you for applying",
+                        "thanks for applying",
+                        "application has been received",
+                        "application submitted",
+                        "application received",
+                        "we have received your application",
+                        "we've received your application",
+                        "your application has been sent",
+                        "thanks for your interest",
+                        "we will get back to you",
+                        "application successful",
+                        "thank you! your submission has been received",
+                        "your submission has been received",
+                        "application sent successfully",
+                        "your application has been successfully submitted",
+                    )
+                ):
+                    return True
                 conf_selectors = [
                     "h1:has-text('Application Submitted')",
                     "h2:has-text('Application Submitted')",
@@ -6027,7 +8113,15 @@ class GenericPortalHandler(BaseATSHandler):
                     "div:has-text('application has been submitted')",
                     "div:has-text('successfully applied')",
                     "div:has-text('thank you for applying')",
-                    "div:has-text('received your application')"
+                    "div:has-text('received your application')",
+                    "div:has-text('Thanks for applying')",
+                    "div:has-text('successfully submitted')",
+                    ".w-form-done",  # Webflow career forms (Relevance Lab)
+                    "div.w-form-done:has-text('Thank')",
+                    "div.w-form-done:has-text('submission')",
+                    ".form-success",
+                    "#jobApplySuccess",
+                    ".apply-success",
                 ]
                 for ctx in contexts:
                     for sel in conf_selectors:
@@ -6086,13 +8180,15 @@ class CareerPortalFiller:
             return "Generic Portal"
         if "linkedin.com" in u:
             return "LinkedIn"
-        if "greenhouse.io" in u or "gh_jid" in u:
+        if "greenhouse.io" in u or "gh_jid" in u or "grnhse_iframe" in u:
             return "Greenhouse"
-        if "ashbyhq.com" in u:
+        if "ashbyhq.com" in u or "jobs.ashby" in u:
             return "Ashby"
-        if "lever.co" in u:
+        if "lever.co" in u or "jobs.lever" in u:
             return "Lever"
-        if "myworkdayjobs.com" in u or "workday" in u:
+        if "myworkdayjobs.com" in u or "myworkdaysite.com" in u or "workdayjobs.com" in u:
+            return "Workday"
+        if "workday" in u and ("/job/" in u or "career" in u or "recruit" in u):
             return "Workday"
         if "rippling.com" in u:
             return "Rippling"
@@ -6106,7 +8202,7 @@ class CareerPortalFiller:
             return "Oracle Recruiting"
         if "successfactors.com" in u or "successfactors.eu" in u:
             return "SuccessFactors"
-        if "workable.com" in u:
+        if "workable.com" in u or "apply.workable" in u:
             return "Workable"
         if "breezy.hr" in u:
             return "Breezy"
@@ -6132,7 +8228,96 @@ class CareerPortalFiller:
             return "Keka"
         if "unitedhealthgroup.com" in u or "talentbrew" in u:
             return "TalentBrew"
+        if "greenhouse" in u and ("embed" in u or "boards." in u or "job-boards." in u):
+            return "Greenhouse"
         return "Generic Portal"
+
+    def redetect_ats_from_page(self, page: Any, current: Optional[str] = None) -> str:
+        """Upgrade URL-based ATS guess using live DOM / iframes on company career sites."""
+        current = current or "Generic Portal"
+        url = ""
+        try:
+            url = getattr(page, "url", "") or ""
+        except Exception:
+            url = ""
+        from_url = self.detect_ats(url)
+        # Prefer a concrete ATS from the final URL over Generic
+        if from_url != "Generic Portal" and from_url != "LinkedIn":
+            return from_url
+        if current not in (None, "", "Generic Portal", "LinkedIn"):
+            # Keep strong URL detections unless page clearly embeds another ATS
+            pass
+
+        html = ""
+        body = ""
+        # Workday SPAs can hang indefinitely on full page.content() — prefer URL + short body text
+        url_l = (url or "").lower()
+        skip_full_html = any(
+            tok in url_l for tok in ("myworkdayjobs.com", "myworkdaysite.com", "workdayjobs.com")
+        )
+        if not skip_full_html:
+            try:
+                html = (page.content() or "").lower()
+            except Exception:
+                html = ""
+        try:
+            # Cap wait: inner_text can also stall on heavy Workday bundles
+            if hasattr(page, "wait_for_timeout"):
+                pass
+            body = (page.inner_text("body", timeout=8000) or "")[:4000].lower()
+        except Exception:
+            try:
+                body = (page.inner_text("body") or "")[:1500].lower()
+            except Exception:
+                body = ""
+        blob = f"{url_l}\n{html[:12000]}\n{body}"
+
+        # iframe / embed signals (common on branded career microsites)
+        try:
+            frames = page.locator(
+                "iframe#grnhse_iframe, iframe[src*='greenhouse.io'], iframe[src*='ashbyhq.com'], "
+                "iframe[src*='lever.co'], iframe[src*='myworkdayjobs.com'], iframe[src*='smartrecruiters.com'], "
+                "iframe[src*='icims.com'], iframe[src*='workable.com']"
+            )
+            if safe_count(frames) > 0:
+                src = (frames.first.get_attribute("src") or "").lower()
+                if "greenhouse" in src or "grnhse" in src:
+                    return "Greenhouse"
+                if "ashby" in src:
+                    return "Ashby"
+                if "lever" in src:
+                    return "Lever"
+                if "workday" in src:
+                    return "Workday"
+                if "smartrecruiters" in src:
+                    return "SmartRecruiters"
+                if "icims" in src:
+                    return "iCIMS"
+                if "workable" in src:
+                    return "Workable"
+        except Exception:
+            pass
+
+        if "boards.greenhouse.io" in blob or "job-boards.greenhouse.io" in blob or "grnhse_app" in blob:
+            return "Greenhouse"
+        if "ashbyhq.com" in blob or "ashby-application-form" in blob:
+            return "Ashby"
+        if "jobs.lever.co" in blob or "lever-application" in blob:
+            return "Lever"
+        if "myworkdayjobs.com" in blob or ("data-automation-id=" in blob and "workday" in blob):
+            return "Workday"
+        if "smartrecruiters.com" in blob or "smr-apply" in blob:
+            return "SmartRecruiters"
+        if "icims.com" in blob:
+            return "iCIMS"
+        if "apply.workable.com" in blob or "workable.com" in blob:
+            return "Workable"
+        if "bamboohr.com" in blob:
+            return "BambooHR"
+        if "zohorecruit" in blob:
+            return "ZohoRecruit"
+
+        return from_url if from_url != "Generic Portal" else (current or "Generic Portal")
 
     def generate_fill_script(self, ats_type: str) -> str:
         """
@@ -6369,19 +8554,47 @@ class CareerPortalFiller:
             return FillResult(False, [], None, status=FallbackReason.TIMEOUT_240S.value)
 
         ats_type = self.detect_ats(portal_url)
-        print(f"\n[*] [DETECT] Navigating to {ats_type} Portal via Playwright...")
+        print(f"\n[*] [DETECT] Navigating to {ats_type} Portal via Playwright...", flush=True)
 
         # A2 Schema Before Browser: fetch offline schema plan if public API exists
         schema_planner = ATSFormSchemaPlanner(self.profile, self.solver)
         schema_plan = schema_planner.fetch_schema_plan(portal_url)
         if schema_plan:
-            print(f"    [SCHEMA-FIRST] Pre-computed offline schema plan with {len(schema_plan.get('answers', {}))} answers")
+            print(f"    [SCHEMA-FIRST] Pre-computed offline schema plan with {len(schema_plan.get('answers', {}))} answers", flush=True)
 
         try:
-            page.goto(portal_url, wait_until="domcontentloaded", timeout=30000)
+            print(f"    [NAV] goto start: {portal_url[:120]}", flush=True)
+            page.goto(portal_url, wait_until="domcontentloaded", timeout=45000)
+            print(f"    [NAV] goto done: {(getattr(page, 'url', '') or '')[:120]}", flush=True)
         except Exception as e_nav:
-            print(f"    Notice navigating: {e_nav}")
+            print(f"    Notice navigating: {e_nav}", flush=True)
         time.sleep(2)
+        # SPA career sites (Tavant/MROTEK) hydrate Apply CTA after DOMContentLoaded
+        if ats_type in ("Generic Portal", "Generic", "Keka", "ZohoRecruit") or "careers." in (portal_url or "").lower():
+            try:
+                page.wait_for_selector(
+                    "button:has-text('Apply'), a:has-text('Apply'), button:has-text('Apply Now'), "
+                    "input[type='email'], input[type='file'], form",
+                    timeout=12000,
+                )
+                time.sleep(1.0)
+            except Exception:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+
+        # Company career microsites often wrap GH/Ashby/Lever/Workday — redetect from live DOM
+        try:
+            if ats_type != "Workday":
+                redetected = self.redetect_ats_from_page(page, ats_type)
+                if redetected and redetected != ats_type:
+                    print(f"    ↪️ ATS redetected after load: {ats_type} → {redetected}", flush=True)
+                    ats_type = redetected
+            else:
+                print("    [DETECT] Workday URL confirmed — skipping full-DOM redetect", flush=True)
+        except Exception as e_rd:
+            logger.debug("ATS redetect notice: %s", e_rd)
 
         # Hard stop: closed or expired link
         page_url_lower = (getattr(page, "url", "") or "").lower()
@@ -6417,9 +8630,16 @@ class CareerPortalFiller:
                 logger.debug("Embedded Greenhouse switch notice: %s", e_gh)
         page_content_lower = ""
         try:
-            page_content_lower = (page.content() or "").lower()
+            # Full HTML serialization hangs on many Workday tenants — use visible text there
+            if ats_type == "Workday" or "myworkday" in page_url_lower:
+                page_content_lower = (page.inner_text("body", timeout=8000) or "").lower()
+            else:
+                page_content_lower = (page.content() or "").lower()
         except Exception:
-            pass
+            try:
+                page_content_lower = (page.inner_text("body") or "")[:5000].lower()
+            except Exception:
+                page_content_lower = ""
         if (
             "expjd=true" in page_url_lower
             or "/jobs-in-" in page_url_lower
@@ -6427,20 +8647,79 @@ class CareerPortalFiller:
             or "this job has expired" in page_content_lower
             or "position has been filled" in page_content_lower
             or "job is no longer available" in page_content_lower
+            or "no longer accepting applications" in page_content_lower
+            or "this job is no longer accepting" in page_content_lower
+            # Ashby/GH empty shells often show a bare 404 copy instead of an apply CTA
+            or "the page you requested was not found" in page_content_lower
+            or (
+                "page not found" in page_content_lower
+                and "apply" not in page_content_lower
+                and safe_count(page.locator("input, textarea, select")) == 0
+            )
         ):
             print(f"    [FALLBACK: {FallbackReason.CLOSED_OR_EXPIRED.value}] Job posting expired or closed on host platform.")
             return FillResult(False, [], None, status=FallbackReason.CLOSED_OR_EXPIRED.value)
 
-        # Universal Cookie & Overlay Dismissal
-        try:
-            cookie_buttons = page.locator(
-                "button:has-text('Accept'), button:has-text('Allow'), button:has-text('Agree'), "
-                "button:has-text('Accept all'), button:has-text('Got it'), button:has-text('OK'), "
-                "[data-automation-id*='cookie' i], .cw-cookie-freeze-layer"
+        # Universal Cookie & Overlay Dismissal (Fireworks OneTrust / Customize Consent Preferences)
+        def _dismiss_cookie_overlays(pg: Any) -> bool:
+            sels = (
+                "#onetrust-accept-btn-handler",
+                "#onetrust-reject-all-handler",
+                "#accept-recommended-btn-handler",
+                "button#onetrust-accept-btn-handler",
+                "button.onetrust-close-btn-handler",
+                ".ot-pc-refuse-all-handler",
+                "#close-pc-btn-handler",
+                "button:has-text('Accept All')",
+                "button:has-text('Accept all')",
+                "button:has-text('Reject All')",
+                "button:has-text('Reject all')",
+                "button:has-text('Save Preferences')",
+                "button:has-text('Save preferences')",
+                "button:has-text('Allow all')",
+                "button:has-text('Allow All')",
+                "button:has-text('Got it')",
+                "[aria-label='Close']",
+                "button:has-text('Accept Cookies')",
+                "button:has-text('Accept')",
+                "button:has-text('Allow')",
+                "button:has-text('Agree')",
             )
-            if safe_count(cookie_buttons) > 0 and cookie_buttons.first.is_visible():
-                cookie_buttons.first.click(force=True, timeout=2000)
-                time.sleep(0.5)
+            for sel in sels:
+                try:
+                    btn = pg.locator(sel).first
+                    if safe_count(btn) > 0 and btn.is_visible():
+                        btn.click(force=True, timeout=2000)
+                        time.sleep(0.4)
+                        return True
+                except Exception:
+                    continue
+            # OneTrust preference center may use role=button spans / shadow hosts
+            try:
+                clicked = pg.evaluate(
+                    """() => {
+                      const texts = ['Accept All','Reject All','Save Preferences','Accept all','Reject all'];
+                      const nodes = Array.from(document.querySelectorAll('button, [role="button"], a'));
+                      for (const t of texts) {
+                        const el = nodes.find(n => ((n.innerText||n.textContent||'').trim() === t));
+                        if (el) { el.click(); return t; }
+                      }
+                      const ot = document.querySelector('#onetrust-accept-btn-handler, #onetrust-reject-all-handler');
+                      if (ot) { ot.click(); return 'onetrust'; }
+                      return '';
+                    }"""
+                )
+                if clicked:
+                    time.sleep(0.4)
+                    return True
+            except Exception:
+                pass
+            return False
+
+        try:
+            _dismiss_cookie_overlays(page)
+            time.sleep(0.3)
+            _dismiss_cookie_overlays(page)
         except Exception:
             pass
 
@@ -6449,7 +8728,29 @@ class CareerPortalFiller:
         try:
             if ats_type != "Workday":
                 visible_inputs = safe_count(page.locator("input:not([type='hidden'])"))
-                if visible_inputs < 2:
+                apply_cta = page.locator(
+                    "button:has-text('Apply Now'), a:has-text('Apply Now'), "
+                    "button:has-text('Apply'), a:has-text('Apply')"
+                )
+                email_on_form = safe_count(
+                    page.locator("input[type='email'], input[name*='email' i], input[placeholder*='email' i]")
+                )
+                # MROTEK: form fields visible but hidden role/job_code empty until Apply Now
+                mrotek_needs_prime = False
+                try:
+                    if safe_count(page.locator("#jobApplyForm")) > 0:
+                        role_el = page.locator("#jobApplyRole").first
+                        role_val = role_el.input_value() if safe_count(role_el) > 0 else ""
+                        mrotek_needs_prime = not (role_val or "").strip()
+                except Exception:
+                    mrotek_needs_prime = False
+                # Sticky Apply / Apply Now without email form means landing page, not apply form
+                needs_cta = visible_inputs < 2 or mrotek_needs_prime or (
+                    safe_count(apply_cta) > 0
+                    and apply_cta.first.is_visible()
+                    and email_on_form == 0
+                )
+                if needs_cta:
                     cta_selectors = [
                         "button:has-text('interested')",
                         "button:has-text('Apply for this job')",
@@ -6465,7 +8766,22 @@ class CareerPortalFiller:
                             print(f"    🔘 Opening application form via CTA: {cta_sel}...")
                             cta.click(force=True, timeout=5000)
                             time.sleep(2)
+                            try:
+                                redetected = self.redetect_ats_from_page(page, ats_type)
+                                if redetected and redetected != ats_type:
+                                    print(f"    ↪️ ATS redetected after CTA: {ats_type} → {redetected}")
+                                    ats_type = redetected
+                            except Exception:
+                                pass
+                            time.sleep(2)
                             break
+                # Cookie preference center often reappears after Apply CTA (Fireworks OneTrust)
+                try:
+                    _dismiss_cookie_overlays(page)
+                    time.sleep(0.3)
+                    _dismiss_cookie_overlays(page)
+                except Exception:
+                    pass
         except Exception as e_cta:
             logger.debug("CTA opener notice: %s", e_cta)
 
@@ -6477,7 +8793,9 @@ class CareerPortalFiller:
             print(f"    [FALLBACK: {FallbackReason.TIMEOUT_240S.value}] Per-job time budget exceeded.")
             return FillResult(False, [], None, status=FallbackReason.TIMEOUT_240S.value)
 
+        print(f"    [ACCOUNT] detect_barriers start ({ats_type})...", flush=True)
         barrier = handler.detect_barriers(page)
+        print(f"    [ACCOUNT] detect_barriers done: {barrier or 'none'}", flush=True)
         if barrier:
             b_low = barrier.lower()
             if any(k in b_low for k in ("captcha", "turnstile", "challenge", "recaptcha", "hcaptcha", "arkose")):
@@ -6507,8 +8825,14 @@ class CareerPortalFiller:
                     print(f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] Stopped on anti-bot challenge: {barrier}")
                     return FillResult(False, [], None, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value)
             if barrier and any(k in b_low for k in ("sign-in", "login", "account", "vault")):
-                # One more vault attempt before hard-stop (Workday create/sign-in + IMAP verify)
-                if ats_type == "Workday" and hasattr(handler, "attempt_vault_sign_in"):
+                # detect_barriers already ran vault for Workday — only retry if it did not
+                # (avoids double IMAP/create loops that hang Ecolab/NVIDIA SIGNIN_WALL drains)
+                already_vaulted = "vault auth incomplete" in b_low or "still on login after vault" in b_low
+                if (
+                    ats_type == "Workday"
+                    and hasattr(handler, "attempt_vault_sign_in")
+                    and not already_vaulted
+                ):
                     try:
                         if handler.attempt_vault_sign_in(page, job_url=portal_url):
                             barrier = handler.detect_barriers(page)
@@ -6586,7 +8910,7 @@ class CareerPortalFiller:
                 print(f"    📎 [RESUME] Resume PDF uploaded: {os.path.basename(resume_path)}")
                 filled_fields.append("Resume PDF")
 
-        # Cloud upload settling delay — Greenhouse may autofill wrong education from PDF
+        # Cloud upload settling delay — Greenhouse/Ashby may autofill wrong education from PDF
         time.sleep(3)
         if ats_type == "Greenhouse" and hasattr(handler, "fill_education_fields"):
             try:
@@ -6597,6 +8921,135 @@ class CareerPortalFiller:
                     print(f"    [✓] Post-resume education overwrite: {', '.join(extra[:8])}")
             except Exception as e_rf:
                 logger.debug("Post-resume Greenhouse education notice: %s", e_rf)
+
+        # Ashby: resume autofill clears Expected CTC and corrupts Education History (Triomics)
+        if ats_type == "Ashby":
+            try:
+                time.sleep(1.5)
+                # Re-assert resume on required system field (autofill slot ≠ _systemfield_resume)
+                try:
+                    if resume_path and os.path.exists(resume_path) and hasattr(handler, "upload_resume"):
+                        handler.upload_resume(page, resume_path)
+                except Exception:
+                    pass
+                # Clear possibly-invalid school autocomplete so fill_form re-selects taxonomy entry
+                try:
+                    school_inp = page.locator("input[placeholder*='Search schools' i]").first
+                    if safe_count(school_inp) > 0 and school_inp.is_visible():
+                        school_inp.fill("")
+                except Exception:
+                    pass
+                # Force-clear CTC text inputs only — never fill("") Notice Period radios
+                # (Novo Ashby: notice is a radio fieldset; clearing breaks checked state)
+                try:
+                    for pat in (r"expected\s*ctc", r"current\s*ctc"):
+                        loc = page.get_by_label(re.compile(pat, re.I)).first
+                        if safe_count(loc) > 0 and loc.is_visible():
+                            tag = ""
+                            try:
+                                tag = (loc.evaluate("el => (el.tagName||'').toLowerCase()") or "")
+                            except Exception:
+                                tag = ""
+                            itype = (loc.get_attribute("type") or "").lower()
+                            if tag == "input" and itype in ("text", "number", "tel", ""):
+                                loc.fill("")
+                except Exception:
+                    pass
+                refill = handler.fill_form(page) or {}
+                extra = refill.get("filled") or []
+                if extra:
+                    filled_fields = list(set(filled_fields + list(extra)))
+                    print(f"    [✓] Post-resume Ashby refill: {', '.join(list(extra)[:10])}")
+                # Re-assert Notice Period radio after resume (Novo: 90/60-45/30-15/Immediate)
+                try:
+                    fs = page.locator(
+                        "fieldset.ashby-application-form-input-radio-group, fieldset[class*='radio']"
+                    ).filter(has_text=re.compile(r"notice\s*period", re.I)).first
+                    if safe_count(fs) > 0 and fs.is_visible():
+                        checked = fs.locator("input[type='radio']:checked")
+                        if safe_count(checked) == 0:
+                            notice_days = str(
+                                self.profile.get("noticePeriodDays")
+                                or self.profile.get("notice_period_days")
+                                or "15"
+                            )
+                            days_i = int(re.sub(r"\D", "", notice_days) or "15")
+                            prefs = (
+                                [r"immediate", r"30\s*/?\s*15"]
+                                if days_i <= 7
+                                else [r"30\s*/?\s*15", r"15\s*days", r"30\s*days"]
+                                if days_i <= 30
+                                else [r"60\s*/?\s*45", r"60\s*days"]
+                                if days_i <= 60
+                                else [r"90\s*days"]
+                            )
+                            for pref in prefs:
+                                opt = fs.locator("label").filter(has_text=re.compile(pref, re.I)).first
+                                if safe_count(opt) == 0:
+                                    continue
+                                opt.click(force=True, timeout=2500)
+                                filled_fields.append("Post-resume Notice Period (radio)")
+                                break
+                except Exception as e_np:
+                    logger.debug("Post-resume Notice Period radio notice: %s", e_np)
+                # Resume autofill clears Triomics Yes/No toggles — force again after refill
+                try:
+                    for pat in (
+                        r"option of buy\s*out",
+                        r"comfortable commuting",
+                        r"hsr layout",
+                        r"5 days in a week",
+                    ):
+                        lab = page.locator("label").filter(has_text=re.compile(pat, re.I)).first
+                        if safe_count(lab) == 0:
+                            continue
+                        entry = lab.locator(
+                            "xpath=ancestor::div[contains(@class,'ashby-application-form-field-entry')"
+                            " or contains(@class,'fieldEntry')][1]"
+                        ).first
+                        if safe_count(entry) == 0:
+                            entry = lab.locator("xpath=ancestor::div[2]").first
+                        yes_btn = entry.locator("button[data-option='yes']").first
+                        if safe_count(yes_btn) > 0:
+                            pressed = (yes_btn.get_attribute("aria-pressed") or "").lower()
+                            if pressed != "true":
+                                yes_btn.click(force=True)
+                                filled_fields.append(f"Post-resume Yes ({pat[:20]})")
+                    print("    [✓] Post-resume Ashby Yes/No disclosures re-asserted", flush=True)
+                except Exception as e_yn:
+                    logger.debug("Post-resume Ashby Yes/No notice: %s", e_yn)
+            except Exception as e_ash:
+                logger.debug("Post-resume Ashby refill notice: %s", e_ash)
+
+        # Generic portals: resume parse often reinjects +91-... into digits-only phone fields
+        if "Generic" in str(ats_type) or ats_type in ("Keka", "ZohoRecruit", "Darwinbox"):
+            try:
+                raw_phone = str((self.profile or {}).get("phone") or "+91-9122036484")
+                phone_digits = re.sub(r"\D", "", raw_phone) or "919122036484"
+                phone_national = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+                for sel in (
+                    "input[name='Phone']",
+                    "input[name*='phone' i]",
+                    "input[type='tel']",
+                    "input[placeholder*='phone' i]",
+                ):
+                    loc = page.locator(sel).first
+                    if safe_count(loc) == 0 or not loc.is_visible():
+                        continue
+                    pat = (loc.get_attribute("pattern") or "")
+                    cur = ""
+                    try:
+                        cur = loc.input_value() if hasattr(loc, "input_value") else ""
+                    except Exception:
+                        cur = ""
+                    needs_digits = ("0-9" in pat) or (cur and re.search(r"[^\d]", cur))
+                    if needs_digits or (cur and re.sub(r"\D", "", cur) != phone_national):
+                        loc.fill(phone_national)
+                        filled_fields.append("Phone (post-resume digits)")
+                        print(f"    [✓] Post-resume phone digits-only: {phone_national}")
+                        break
+            except Exception as e_ph:
+                logger.debug("Post-resume phone sanitize notice: %s", e_ph)
 
         # ── STATE 4: REVIEW ──
         checkpoint_portal_state(cand_job_id, PortalState.REVIEW, company, role, target_db)
@@ -6625,6 +9078,97 @@ class CareerPortalFiller:
         is_confirmed = False
 
         if auto_submit:
+            # Pre-submit: image CAPTCHA on Keka/Zoho — pause for M5 human, do not click Apply empty
+            try:
+                pre_cap = False
+                for sel in (
+                    "input[placeholder*='Captcha' i]",
+                    "input[placeholder*='Type below image' i]",
+                    "input[name*='captcha' i]",
+                    "input[id*='captcha' i]",
+                ):
+                    loc = page.locator(sel)
+                    if safe_count(loc) > 0 and loc.first.is_visible():
+                        pre_cap = True
+                        break
+                # Zoho Recruit guest apply: CAPTCHA section label without matching input attrs
+                if not pre_cap:
+                    try:
+                        body_cap = (
+                            page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''") or ""
+                        ).lower()
+                        if "captcha" in body_cap and (
+                            "type below image" in body_cap or safe_count(page.locator("input[name^='rec-form_']")) >= 3
+                        ):
+                            # Only treat as pre-submit CAPTCHA when image-captcha input is present
+                            if safe_count(page.locator("input[placeholder*='image' i]")) > 0:
+                                pre_cap = True
+                    except Exception:
+                        pass
+                # Open Insights / custom: Submit disabled until reCAPTCHA solved
+                if not pre_cap:
+                    try:
+                        has_recaptcha = safe_count(
+                            page.locator(
+                                "iframe[src*='recaptcha'], .g-recaptcha, #g-recaptcha, "
+                                "div.grecaptcha-badge, iframe[title*='reCAPTCHA' i]"
+                            )
+                        ) > 0
+                        submit_btn = page.locator(
+                            "button:has-text('SUBMIT'), button:has-text('Submit'), "
+                            "input[type='submit'], button[type='submit']"
+                        ).first
+                        submit_disabled = False
+                        if safe_count(submit_btn) > 0:
+                            submit_disabled = bool(submit_btn.is_disabled()) or (
+                                (submit_btn.get_attribute("disabled") is not None)
+                                or ((submit_btn.get_attribute("aria-disabled") or "").lower() == "true")
+                            )
+                        if has_recaptcha and submit_disabled:
+                            pre_cap = True
+                    except Exception:
+                        pass
+                if pre_cap:
+                    print(
+                        f"    [FALLBACK: {FallbackReason.CAPTCHA.value}] "
+                        "CAPTCHA required before submit — queued for human (M5)."
+                    )
+                    try:
+                        from naukari_pro.governed_apply.attention import AttentionQueue, BlockerClass
+                        from naukari_pro.modules.autonomous_loop import ATTENTION_PATH
+                        import json as _json
+                        from pathlib import Path as _Path
+
+                        aq = AttentionQueue()
+                        aq.push(BlockerClass.CAPTCHA, portal_url, f"{company} {ats_type} CAPTCHA")
+                        path = _Path(ATTENTION_PATH)
+                        existing = []
+                        if path.exists():
+                            try:
+                                existing = _json.loads(path.read_text(encoding="utf-8") or "[]")
+                            except Exception:
+                                existing = []
+                        seen = {(e.get("blocker"), e.get("job_url")) for e in existing if isinstance(e, dict)}
+                        if ("captcha", portal_url) not in seen:
+                            existing.append(
+                                {
+                                    "blocker": "captcha",
+                                    "job_url": portal_url,
+                                    "detail": f"{company} {ats_type} CAPTCHA",
+                                    "status": "open",
+                                }
+                            )
+                            path.write_text(_json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+                    except Exception as e_att:
+                        logger.debug("Image CAPTCHA attention enqueue notice: %s", e_att)
+                    audit_path = _capture_portal_audit_screenshot(page, company, role)
+                    log_portal_application(company, role, ats_type, f"FALLBACK ({FallbackReason.CAPTCHA.value})", portal_url)
+                    return FillResult(
+                        False, filled_fields, audit_path, field_records=list(handler.field_records), status=FallbackReason.CAPTCHA.value
+                    )
+            except Exception as e_precap:
+                logger.debug("Pre-submit image CAPTCHA check notice: %s", e_precap)
+
             submit_clicked = handler.submit_form(page)
             if not submit_clicked:
                 all_records = list(handler.field_records)
@@ -6707,6 +9251,9 @@ class CareerPortalFiller:
                         "iframe[src*='recaptcha/enterprise/bframe']",
                         "div:has-text('Pick all objects')",
                         "#px-captcha",
+                        "input[placeholder*='Captcha' i]",
+                        "input[name*='captcha' i]",
+                        "input[id*='captcha' i]",
                     ):
                         loc = page.locator(sel)
                         if safe_count(loc) > 0 and loc.first.is_visible():
@@ -6714,7 +9261,15 @@ class CareerPortalFiller:
                             break
                 except Exception:
                     pass
-                if captcha_hit or "hcaptcha" in body_low or "verify you are human" in body_low:
+                if captcha_hit or "hcaptcha" in body_low or "verify you are human" in body_low or any(
+                    p in body_low
+                    for p in (
+                        "invalid captcha",
+                        "please enter the captcha",
+                        "enter captcha",
+                        "wrong captcha",
+                    )
+                ):
                     fallback_reason = FallbackReason.CAPTCHA.value
                     print(f"    [FALLBACK: {fallback_reason}] Submit blocked by visual CAPTCHA — queued for human (M5).")
                     try:
@@ -6746,6 +9301,30 @@ class CareerPortalFiller:
                             path.write_text(_json.dumps(existing, indent=2) + "\n", encoding="utf-8")
                     except Exception as e_att:
                         logger.debug("CAPTCHA attention enqueue notice: %s", e_att)
+                    audit_path = _capture_portal_audit_screenshot(page, company, role)
+                    log_portal_application(company, role, ats_type, f"FALLBACK ({fallback_reason})", portal_url)
+                    return FillResult(
+                        False, filled_fields, audit_path, field_records=list(handler.field_records), status=fallback_reason
+                    )
+                # OpenAI Ashby: "limits for applications… more than 5 times in any 180 day span"
+                if any(
+                    p in body_low
+                    for p in (
+                        "couldn't submit your application",
+                        "could not submit your application",
+                        "more than 5 times",
+                        "any 180 day",
+                        "180 day span",
+                        "application limit",
+                        "too many applications",
+                    )
+                ):
+                    fallback_reason = FallbackReason.RATE_LIMITED.value
+                    print(
+                        f"    [FALLBACK: {fallback_reason}] Employer application rate limit "
+                        f"(e.g. OpenAI 5 / 180d) — not a form/confirm miss.",
+                        flush=True,
+                    )
                     audit_path = _capture_portal_audit_screenshot(page, company, role)
                     log_portal_application(company, role, ats_type, f"FALLBACK ({fallback_reason})", portal_url)
                     return FillResult(
