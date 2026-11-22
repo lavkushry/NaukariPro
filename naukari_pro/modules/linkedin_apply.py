@@ -939,7 +939,7 @@ class LinkedInApplyEngine:
             synthetic_vacancies = [
                 {
                     "job_id": "4188001001",
-                    "title": "Lead Azure Data Engineer",
+                    "title": "Azure Data Engineer",
                     "company": "Microsoft GCC",
                     "location": "Bengaluru",
                     "url": "https://www.linkedin.com/jobs/view/4188001001/",

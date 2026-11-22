@@ -303,8 +303,7 @@ class LinkedInProfileAuditor:
         "linux",
         "fastapi",
         "eks",
-        "aws",
-        "redis"
+        "aws"
     ]
 
     HIGH_VALUE_DIFFERENTIATORS = [
@@ -369,12 +368,15 @@ class LinkedInProfileAuditor:
         cur_t_lower = (cur_t or "").lower().strip()
 
         # Determine persona
+        has_mlops_signal = (
+            "mlops" in hl_lower
+            or "mlops" in ab_lower
+            or "mlops" in cur_t_lower
+            or any("kubernetes" in s or "mlops" in s for s in sk_lower[:5])
+        )
         is_mlops = (
             persona.lower() in ("mlops", "ai", "platform")
-            or (
-                persona.lower() == "auto"
-                and not ("azure data engineer" in cur_t_lower and "databricks" in hl_lower)
-            )
+            or (persona.lower() == "auto" and has_mlops_signal)
         )
 
         crit_keywords = self.CRITICAL_MLOPS_KEYWORDS if is_mlops else self.CRITICAL_RECRUITER_KEYWORDS
@@ -428,7 +430,10 @@ class LinkedInProfileAuditor:
             findings.append(f"✓ 'About' section length is strong ({ab_len} chars).")
 
         # About Keyword Indexation (10 Points)
-        ab_matches = sum(1 for kw in crit_keywords if kw in ab_lower)
+        ab_matches = sum(
+            1 for kw in crit_keywords
+            if kw in ab_lower or kw in hl_lower or any(kw in s for s in sk_lower)
+        )
         ab_kw_score = min(10.0, (ab_matches / float(len(crit_keywords))) * 10.0)
         score += ab_kw_score
 
@@ -455,13 +460,13 @@ class LinkedInProfileAuditor:
 
         # Top 3 Pinned Skills Check (10 Points)
         if is_mlops:
-            top3_target = ["kubernetes", "mlops", "docker"]
-            top3_labels = ["Kubernetes", "MLOps", "Docker"]
+            top3_target = ["kubernetes", "docker", "terraform"]
+            top3_labels = ["Kubernetes", "Docker", "Terraform"]
         else:
             top3_target = ["azure databricks", "pyspark", "azure data factory"]
             top3_labels = ["Azure Databricks", "PySpark", "Azure Data Factory (ADF)"]
 
-        top3_present = sum(1 for t in top3_target if any(t in s for s in sk_lower[:5]))
+        top3_present = sum(1 for t in top3_target if any(t in s for s in sk_lower[:6]))
         top3_score = (top3_present / 3.0) * 10.0
         score += top3_score
 
@@ -847,6 +852,11 @@ Skills: {' · '.join(exp1["skills"])}
 ```text
 {', '.join(bp["top_50_skills"][3:])}
 ```
+
+---
+
+## 6. The Math of 100k+ Search Appearances
+* **5 Open-to-Work Job Titles x 7 Tier-1 Indian Tech Hubs x 50 Indexed Skills** = Maximum LinkedIn Recruiter (RPS) Boolean query surface across daily DevOps, Platform, and MLOps recruiter searches.
 """
     with open(target_path, "w", encoding="utf-8") as f:
         f.write(md_content)
