@@ -691,7 +691,44 @@ def ensure_authenticated(page, headless=False):
     except Exception as e:
         logger.warning("Navigation notice: %s", e)
 
-    is_login_page = "login" in page.url or page.locator("text=Login").first.is_visible() or "Access Denied" in page.title()
+    curr_url = (page.url or "").lower()
+    try:
+        curr_title = page.title() or ""
+    except Exception:
+        curr_title = ""
+
+    has_login_inputs = False
+    try:
+        has_login_inputs = (
+            page.locator("#usernameField, input[placeholder*='Email ID' i], input[placeholder*='Username' i]").first.is_visible()
+            and page.locator("#passwordField, input[type='password']").first.is_visible()
+        )
+    except Exception:
+        has_login_inputs = False
+
+    has_profile_dom = (
+        ("/mnjuser/profile" in curr_url or "/mnjuser/homepage" in curr_url or "mynaukri" in curr_title.lower())
+        and "nlogin" not in curr_url
+        and not has_login_inputs
+    )
+
+    login_layer_visible = False
+    if not has_profile_dom and "/mnjuser/" not in curr_url:
+        try:
+            login_layer_visible = page.locator("a#login_Layer, a[title='Jobseeker Login']").first.is_visible()
+        except Exception:
+            login_layer_visible = False
+
+    is_login_page = (
+        not has_profile_dom
+        and (
+            "nlogin" in curr_url
+            or "/login" in curr_url
+            or has_login_inputs
+            or "access denied" in curr_title.lower()
+            or login_layer_visible
+        )
+    )
 
     if is_login_page:
         # 1. Attempt automated credential login if configured
@@ -700,9 +737,15 @@ def ensure_authenticated(page, headless=False):
         if email and password:
             try:
                 logger.info("Attempting automated credential login...")
-                if "nlogin" not in page.url:
+                if "nlogin" not in (page.url or "").lower():
                     page.goto("https://www.naukri.com/nlogin/login", wait_until="domcontentloaded", timeout=30000)
                     time.sleep(2)
+                if "/mnjuser/" in (page.url or "").lower() and "nlogin" not in (page.url or "").lower():
+                    logger.info("Naukri redirected /nlogin/login to authenticated /mnjuser/ session.")
+                    page.goto("https://www.naukri.com/mnjuser/profile", wait_until="domcontentloaded", timeout=30000)
+                    time.sleep(2)
+                    save_session_cookies(page.context)
+                    return True
                 user_field = page.locator("#usernameField").first
                 pass_field = page.locator("#passwordField").first
                 btn = page.locator("button[type='submit']").first
