@@ -70,7 +70,7 @@ def test_fetch_live_ats_vacancies_schema():
     mock_gh_response = {
         "jobs": [
             {
-                "title": "Lead Cloud Data Engineer",
+                "title": "Cloud Data Engineer",
                 "absolute_url": "https://job-boards.greenhouse.io/gitlab/jobs/99901",
                 "location": {"name": "Remote"},
                 "content": "<p>Real greenhouse JD</p>",

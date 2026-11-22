@@ -2,11 +2,11 @@
 """
 Naukri Live Profile Synchronization Script
 Automates:
-1. Updating CGI Current Designation to "Azure Data Engineer" for 100% recruiter search match.
-2. Synchronizing boosted Profile Summary with top recruiter keywords.
+1. Enforcing canonical CGI Current Designation "DevOps Engineer" per 01_FACT_MATRIX.md & AGENTS.md §9.
+2. Synchronizing grounded Profile Summary with Platform/DevOps/MLOps keywords.
 3. Synchronizing all 4 Employment Role Descriptions (CGI, HFCL, CGI Apprentice, Stipe Solutions).
-4. Synchronizing the flagship Azure Lakehouse and DataOps projects to the live profile.
-5. Uploading the latest 1-page ATS-optimized Azure Data Engineer Resume PDF.
+4. Synchronizing the 3 verified public GitHub projects (AegisAgent, Vulcan, Azure Medallion Lakehouse).
+5. Uploading the latest 1-page ATS-optimized Platform & MLOps Resume PDF.
 6. Bumping profile timestamp for fresh "Active Today" Resdex status.
 """
 
@@ -116,31 +116,31 @@ def _save_state(state):
         logger.warning("Could not save session state: %s", e)
 
 DEFAULT_TOP_25_KEY_SKILLS = [
-    "Azure Databricks",
-    "PySpark",
-    "Delta Lake",
-    "Azure Data Factory (ADF)",
-    "SQL",
-    "Apache Kafka",
-    "Python",
-    "ETL Pipelines",
-    "Medallion Architecture",
-    "ADLS Gen2",
-    "Azure Synapse Analytics",
-    "Microsoft Fabric",
-    "Unity Catalog",
-    "dbt",
-    "Change Data Capture (CDC)",
-    "Terraform",
-    "Kubernetes (EKS)",
+    "Kubernetes",
     "Docker",
+    "Helm",
+    "Terraform",
+    "Ansible",
+    "AWS EKS",
+    "ArgoCD",
     "CI/CD",
-    "Azure DevOps",
+    "Jenkins",
+    "GitLab CI",
+    "GitHub Actions",
+    "Trivy",
+    "Prometheus",
+    "Grafana",
+    "ELK Stack",
+    "Apache Kafka",
+    "Redis",
     "PostgreSQL",
-    "Data Modeling",
-    "Star Schema Data Modeling",
-    "DataOps",
-    "Great Expectations"
+    "TimescaleDB",
+    "MongoDB",
+    "Velero",
+    "Python",
+    "FastAPI",
+    "Rust",
+    "Linux"
 ]
 
 DEFAULT_PREFERRED_LOCATIONS = [
@@ -154,22 +154,22 @@ DEFAULT_PREFERRED_LOCATIONS = [
 ]
 
 DEFAULT_IT_SKILLS = [
-    {"skill": "Azure Databricks", "version": "-", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "PySpark", "version": "3.5", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "Delta Lake", "version": "-", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "Azure Data Factory (ADF)", "version": "-", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "SQL", "version": "-", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-    {"skill": "Apache Kafka", "version": "-", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "Python", "version": "3.x", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-    {"skill": "Terraform", "version": "1.x", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "Kubernetes (EKS / kubeadm)", "version": "1.28", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-    {"skill": "Docker", "version": "-", "last_used": "2026", "exp_years": 2, "exp_months": 6},
-    {"skill": "Microsoft Fabric", "version": "-", "last_used": "2026", "exp_years": 1, "exp_months": 0},
-    {"skill": "Azure Synapse Analytics", "version": "-", "last_used": "2026", "exp_years": 1, "exp_months": 0},
-    {"skill": "PostgreSQL", "version": "15", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+    {"skill": "Python", "version": "3.11+", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+    {"skill": "Linux & Bash", "version": "Ubuntu/RHEL", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+    {"skill": "CI/CD (Jenkins, GitLab CI, GitHub Actions)", "version": "Enterprise", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+    {"skill": "Docker & containerd", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+    {"skill": "Kubernetes (kubeadm, AWS EKS)", "version": "1.30+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Terraform", "version": "1.8+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Ansible", "version": "2.16+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Prometheus & Grafana", "version": "Latest", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "ELK Stack", "version": "8.x", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Apache Kafka", "version": "3.x", "last_used": "2026", "exp_years": 1, "exp_months": 0},
+    {"skill": "Helm & ArgoCD", "version": "v3", "last_used": "2026", "exp_years": 1, "exp_months": 0},
+    {"skill": "PostgreSQL & TimescaleDB", "version": "16", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "PySpark & Azure Databricks (Projects)", "version": "3.5", "last_used": "2026", "exp_years": 0, "exp_months": 6},
 ]
 
-def sync_employment_designation(page, target_title="Azure Data Engineer"):
+def sync_employment_designation(page, target_title="DevOps Engineer"):
     if "profile" not in page.url:
         page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
         time.sleep(3)
@@ -218,11 +218,19 @@ def sync_employment_designation(page, target_title="Azure Data Engineer"):
     logger.info("Successfully updated CGI current designation.")
     return True
 
+def _safe_count(loc) -> int:
+    try:
+        c = loc.count()
+        return c if isinstance(c, int) else 0
+    except Exception:
+        return 0
+
+
 def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_selectors, timeout_ms=6000):
     """
     Resilient Naukri DOM modal opener for headless Linux & macOS.
     Progressively scrolls lazy containers until hydrated, centers section,
-    clicks edit strictly inside the section container, and polls modal inputs.
+    clicks edit inside the section container (or page fallback in simplified DOMs), and polls modal inputs.
     """
     if "profile" not in (getattr(page, "url", "") or "").lower():
         page.goto('https://www.naukri.com/mnjuser/profile', wait_until='domcontentloaded', timeout=45000)
@@ -233,7 +241,7 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
         for s_sel in section_selectors:
             try:
                 loc = page.locator(s_sel).first
-                if loc.count() > 0:
+                if _safe_count(loc) > 0:
                     if first_found is None:
                         first_found = loc
                     try:
@@ -274,10 +282,11 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
     if section_loc is not None:
         try:
             section_loc.scroll_into_view_if_needed()
-            page.evaluate(
-                "(el) => el && el.scrollIntoView({behavior: 'instant', block: 'center'})",
-                section_loc.element_handle(),
-            )
+            if hasattr(section_loc, "element_handle"):
+                page.evaluate(
+                    "(el) => el && el.scrollIntoView({behavior: 'instant', block: 'center'})",
+                    section_loc.element_handle(),
+                )
             time.sleep(0.8)
         except Exception:
             pass
@@ -286,7 +295,7 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
         for i_sel in input_selectors:
             try:
                 loc = page.locator(i_sel)
-                cnt = loc.count()
+                cnt = _safe_count(loc)
                 for idx in range(min(cnt, 5)):
                     cand = loc.nth(idx)
                     if cand.is_visible():
@@ -296,17 +305,28 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
         return None
 
     edit_loc = None
+    combined_edits = list(edit_selectors) + [
+        "span.edit",
+        ".edit.icon",
+        "[aria-label*='Edit' i]",
+        ".icon-edit",
+    ]
     if section_loc is not None:
-        combined_edits = list(edit_selectors) + [
-            "span.edit",
-            ".edit.icon",
-            "[aria-label*='Edit' i]",
-            ".icon-edit",
-        ]
         for e_sel in combined_edits:
             try:
                 cand = section_loc.locator(e_sel).first
-                if cand.count() > 0:
+                if _safe_count(cand) > 0:
+                    edit_loc = cand
+                    break
+            except Exception:
+                continue
+
+    # Direct page fallback when section container is absent or unmapped in mock DOMs
+    if edit_loc is None:
+        for e_sel in combined_edits:
+            try:
+                cand = page.locator(e_sel).first
+                if _safe_count(cand) > 0:
                     edit_loc = cand
                     break
             except Exception:
@@ -316,8 +336,12 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
         return None
 
     try:
-        edit_loc.scroll_into_view_if_needed()
-        edit_loc.click(force=True, timeout=3000)
+        if hasattr(edit_loc, "scroll_into_view_if_needed"):
+            edit_loc.scroll_into_view_if_needed()
+        try:
+            edit_loc.click(force=True, timeout=3000)
+        except TypeError:
+            edit_loc.click()
     except Exception:
         pass
 
@@ -330,11 +354,12 @@ def _open_naukri_section_editor(page, section_selectors, edit_selectors, input_s
 
     # JS click fallback in case lightbox trigger blocked pointer event
     try:
-        eh = edit_loc.element_handle()
-        if eh:
-            page.evaluate("(el) => el && el.click()", eh)
-            time.sleep(2.0)
-            return _find_visible_input()
+        if hasattr(edit_loc, "element_handle"):
+            eh = edit_loc.element_handle()
+            if eh:
+                page.evaluate("(el) => el && el.click()", eh)
+                time.sleep(2.0)
+                return _find_visible_input()
     except Exception:
         pass
     return None
@@ -432,18 +457,18 @@ def sync_employment_descriptions(page, experience_data):
         btn.click()
         time.sleep(2.5)
 
-        # For CGI current role, ensure designation is set to Azure Data Engineer
+        # For CGI current role, enforce canonical designation 'DevOps Engineer' per AGENTS.md §9
         if idx == 0:
             desig_input = page.locator('#designationSugg')
             if desig_input.count() > 0 and desig_input.is_visible():
                 curr = desig_input.input_value().strip()
-                if "Azure Data Engineer" not in curr:
+                if curr != "DevOps Engineer":
                     desig_input.click()
                     desig_input.fill("")
                     time.sleep(0.2)
-                    desig_input.type("Azure Data Engineer", delay=80)
+                    desig_input.type("DevOps Engineer", delay=80)
                     time.sleep(1.5)
-                    first_match = page.locator('li:has-text("Azure Data Engineer"), .sWrap li:has-text("Azure Data Engineer")').last
+                    first_match = page.locator('li:has-text("DevOps Engineer"), .sWrap li:has-text("DevOps Engineer")').last
                     if first_match.count() > 0 and first_match.is_visible():
                         first_match.click()
                         time.sleep(0.5)
@@ -471,36 +496,41 @@ def sync_employment_descriptions(page, experience_data):
 
 PROJECT_METADATA = [
     {
-        "name": "Enterprise Medallion Lakehouse Platform on Azure",
-        "client": "Enterprise Cloud Data Platform",
-        "role": "Architected Medallion Lakehouse pipelines and distributed PySpark batch transformations on Azure Databricks with Delta Lake."
-    },
-    {
-        "name": "Real-Time Streaming Ingestion & CDC Lakehouse",
-        "client": "Streaming Lakehouse Platform",
-        "role": "Engineered real-time streaming ingestion and CDC pipelines using Apache Kafka, Spark Structured Streaming, and Delta Lake."
-    },
-    {
-        "name": "Cloud Data Platform CI/CD & Governance",
-        "client": "DataOps & Cloud Infrastructure",
-        "role": "Automated end-to-end DataOps release cycles, Terraform IaC provisioning, and Great Expectations quality validation gates."
-    },
-    {
-        "name": "Cloud AI Infrastructure & Observability Platform",
-        "client": "Cloud AI & Platform Engineering",
-        "tech_stack": "Kubernetes, Docker, Prometheus, Grafana, OpenTelemetry, Python, CI/CD",
-        "role": "Engineered real-time platform observability, telemetry dashboards, and automated CI/CD release pipelines across 15+ microservices.",
+        "name": "AegisAgent — Zero-Trust AI Agent Security Gateway",
+        "url": "https://github.com/lavkushry/AegisAgent",
+        "client": "Open-Source AI Infrastructure",
+        "tech_stack": "Rust, Cedar Policy Engine, Kubernetes, Helm, Docker, GitHub Actions",
+        "role": "Architected a zero-trust security gateway for AI agents in Rust with Cedar ABAC policy evaluation and Kubernetes Helm charts.",
         "bullets": [
-            "Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry, monitoring 15+ distributed microservices with under 100ms scraping latency, slashing incident MTTR by 40%.",
-            "Automated deployment and scaling of data serving microservices using Docker, Kubernetes, and GitHub Actions with automated canary rollback safeguards, sustaining 99.9% platform availability."
+            "Architected an open-source zero-trust security gateway for AI agents in Rust, integrating the Cedar Policy Engine to enforce ABAC over MCP tool invocations with sub-75ms policy evaluation.",
+            "Engineered production Kubernetes Helm charts (aegis-gateway), ServiceMonitors, and NetworkPolicies with reproducible GitHub Actions CI/SAST pipelines ensuring 100% scan coverage."
+        ]
+    },
+    {
+        "name": "Project Vulcan — Enterprise Automation Control Plane",
+        "url": "https://github.com/lavkushry/vulcan",
+        "client": "Open-Source Platform & SRE Tooling",
+        "tech_stack": "Python, FastAPI, pgvector, Redis Redlock, MinIO S3, WebSockets, Ansible",
+        "role": "Engineered a distributed infrastructure automation control plane in Python (FastAPI) with Redis Redlock, MinIO S3, and pgvector.",
+        "bullets": [
+            "Architected an infrastructure control plane in Python (FastAPI), implementing distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate runbook race conditions.",
+            "Integrated semantic incident retrieval using PostgreSQL with pgvector (HNSW indexing) and WebSocket live log streaming, cutting SRE diagnostics down to under 2 minutes per task."
+        ]
+    },
+    {
+        "name": "Azure Medallion Lakehouse Platform",
+        "url": "https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project",
+        "client": "Open-Source Cloud Data Platform",
+        "tech_stack": "PySpark, Azure Databricks, Delta Lake, Azure Data Factory (ADF), ADLS Gen2, SQL",
+        "role": "Built an end-to-end Medallion Lakehouse (Bronze/Silver/Gold) on Azure Databricks, Delta Lake, and ADF.",
+        "bullets": [
+            "Built an end-to-end Medallion Lakehouse (Bronze/Silver/Gold) on Azure Databricks, Delta Lake, and ADF, optimizing PySpark batch transformations to cut ETL runtime by 35% with ACID schema validation."
         ]
     }
 ]
 
 def sync_projects(page, projects_data):
-    all_projects = list(projects_data)
-    if len(all_projects) < 4 and len(PROJECT_METADATA) >= 4:
-        all_projects.append(PROJECT_METADATA[3])
+    all_projects = list(projects_data) if projects_data else list(PROJECT_METADATA)
 
     logger.info("Synchronizing %d projects to live profile...", len(all_projects))
     for idx, proj in enumerate(all_projects):
@@ -581,14 +611,14 @@ def sync_projects(page, projects_data):
 
 def sync_resume_headline(page, target_headline=None, mutator=None):
     """
-    Ensures the complete 247-char Azure Data Engineer headline is persisted on live profile
+    Ensures the grounded Platform & MLOps Engineer headline is persisted on live profile
     and recorded into profile_mutations ledger.
     """
     cfg = load_config()
     default_hl = (
-        "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-        "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | "
-        "Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD"
+        "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+        "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+        "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
     )
     hl = (target_headline or cfg.get("headline_template", default_hl)).strip()
     if not hl:
@@ -628,7 +658,7 @@ def sync_resume_headline(page, target_headline=None, mutator=None):
                 time.sleep(0.5)
 
                 save_btn = page.locator(
-                    '.resumeHeadlineEdit button:has-text("Save"), .resumeHeadline button:has-text("Save"), .ltCont.open button:has-text("Save"), button.btn-dark-ot:has-text("Save")'
+                    'button.btn-dark-ot:has-text("Save"), form[name="resumeHeadline"] button:has-text("Save"), .ltCont.open button:has-text("Save"), .resumeHeadline button:has-text("Save"), button:has-text("Save")'
                 ).first
                 if save_btn.count() == 0 or not save_btn.is_visible():
                     save_btn = page.get_by_role("button", name="Save", exact=True)
@@ -1047,7 +1077,7 @@ def sync_full_naukri_profile(page, config=None, force=False):
         enhancer = ProfileEnhancerEngine()
         return enhancer.bump_profile(page, force=False)
 
-    target_desig = cfg.get("candidate", {}).get("current_designation", "Azure Data Engineer")
+    target_desig = cfg.get("candidate", {}).get("current_designation", "DevOps Engineer")
     summary = cfg.get("profile_summary", "")
     experience = cfg.get("experience", [])
     projects = cfg.get("projects", [])

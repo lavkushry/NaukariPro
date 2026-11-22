@@ -19,7 +19,7 @@
 | **Heading Sizes** | Name: 20pt Bold; Sections: 11pt Small Caps / Bold | High visual hierarchy allows recruiters to scan section boundaries in under 3 seconds. |
 | **Color Palette** | Navy (`#11355D`), Soft Dark (`#222222`), Rule (`#1A73E8` or `#4A6984`)| Restrained corporate palette; fully compliant with monochrome printing and digital parsing. |
 | **Visual Artifacts**| **Zero Icons, Zero Bars, Zero Photos** | Graphic rating bars, social media icons, and headshots cause fatal parsing errors in legacy ATS. |
-| **Selectable Text** | `\pdfgentounicode=1` & UTF-8 encoding | Guarantees text extractability (`pdftotext`, `Ctrl+A` copy-paste test passes 100%). |
+| **Selectable Text** | `\usepackage{fontspec}` (XeTeX/`tectonic`) + `\mbox{}` for acronyms (`R\mbox{}TO`, `B.T\mbox{}ech`) | Guarantees clean text extractability (`pdftotext`, `pypdf`, `Ctrl+A` copy-paste test passes 100% with zero kerning splits). |
 
 ---
 
@@ -42,11 +42,12 @@ Every vertical point must be precisely allocated across sections:
 │     • HFCL Limited: 4 bullets                                               │
 │     • CGI India (Apprentice): 2 bullets                                     │
 │     • Stipe Solutions: 1 bullet                                             │
-│  [ Key Projects (2 flagships, 4 bullets) ] 124 pt                           │
+│  [ Key Projects (3 verified repos, 5 bullets) ] 136 pt                         │
 │     • AegisAgent (Rust/Cedar): 2 bullets                                    │
 │     • Project Vulcan (FastAPI/pgvector): 2 bullets                          │
-│  [ Education (B.Tech & Diploma) ]         54 pt                             │
-│  [ Certifications (AZ-900, SC-200, CKA) ] 38 pt                             │
+│     • Azure Medallion Lakehouse (PySpark/Databricks): 1 bullet              │
+│  [ Education (B.Tech & Diploma, 2 single lines) ] 32 pt                     │
+│  [ Certifications (AZ-900, SC-200, CKA In Progress) ] 28 pt                 │
 │  [ Section Rules & Inter-block Spacing ]  32 pt                             │
 │                                                                             │
 │  TOTAL CONSUMED: ~769 pt / 770 pt available (100% Exact 1-Page Fit)         │
@@ -74,7 +75,7 @@ Every vertical point must be precisely allocated across sections:
 ### A. Contact Header
 * **Name:** `\fontsize{20}{22}\selectfont\bfseries\color{navy} Lavkush Kumar`
 * **Contact Line:** `\small\color{soft}`
-  `Bangalore, India \;\textbar\; +91-9122036484 \;\textbar\; lav84095@gmail.com \;\textbar\; linkedin.com/in/lavkush-kumar \;\textbar\; github.com/lavkush-kumar`
+  `Bangalore, India \;\textbar\; +91-9122036484 \;\textbar\; lav84095@gmail.com \;\textbar\; https://www.linkedin.com/in/lavkushry/ \;\textbar\; https://github.com/lavkushry`
 * **Rules:** All links wrapped in `\href{...}` with text matching destination; no phone/mail icons.
 
 ### B. Section Headings
@@ -112,8 +113,16 @@ Every vertical point must be precisely allocated across sections:
 
 - [x] Single-column layout guarantees linear top-to-bottom parser reading.
 - [x] Contact information placed in standard document body (not in Word/LaTeX header/footer buffers).
-- [x] Standard font encoding (`\input{glyphtounicode}`, `\pdfgentounicode=1`) maps all glyphs to clean ASCII/UTF-8.
+- [x] Standard font encoding (`\usepackage{fontspec}` under `tectonic`/XeTeX with `\mbox{}` guards) maps all glyphs to clean ASCII/UTF-8 with zero kerning splits.
 - [x] `\href` links have explicit, human-readable anchor text.
 - [x] Zero HTML/XML-breaking special characters (`&` escaped as `\&`, `%` as `\%`).
 - [x] No tables used for primary structural layout—`tabularx` used only for technical skill key-value alignment.
 - [x] Verified line budget guarantees **zero overflow to Page 2**.
+
+---
+
+## Changelog
+
+### Update: November 22, 2026
+- Fixed contact spec URLs to canonical `https://www.linkedin.com/in/lavkushry/` and `https://github.com/lavkushry`.
+- Updated font/extractability specification to `\usepackage{fontspec}` + `\mbox{}` for XeTeX/`tectonic` builds and updated vertical budget for 3 verified projects + 2-line education.

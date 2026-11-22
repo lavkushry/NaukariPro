@@ -35,9 +35,11 @@ DRAIN_STATUSES = (
     "Form Auto-Filled (Ready for Review)",
     "FALLBACK (SUBMIT_NOT_FOUND)",
     "FALLBACK (CLICKED_NO_CONFIRMATION)",
+    "CLICKED_NO_CONFIRMATION",
     "FALLBACK (SIGNIN_WALL)",
     "FALLBACK (CAPTCHA)",
 )
+MAX_DRAIN_ATTEMPTS = 2
 
 
 @dataclass
@@ -192,7 +194,7 @@ def list_incomplete_portal_jobs(limit: int = 25, db_path: Optional[Path] = None)
         placeholders = ",".join("?" for _ in DRAIN_STATUSES)
         rows = conn.execute(
             f"""
-            SELECT id, job_id, company, title, job_url, status, match_score, applied_at
+            SELECT id, job_id, company, title, job_url, status, match_score, applied_at, raw_metadata
             FROM applied_jobs
             WHERE platform LIKE '%career%'
               AND status IN ({placeholders})
@@ -202,9 +204,25 @@ def list_incomplete_portal_jobs(limit: int = 25, db_path: Optional[Path] = None)
             ORDER BY applied_at DESC
             LIMIT ?
             """,
-            (*DRAIN_STATUSES, int(limit)),
+            (*DRAIN_STATUSES, int(limit) * 3),
         ).fetchall()
-        return [dict(r) for r in rows]
+        eligible: List[Dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            meta_raw = d.get("raw_metadata")
+            attempts = 0
+            if meta_raw:
+                try:
+                    meta_obj = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+                    if isinstance(meta_obj, dict):
+                        attempts = int(meta_obj.get("drain_attempts", 0) or 0)
+                except Exception:
+                    attempts = 0
+            if attempts < MAX_DRAIN_ATTEMPTS:
+                eligible.append(d)
+                if len(eligible) >= int(limit):
+                    break
+        return eligible
     finally:
         conn.close()
 
@@ -365,6 +383,37 @@ def drain_incomplete_portal_applies(
                 result.needs_human += 1
             else:
                 result.skipped += 1
+                # Persist bounded retry count in applied_jobs so unconfirmed rows do not re-drain forever
+                if not dry_run and job.get("id") is not None and DB_PATH.exists():
+                    try:
+                        conn = sqlite3.connect(str(DB_PATH))
+                        try:
+                            row_meta = conn.execute(
+                                "SELECT raw_metadata, status FROM applied_jobs WHERE id = ?",
+                                (job["id"],),
+                            ).fetchone()
+                            meta_obj: Dict[str, Any] = {}
+                            if row_meta and row_meta[0]:
+                                try:
+                                    parsed = json.loads(row_meta[0])
+                                    if isinstance(parsed, dict):
+                                        meta_obj = parsed
+                                except Exception:
+                                    meta_obj = {}
+                            attempts = int(meta_obj.get("drain_attempts", 0) or 0) + 1
+                            meta_obj["drain_attempts"] = attempts
+                            new_status = row_meta[1] if row_meta else job.get("status")
+                            if attempts >= MAX_DRAIN_ATTEMPTS and new_status in DRAIN_STATUSES:
+                                new_status = f"EXHAUSTED ({new_status})"
+                            with conn:
+                                conn.execute(
+                                    "UPDATE applied_jobs SET raw_metadata = ?, status = ? WHERE id = ?",
+                                    (json.dumps(meta_obj, ensure_ascii=False), new_status, job["id"]),
+                                )
+                        finally:
+                            conn.close()
+                    except Exception as meta_exc:  # noqa: BLE001
+                        logger.debug("Notice updating drain_attempts: %s", meta_exc)
             result.items.append({"company": company, "title": title, "status": status, "url": url})
         except Exception as exc:  # noqa: BLE001
             result.skipped += 1

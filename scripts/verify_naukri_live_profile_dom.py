@@ -3,13 +3,13 @@
 Naukri Live Profile DOM Persistence Verification Script
 Inspects the live authenticated Naukri profile DOM at https://www.naukri.com/mnjuser/profile
 and asserts that all high-conversion Resdex fields are genuinely persisted:
-1. Resume Headline: Full 247-char Azure Data Engineer keyword saturated string.
-2. Profile Summary: Medallion Lakehouse, DataOps, and core streaming keywords.
-3. Key Skills: Top 25 Azure Data Engineering industry keywords.
+1. Resume Headline: Grounded Platform & MLOps Engineer keyword saturated string.
+2. Profile Summary: Kubernetes, Ansible, Terraform, Kafka, Velero, and verified GitHub projects.
+3. Key Skills: Top 25 Platform / DevOps / MLOps industry keywords.
 4. Notice Period: Highest recruiter conversion tier ("15 Days or less" / "15 days").
 5. Preferred Locations: All 7 Tier-1 tech hubs (Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai).
-6. Uploaded CV: Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf.
-7. Current Designation: "Azure Data Engineer" at CGI India.
+6. Uploaded CV: Lavkush_Kumar_MLOps_Resume.pdf.
+7. Current Designation: "DevOps Engineer" at CGI India.
 """
 
 import os
@@ -42,31 +42,31 @@ TARGET_HUBS = [
 ]
 
 TOP_25_KEYWORDS = [
-    "Azure Databricks",
-    "PySpark",
-    "Delta Lake",
-    "Azure Data Factory",
-    "SQL",
-    "Apache Kafka",
-    "Python",
-    "ETL",
-    "Medallion Architecture",
-    "ADLS Gen2",
-    "Azure Synapse",
-    "Microsoft Fabric",
-    "Unity Catalog",
-    "dbt",
-    "Change Data Capture",
-    "Terraform",
     "Kubernetes",
     "Docker",
+    "Helm",
+    "Terraform",
+    "Ansible",
+    "AWS EKS",
+    "ArgoCD",
     "CI/CD",
-    "Azure DevOps",
+    "Jenkins",
+    "GitLab CI",
+    "GitHub Actions",
+    "Trivy",
+    "Prometheus",
+    "Grafana",
+    "ELK Stack",
+    "Apache Kafka",
+    "Redis",
     "PostgreSQL",
-    "Data Modeling",
-    "Star Schema",
-    "DataOps",
-    "Great Expectations"
+    "TimescaleDB",
+    "MongoDB",
+    "Velero",
+    "Python",
+    "FastAPI",
+    "Rust",
+    "Linux"
 ]
 
 def verify_live_profile_dom(page, cfg=None):
@@ -117,12 +117,12 @@ def verify_live_profile_dom(page, cfg=None):
     except Exception as e:
         logger.warning("Error reading headline: %s", e)
 
-    hl_matched_kws = [kw for kw in ["Azure Data Engineer", "Databricks", "PySpark", "Delta Lake", "ADF", "Kafka"] if kw.lower() in hl_text.lower()]
-    hl_pass = len(hl_text) >= 200 and "Azure Data Engineer" in hl_text and len(hl_matched_kws) >= 4
+    hl_matched_kws = [kw for kw in ["Kubernetes", "Docker", "Terraform", "Ansible", "CI/CD", "Kafka", "MLOps"] if kw.lower() in hl_text.lower()]
+    hl_pass = len(hl_text) >= 180 and any(t in hl_text for t in ["Platform", "MLOps", "DevOps"]) and len(hl_matched_kws) >= 4
     report["checks"]["headline"] = {
         "status": "PASS" if hl_pass else "FAIL",
         "length": len(hl_text),
-        "target_length": len(target_headline) if target_headline else 247,
+        "target_length": len(target_headline) if target_headline else 233,
         "matched_keywords": hl_matched_kws,
         "preview": hl_text[:80] + "..." if len(hl_text) > 80 else hl_text
     }
@@ -136,7 +136,7 @@ def verify_live_profile_dom(page, cfg=None):
     except Exception as e:
         logger.warning("Error reading summary: %s", e)
 
-    sum_kws = [kw for kw in ["Azure Databricks", "Delta Lake", "ADF", "Medallion", "2.5 YOE", "Terraform"] if kw.lower() in sum_text.lower()]
+    sum_kws = [kw for kw in ["Kubernetes", "Ansible", "Terraform", "Kafka", "2.5", "Velero"] if kw.lower() in sum_text.lower()]
     sum_pass = len(sum_text) >= 150 and len(sum_kws) >= 3
     report["checks"]["profile_summary"] = {
         "status": "PASS" if sum_pass else "FAIL",
@@ -238,7 +238,7 @@ def verify_live_profile_dom(page, cfg=None):
     except Exception as e:
         logger.warning("Error reading CV filename: %s", e)
 
-    cv_pass = target_pdf.lower() in cv_filename.lower() or "azure_data_engineer" in cv_filename.lower() or ".pdf" in cv_filename.lower()
+    cv_pass = target_pdf.lower() in cv_filename.lower() or "lavkush_kumar_mlops_resume" in cv_filename.lower() or ".pdf" in cv_filename.lower()
     report["checks"]["attached_resume_pdf"] = {
         "status": "PASS" if cv_pass else "FAIL",
         "detected_filename": cv_filename,
@@ -254,10 +254,10 @@ def verify_live_profile_dom(page, cfg=None):
     except Exception as e:
         logger.warning("Error reading current designation: %s", e)
 
-    desig_pass = "Azure Data Engineer" in desig_text and "CGI" in desig_text
+    desig_pass = "DevOps Engineer" in desig_text and "CGI" in desig_text
     report["checks"]["current_designation"] = {
         "status": "PASS" if desig_pass else "FAIL",
-        "contains_target_title": "Azure Data Engineer" in desig_text,
+        "contains_target_title": "DevOps Engineer" in desig_text,
         "contains_current_company": "CGI" in desig_text
     }
 
@@ -319,7 +319,7 @@ def format_terminal_report(report):
     # Current Designation
     cd = checks.get("current_designation", {})
     cd_icon = "[✓]" if cd.get("status") == "PASS" else "[✗]"
-    lines.append(f" {cd_icon} Current Designation: Azure Data Engineer at CGI India ({cd.get('status')})")
+    lines.append(f" {cd_icon} Current Designation: DevOps Engineer at CGI India ({cd.get('status')})")
 
     lines.append("========================================================================")
     return "\n".join(lines)

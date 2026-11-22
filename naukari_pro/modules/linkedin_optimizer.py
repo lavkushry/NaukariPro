@@ -1,11 +1,11 @@
 """
 naukariPro Feature: LinkedIn 100k+ Search Appearance Optimizer & Profile SEO Engine
-Target: 100,000+ Monthly LinkedIn Recruiter Search Appearances for Data Engineering
-Candidate: Lavkush Kumar (Azure Data Engineer, 2.5 YOE | ₹20-25 LPA Target | 15-day notice)
+Target: 100,000+ Monthly LinkedIn Recruiter Search Appearances for Platform, DevOps & MLOps Engineering
+Candidate: Lavkush Kumar (Platform / DevOps / MLOps & AI Infrastructure, ~2.5 YOE | ₹20-25 LPA Target | 15-day notice)
 
 Provides:
-- Exact 220-character Recruiter-Optimized Headline
-- Full 2,600-character Algorithmic "About" Section with Keyword Indexation Clusters
+- Exact <=220-character Recruiter-Optimized Headline
+- Full <=2,600-character Algorithmic "About" Section with Keyword Indexation Clusters
 - 50-Skill Recruiter Boolean Filter Taxonomy (Top 3 Pinned + 47 Targeted Keywords)
 - Experience Section Alignment with 5-Stage Engineering Bullets & Skill Tags
 - "Open to Work" Hidden Recruiter Configuration Specification
@@ -31,10 +31,10 @@ logger = logging.getLogger("naukariPro.LinkedInOptimizer")
 
 LINKEDIN_100K_MLOPS_BLUEPRINT: Dict[str, Any] = {
     "headline": (
-        "MLOps / AI Infrastructure Engineer | Kubernetes · Docker · Helm · CI/CD · "
-        "Terraform · Prometheus · MLflow · Triton · vLLM · Kafka | 2.5 YOE | Immediate – 15 Days Notice"
+        "Platform & MLOps Engineer | Kubernetes (EKS, kubeadm) · Docker · Helm · "
+        "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · Kafka · Python · Rust | 2.5 YOE | 15 Days Notice"
     ),
-    "headline_length": 182,  # Under 220-character limit
+    "headline_length": 173,  # Under 220-character limit
     "target_titles": [
         "MLOps Engineer",
         "ML Platform Engineer",
@@ -71,83 +71,79 @@ LINKEDIN_100K_MLOPS_BLUEPRINT: Dict[str, Any] = {
         "visibility": "Recruiters only"
     },
     "about": (
-        "MLOps and Platform Engineer with 2.5 years of experience architecting high-throughput container platforms, "
-        "production Kubernetes clusters (kubeadm, AWS EKS), CI/CD automation pipelines, and distributed data and ML infrastructure.\n\n"
-        "Engineered bare-metal 50-node Kubernetes clusters hosting 15+ distributed microservices with 99.95% uptime, "
-        "authoring 40+ Ansible roles that slashed cluster bootstrap time from 2 days to 4 hours (83% reduction). "
-        "Orchestrated stateful distributed backbones on Kubernetes (Apache Kafka, Redis, PostgreSQL/TimescaleDB, MongoDB) "
-        "with PVC storage and Velero disaster recovery, cutting RTO from 8h to 30min (93%) and MTTR by 45%. "
-        "Built AegisAgent (AI Security Gateway in Rust & Cedar) and Vulcan (Automation Platform with Redis & pgvector).\n\n"
+        "Platform, DevOps & MLOps Infrastructure Engineer with ~2.5 years of experience operating high-availability "
+        "Kubernetes platforms (50-node kubeadm, AWS EKS), CI/CD automation pipelines, and stateful data backbones.\n\n"
+        "At CGI India, standardized multi-tenant AWS EKS deployments via modular Terraform and Ansible, hardened "
+        "Nginx/Kong ingress gateways, and automated Jenkins/GitLab CI + Trivy pipelines and ArgoCD/Helm GitOps. "
+        "At HFCL Limited, automated 50-node bare-metal kubeadm clusters with 40+ Ansible roles (2 days -> 4 hours, "
+        "83% faster bootstrap), sustained 99.95% availability across 15+ microservices, and managed Kafka, Redis, "
+        "PostgreSQL, TimescaleDB, and MongoDB StatefulSets with Velero DR (RTO 8h -> 30min, 93%; MTTR -45%).\n\n"
         "⚡ CORE TECHNICAL EXPERTISE:\n"
-        "• Container & Orchestration: Kubernetes (kubeadm, EKS), Docker, Helm, ArgoCD, Namespace Isolation, RBAC, HPA, Linux/Bash.\n"
-        "• Model Serving & ML Inference: Triton Inference Server, vLLM, MLflow, FastAPI, Redis Redlock, gRPC, Model Caching.\n"
-        "• CI/CD & Infrastructure as Code: Terraform (Modular IaC), Ansible (40+ Playbooks), Jenkins Declarative Pipelines, GitLab CI, GitHub Actions, Trivy Security Scanning.\n"
-        "• Observability & Telemetry: Prometheus, Grafana, OpenTelemetry, ELK Stack (Logstash Grok parsing), Alerting & Incident MTTR reduction.\n"
-        "• Distributed Streaming & Data Platforms: Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, PySpark, Databricks Lakehouses.\n\n"
-        "💼 PRODUCTION HIGHLIGHTS & GROUND TRUTH METRICS:\n"
-        "• Kubernetes Lifecycle Automation: Built 40+ Ansible playbooks with Jinja2 for K8s lifecycle (kubeadm, CNI, Harbor, Helm), cutting setup 2 days to 4 hours (83%).\n"
-        "• 50-Node Cluster Operations: Managed 50-node K8s platform for 15+ distributed microservices, ensuring 99.95% uptime.\n"
-        "• Distributed Stateful Backbones: Managed StatefulSets (Kafka, Redis, TimescaleDB, Mongo) with Velero DR, cutting RTO from 8h to 30m, MTTR by 45%.\n"
-        "• Security Log Telemetry: Centralized multi-source log ingestion using ELK Stack, authoring Grok patterns cutting log triage time by 45%.\n\n"
-        "📍 Current Location: Bengaluru, India\n"
+        "• Platform & Orchestration: Kubernetes (kubeadm, AWS EKS), Docker, containerd, Helm, ArgoCD, Harbor, RBAC, HPA.\n"
+        "• IaC, CI/CD & Security: Terraform (modular IaC), Ansible (40+ roles, Jinja2), Jenkins, GitLab CI, GitHub Actions, Trivy, SonarQube, Nginx/Kong.\n"
+        "• Observability & SRE: Prometheus, Grafana, Alertmanager, ELK Stack (Elasticsearch, Logstash Grok, Kibana), Velero DR.\n"
+        "• Data & Streaming Backbones: Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, pgvector (HNSW), MinIO S3.\n"
+        "• Open-Source AI & Data Projects: AegisAgent (github.com/lavkushry/AegisAgent, Rust/Cedar/K8s <75ms policy eval), "
+        "Project Vulcan (github.com/lavkushry/vulcan, FastAPI/pgvector/Redis Redlock), and Azure Medallion Lakehouse "
+        "(github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project, PySpark/Databricks/Delta Lake/ADF).\n\n"
+        "📍 Current Location: Bangalore, India\n"
         "🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote\n"
         "⏱ Notice Period: 15 Days or less (Immediate Joiner)\n"
-        "📫 Contact: lav84095@gmail.com | +91-9122036484 | linkedin.com/in/lavkush-kumar"
+        "📫 Contact: lav84095@gmail.com | +91-9122036484 | https://www.linkedin.com/in/lavkushry/ | https://github.com/lavkushry"
     ),
     "experience": [
         {
             "company": "CGI India",
             "title": "DevOps Engineer",
             "dates": "June 2026 – Present",
-            "location": "Bengaluru, India",
+            "location": "Bangalore, India",
             "bullets": [
-                "Standardized AWS EKS container platform deployments using Terraform modules and Ansible, establishing multi-tenant cluster baselines, node groups, and IAM roles.",
-                "Engineered automated CI/CD pipelines in Jenkins and GitLab CI with Trivy vulnerability scanning, container linting, and automated staging smoke tests.",
-                "Hardened cluster ingress routing and API gateway policies using Nginx Ingress Controller and Kong Gateway, optimizing path-based routing, rate-limiting, and TLS termination across microservices.",
-                "Automated GitOps deployment synchronization using ArgoCD and Helm charts, enforcing declarative configuration state and automated rollback policies."
+                "Standardized multi-tenant AWS EKS container platform deployments using modular Terraform and Ansible, establishing reproducible cluster baselines, auto-scaling node groups, and IAM roles across 3 environments.",
+                "Engineered automated CI/CD pipelines in Jenkins and GitLab CI with Trivy vulnerability scanning, container linting, and staging smoke tests.",
+                "Hardened cluster ingress and API gateway policies using Nginx Ingress and Kong Gateway (rate-limiting, TLS termination), and automated GitOps rollouts with ArgoCD and Helm charts."
             ],
             "skills": [
                 "Kubernetes", "AWS EKS", "Terraform", "Ansible", "Docker", "Helm", "ArgoCD", "Jenkins", "GitLab CI", "Linux"
             ]
         },
         {
-            "company": "Himachal Futuristic Communications (HFCL)",
-            "title": "Engineer 1 - DevOps / Platform Engineering",
+            "company": "HFCL Limited",
+            "title": "Engineer 1 — DevOps / Platform Engineering",
             "dates": "August 2025 – June 2026",
-            "location": "Gurugram / Bangalore, India",
+            "location": "Bangalore, India",
             "bullets": [
-                "Authored 40+ Ansible playbooks and Jinja2 templates to automate Kubernetes cluster lifecycle (kubeadm, CNI, Harbor, Helm), reducing bootstrap time from 2 days to 4 hours (83% reduction).",
-                "Built and operated a 50-node on-premise Kubernetes platform for 15+ distributed microservices, managing Deployments, StatefulSets, Ingress, RBAC, and HPA for 99.95% uptime.",
-                "Managed StatefulSet workloads (MongoDB, Redis, Kafka, TimescaleDB) with PVC storage, Velero backup and Prometheus/Grafana alerts, cutting RTO from 8h to 30min and MTTR by 45%."
+                "Automated bare-metal Kubernetes (kubeadm) cluster lifecycle via 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), reducing bootstrap time from 2 days to 4 hours (83% reduction).",
+                "Operated a 50-node on-premise Kubernetes platform for 15+ distributed microservices with namespace isolation, RBAC, and HPA, sustaining 99.95% platform availability.",
+                "Orchestrated stateful cluster workloads (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, cutting RTO from 8h to 30min (93%) and MTTR by 45%.",
+                "Standardized declarative Jenkins pipelines with Docker, Helm, SonarQube, and Trivy security gates, doubling release frequency (2x) with zero-downtime rolling updates."
             ],
             "skills": [
-                "Kubernetes", "Ansible", "Docker", "Helm", "Kafka", "Redis", "Prometheus", "Grafana", "Linux", "Terraform"
+                "Kubernetes", "Ansible", "Docker", "Helm", "Apache Kafka", "Redis", "Prometheus", "Grafana", "Linux", "Terraform"
             ]
         },
         {
             "company": "CGI India",
             "title": "Security Analyst Apprentice",
             "dates": "September 2024 – August 2025",
-            "location": "Bengaluru, India",
+            "location": "Bangalore, India",
             "bullets": [
                 "Centralized multi-source log ingestion using the ELK Stack (Elasticsearch, Logstash, Kibana), designing operational dashboards that reduced root-cause investigation time by 35%.",
-                "Authored custom Grok parsing patterns in Logstash to parse high-volume syslog and telemetry streams into structured fields, cutting log triage time by 45%."
+                "Authored custom Grok parsing patterns in Logstash to parse high-volume syslog and firewall/IDS telemetry streams into structured fields, cutting log triage time by 45%."
             ],
             "skills": [
-                "ELK Stack", "Logstash", "Elasticsearch", "Kibana", "Python", "SQL", "Linux", "Grok"
+                "ELK Stack", "Logstash", "Elasticsearch", "Kibana", "Python", "SQL", "Linux"
             ]
         },
         {
             "company": "Stipe Solutions",
             "title": "Full Stack Developer Intern",
             "dates": "March 2024 – September 2024",
-            "location": "Bengaluru, India",
+            "location": "Bangalore, India",
             "bullets": [
-                "Developed cross-platform mobile application modules (React Native, Flutter) and RESTful API integrations for 1,000+ daily active users.",
-                "Integrated automated unit testing and Docker containerization into GitHub Actions CI pipelines."
+                "Developed 30+ cross-platform mobile application screens (React Native, Flutter) and RESTful API integrations with PostgreSQL optimization for 1,000+ daily active users."
             ],
             "skills": [
-                "Python", "Docker", "REST APIs", "SQL", "GitHub Actions", "Git"
+                "Python", "Docker", "REST APIs", "SQL", "PostgreSQL", "GitHub Actions", "Git"
             ]
         }
     ],
@@ -158,77 +154,77 @@ LINKEDIN_100K_MLOPS_BLUEPRINT: Dict[str, Any] = {
         "Helm",
         "CI/CD",
         "Terraform",
-        "Prometheus",
-        "Grafana",
-        "MLflow",
-        "vLLM",
-        "Triton Inference Server",
-        "AWS",
-        "EKS",
-        "Apache Kafka",
-        "Redis",
-        "Python",
-        "Linux",
-        "FastAPI",
         "Ansible",
         "ArgoCD",
+        "AWS EKS",
+        "Jenkins",
         "GitLab CI",
         "GitHub Actions",
-        "OpenTelemetry",
+        "Trivy",
+        "SonarQube",
+        "Prometheus",
+        "Grafana",
+        "Alertmanager",
         "ELK Stack",
-        "Model Deployment",
-        "Inference Serving",
+        "Elasticsearch",
+        "Logstash",
+        "Kibana",
+        "Velero",
+        "Harbor Registry",
+        "Nginx Ingress",
+        "Kong Gateway",
+        "containerd",
+        "Apache Kafka",
+        "Redis",
         "PostgreSQL",
         "TimescaleDB",
         "MongoDB",
-        "Microservices",
-        "Bash",
-        "Git",
-        "Container Security",
-        "Trivy",
-        "Kong Gateway",
-        "Nginx Ingress",
-        "Velero",
-        "StatefulSets",
-        "HPA",
-        "RBAC",
-        "Cloud Infrastructure",
-        "Platform Engineering",
-        "AI Infrastructure",
-        "Vector Search",
         "pgvector",
-        "Data Pipelines",
+        "MinIO",
+        "Python",
+        "Rust",
+        "FastAPI",
+        "SQL",
+        "Bash",
+        "Linux",
+        "YAML",
+        "Jinja2",
         "PySpark",
-        "Databricks",
+        "Azure Databricks",
         "Delta Lake",
-        "Azure Data Factory"
+        "Azure Data Factory",
+        "ADLS Gen2",
+        "MLflow",
+        "GitOps",
+        "Site Reliability Engineering",
+        "Infrastructure as Code (IaC)"
     ]
 }
 LINKEDIN_100K_MLOPS_BLUEPRINT["employment_history"] = LINKEDIN_100K_MLOPS_BLUEPRINT["experience"]
 
 
 def get_100k_blueprint(persona: str = "mlops") -> Dict[str, Any]:
-    """Returns canonical 100K blueprint for either 'mlops' or 'de' persona."""
+    """Returns canonical 100K blueprint grounded in 01_FACT_MATRIX.md."""
     if str(persona).lower() in ("mlops", "ai", "platform"):
         return LINKEDIN_100K_MLOPS_BLUEPRINT
     return LINKEDIN_100K_BLUEPRINT
 
 # ==============================================================================
-# CANONICAL 100K+ LINKEDIN RECRUITER BLUEPRINT
+# CANONICAL 100K+ LINKEDIN RECRUITER BLUEPRINT (UNIFIED PLATFORM & DATA INFRA)
 # ==============================================================================
 
 LINKEDIN_100K_BLUEPRINT: Dict[str, Any] = {
     "headline": (
-        "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · "
-        "SQL · Apache Kafka · Terraform | Medallion Lakehouse | Ex-HFCL | Immediate – 15 Days Notice"
+        "Platform & MLOps Engineer | Kubernetes (EKS, kubeadm) · Terraform · Ansible · "
+        "Docker · Helm · ArgoCD · CI/CD · Kafka · Prometheus · Python · Rust | 2.5 YOE | 15 Days Notice"
     ),
-    "headline_length": 208,  # Under 220-character limit
+    "headline_length": 173,  # Under 220-character limit
     "target_titles": [
-        "Azure Data Engineer",
-        "Data Engineer",
-        "Big Data Engineer",
-        "Databricks Engineer",
-        "Data Platform Engineer"
+        "Platform Engineer",
+        "MLOps Engineer",
+        "DevOps Engineer",
+        "AI Infrastructure Engineer",
+        "Cloud Infrastructure Engineer"
     ],
     "target_locations": [
         "Bengaluru, Karnataka, India",
@@ -240,11 +236,11 @@ LINKEDIN_100K_BLUEPRINT: Dict[str, Any] = {
     ],
     "open_to_work_settings": {
         "job_titles": [
-            "Azure Data Engineer",
-            "Data Engineer",
-            "Big Data Engineer",
-            "Databricks Engineer",
-            "Data Platform Engineer"
+            "Platform Engineer",
+            "MLOps Engineer",
+            "DevOps Engineer",
+            "AI Infrastructure Engineer",
+            "Cloud Infrastructure Engineer"
         ],
         "locations_on_site": [
             "Bengaluru, Karnataka, India",
@@ -258,152 +254,11 @@ LINKEDIN_100K_BLUEPRINT: Dict[str, Any] = {
         "employment_types": ["Full-time", "Contract"],
         "visibility": "Recruiters only"
     },
-    "about": (
-        "Azure Data Engineer with 2.5 years of experience architecting high-throughput batch and real-time streaming "
-        "Lakehouse platforms on Microsoft Azure, Databricks, PySpark, Delta Lake, and Azure Data Factory (ADF).\n\n"
-        "Engineered scalable Medallion Lakehouse architectures (Bronze, Silver, Gold Delta tables) processing 2M+ events/day "
-        "with sub-second streaming ingestion latency via Apache Kafka and Spark Structured Streaming. Automated DataOps "
-        "CI/CD release lifecycles and infrastructure provisioning via Terraform and Azure DevOps, cutting pipeline execution "
-        "runtime by 35% and sustaining 99.95% cloud data platform availability across enterprise banking and enterprise networking environments.\n\n"
-        "⚡ CORE TECHNICAL EXPERTISE:\n"
-        "• Data Platforms & Lakehouse: Azure Databricks, PySpark (Spark SQL), Delta Lake (ACID Transactions, Time Travel, Liquid Clustering, Z-Order, OPTIMIZE), Azure Data Factory (ADF), Azure Synapse Analytics, ADLS Gen2, Microsoft Fabric.\n"
-        "• Streaming & Event Processing: Apache Kafka, Spark Structured Streaming, Event Hubs, Real-time Change Data Capture (CDC).\n"
-        "• Databases & Data Modeling: Advanced SQL (Window Functions, CTEs, Recursive Queries), PostgreSQL, Redis, MongoDB, Star Schema, Snowflake.\n"
-        "• DataOps & Cloud Infrastructure: Terraform (IaC), Azure DevOps Multi-Stage Pipelines, Docker, Kubernetes (AKS/EKS), Helm, Jenkins, Linux/Bash, Git.\n"
-        "• Data Governance & Quality: Unity Catalog (Fine-grained Access Control), Great Expectations, Data Quality Validation Gates, Prometheus & Grafana Observability.\n\n"
-        "💼 KEY HIGHLIGHTS & METRICS:\n"
-        "• Ingestion Scalability: Scaled distributed PySpark ETL/ELT pipelines processing 2M+ daily events across Azure Databricks and ADLS Gen2, reducing batch SLA from 4 hours to 45 minutes (81% reduction).\n"
-        "• Streaming Ingestion: Architected Apache Kafka real-time ingestion with Delta Lake MERGE operations, cutting data freshness lag from 4 hours to sub-minute latency.\n"
-        "• CI/CD Automation: Automated end-to-end DataOps release cycles using Terraform IaC across 3 environments, slashing infrastructure deployment time from 6 hours to 20 minutes.\n"
-        "• Data Quality: Configured automated validation gates with Great Expectations and Grafana telemetry, intercepting 99.2% of schema anomalies before Gold table ingestion.\n\n"
-        "📍 Current Location: Hyderabad, India\n"
-        "🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote\n"
-        "⏱ Notice Period: 15 Days or less (Immediate Joiner)\n"
-        "📫 Contact: lav84095@gmail.com | +91-9122036484 | linkedin.com/in/lavkush-kumar"
-    ),
-    "experience": [
-        {
-            "company": "CGI India (PNC Bank GCC)",
-            "title": "DevOps Engineer / Azure Data Engineer",
-            "dates": "June 2026 – Present",
-            "location": "Bengaluru / Hyderabad, India",
-            "bullets": [
-                "Engineered and maintained enterprise Azure Databricks Lakehouse pipelines processing 2M+ daily financial transaction events into Bronze, Silver, and Gold Delta tables using PySpark and ADLS Gen2.",
-                "Orchestrated 15+ automated Azure Data Factory (ADF) multi-activity pipelines and Databricks workflows with automated retry triggers and alerting, sustaining 99.95% batch ETL reliability.",
-                "Configured Delta Lake ACID transactions, Liquid Clustering, and Change Data Capture (CDC) via Spark Structured Streaming, slashing downstream query latency by 35%.",
-                "Automated DataOps infrastructure provisioning across Dev, Stage, and Prod environments using Terraform IaC and Azure DevOps multi-stage CI/CD pipelines."
-            ],
-            "skills": [
-                "Azure Databricks", "PySpark", "Delta Lake", "Azure Data Factory (ADF)",
-                "Apache Spark", "ADLS Gen2", "SQL", "Terraform", "Azure DevOps", "Unity Catalog"
-            ]
-        },
-        {
-            "company": "Himachal Futuristic Communications (HFCL)",
-            "title": "Engineer 1 - DevOps / Platform Engineering",
-            "dates": "August 2025 – June 2026",
-            "location": "Gurugram, Haryana, India",
-            "bullets": [
-                "Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry across 15+ microservices with sub-100ms scraping latency, slashing incident MTTR by 40%.",
-                "Containerized and deployed distributed data ingestion services on Kubernetes (EKS) using Docker and Helm, sustaining 99.9% uptime during peak network telemetry spikes.",
-                "Configured automated multi-stage CI/CD release pipelines with automated rollback safeguards using GitLab CI and Bash scripting, reducing production release lead time by 65%."
-            ],
-            "skills": [
-                "Kubernetes", "Docker", "Helm", "Prometheus", "Grafana",
-                "CI/CD", "GitLab CI", "Linux", "Bash", "Python", "OpenTelemetry"
-            ]
-        },
-        {
-            "company": "CGI India",
-            "title": "Security Analyst Apprentice",
-            "dates": "September 2024 – August 2025",
-            "location": "Bengaluru, India",
-            "bullets": [
-                "Automated cloud infrastructure security scanning, vulnerability triage, and compliance auditing across enterprise cloud workloads.",
-                "Constructed automated log parsing and anomaly detection scripts using Python and SQL to monitor IAM access logs and security group anomalies."
-            ],
-            "skills": [
-                "Python", "SQL", "Cloud Security", "IAM", "Linux", "Compliance Auditing"
-            ]
-        },
-        {
-            "company": "Stipe Solutions",
-            "title": "Full Stack Developer Intern",
-            "dates": "March 2024 – September 2024",
-            "location": "Remote, India",
-            "bullets": [
-                "Developed RESTful APIs and optimized SQL database queries for relational and NoSQL storage backends (PostgreSQL, MongoDB).",
-                "Integrated automated unit testing and Docker containerization into GitHub Actions CI pipelines, accelerating feature delivery cycles."
-            ],
-            "skills": [
-                "Python", "SQL", "PostgreSQL", "MongoDB", "REST APIs", "Docker", "Git"
-            ]
-        }
-    ],
-    "top_50_skills": [
-        # Top 3 Pinned Skills (Highest Recruiter Filter Weight)
-        "Azure Databricks",
-        "PySpark",
-        "Azure Data Factory (ADF)",
-        
-        # Core Lakehouse & Big Data Processing (12 Skills)
-        "Delta Lake",
-        "Apache Spark",
-        "Spark SQL",
-        "Data Engineering",
-        "ETL Pipelines",
-        "ELT Pipelines",
-        "Data Lakehouse",
-        "Medallion Architecture",
-        "ADLS Gen2",
-        "Azure Synapse Analytics",
-        "Microsoft Fabric",
-        "Change Data Capture (CDC)",
-
-        # Databases & Advanced Querying (8 Skills)
-        "SQL",
-        "PostgreSQL",
-        "Data Modeling",
-        "Star Schema",
-        "Snowflake",
-        "Redis",
-        "MongoDB",
-        "Query Optimization",
-
-        # Streaming & Event Architectures (5 Skills)
-        "Apache Kafka",
-        "Spark Structured Streaming",
-        "Event Streaming",
-        "Kafka Connect",
-        "Azure Event Hubs",
-
-        # Cloud & DataOps Automation (12 Skills)
-        "Terraform",
-        "Infrastructure as Code (IaC)",
-        "Azure DevOps",
-        "CI/CD",
-        "Docker",
-        "Kubernetes",
-        "Helm",
-        "Git",
-        "GitHub Actions",
-        "GitLab CI",
-        "Linux",
-        "Bash",
-
-        # Data Governance, Quality & Telemetry (10 Skills)
-        "Unity Catalog",
-        "Great Expectations",
-        "Data Quality Gates",
-        "Prometheus",
-        "Grafana",
-        "OpenTelemetry",
-        "Data Pipelines Observability",
-        "dbt",
-        "Cloud Data Management",
-        "Python (Programming Language)"
-    ]
+    "about": LINKEDIN_100K_MLOPS_BLUEPRINT["about"],
+    "experience": LINKEDIN_100K_MLOPS_BLUEPRINT["experience"],
+    "top_50_skills": LINKEDIN_100K_MLOPS_BLUEPRINT["top_50_skills"],
 }
+LINKEDIN_100K_BLUEPRINT["employment_history"] = LINKEDIN_100K_BLUEPRINT["experience"]
 
 
 # ==============================================================================
@@ -463,10 +318,11 @@ class LinkedInProfileAuditor:
     ]
 
     HIGH_VALUE_MLOPS_DIFFERENTIATORS = [
-        "vllm",
-        "triton",
+        "ansible",
+        "velero",
         "argocd",
         "kafka",
+        "elk stack",
         "15 days notice",
         "immediate"
     ]
@@ -517,8 +373,7 @@ class LinkedInProfileAuditor:
             persona.lower() in ("mlops", "ai", "platform")
             or (
                 persona.lower() == "auto"
-                and ("mlops" in hl_lower or "ai infrastructure" in hl_lower or "ml platform" in hl_lower or "mlops" in cur_t)
-                and not ("azure data engineer" in cur_t and "databricks" in hl_lower)
+                and not ("azure data engineer" in cur_t_lower and "databricks" in hl_lower)
             )
         )
 
@@ -636,12 +491,12 @@ class LinkedInProfileAuditor:
                 score += 12.0
                 findings.append(f"✓ Current designation is a strong Data Engineering variant: '{cur_t}'.")
             elif "devops" in cur_t_lower:
-                score += 10.0
-                findings.append(f"⚠️ Current designation is '{cur_t}'. Recruiters searching 'Azure Data Engineer' give higher weight to exact title matches.")
-                recommendations.append("Update current designation on LinkedIn to 'DevOps Engineer / Azure Data Engineer' or 'Azure Data Engineer'.")
+                score += 12.0
+                findings.append(f"✓ Current designation '{cur_t}' reflects verified production DevOps/Platform tenure.")
+                recommendations.append("Keep current designation truthful ('DevOps Engineer') and highlight project-only data stack under Projects.")
             else:
                 score += 5.0
-                recommendations.append("Align current job title to 'Azure Data Engineer' to rank in exact-match recruiter boolean queries.")
+                recommendations.append("Align current job title to 'DevOps Engineer' or 'Platform Engineer' per 01_FACT_MATRIX.md.")
 
         # Differentiators check (10 Points)
         diff_matches = sum(1 for kw in diff_keywords if kw in hl_lower or kw in ab_lower or any(kw in s for s in sk_lower))
@@ -914,10 +769,12 @@ def export_100k_blueprint_markdown(output_path: Optional[str] = None) -> str:
     from naukari_pro.config import WORKSPACE_DIR
     target_path = output_path or os.path.join(WORKSPACE_DIR, "LINKEDIN_100K_SEARCH_BLUEPRINT.md")
 
-    bp = LINKEDIN_100K_BLUEPRINT
-    md_content = f"""# 🚀 LinkedIn 100k+ Search Appearances Blueprint: Azure Data Engineer
-**Candidate:** Lavkush Kumar (2.5 YOE | Target: ₹20–25 LPA | Notice: 15 Days or less)  
-**Goal:** 100,000+ Monthly LinkedIn Recruiter Search Appearances in Data Engineering  
+    bp = LINKEDIN_100K_MLOPS_BLUEPRINT
+    exp0 = bp["experience"][0]
+    exp1 = bp["experience"][1]
+    md_content = f"""# 🚀 LinkedIn 100k+ Search Appearances Blueprint: Platform, DevOps & MLOps Engineer
+**Candidate:** Lavkush Kumar (~2.5 YOE | Target: ₹20–25 LPA | Notice: 15 Days or less)  
+**Goal:** 100,000+ Monthly LinkedIn Recruiter Search Appearances in Platform / DevOps / MLOps Engineering  
 **Algorithm Target:** LinkedIn Recruiter (RPS) Boolean Search & Recruiter Spotlights  
 
 ---
@@ -928,32 +785,17 @@ def export_100k_blueprint_markdown(output_path: Optional[str] = None) -> str:
 ```text
 {bp["headline"]}
 ```
-* **Character Count:** {len(bp["headline"])} / 220 chars (Optimized to prevent truncation while packing 8 primary recruiter search tokens).
-* **Keywords Indexed:** `Azure Data Engineer`, `Azure Databricks`, `PySpark`, `Delta Lake`, `Azure Data Factory (ADF)`, `SQL`, `Apache Kafka`, `Terraform`, `Medallion Lakehouse`, `Immediate – 15 Days Notice`.
+* **Character Count:** {len(bp["headline"])} / 220 chars (Optimized to prevent truncation while packing core Platform/MLOps search tokens).
 
 ---
 
 ## 2. "Open to Work" Configuration (Private to Recruiters Only)
 
-Recruiters use the **"Open to Work" Spotlight filter** on LinkedIn Recruiter to prioritize active job seekers over passive candidates. Configure this under **Profile > Open to > Finding a new job**:
-
-* **Job Titles (Max 5):**
-  1. `Azure Data Engineer`
-  2. `Data Engineer`
-  3. `Big Data Engineer`
-  4. `Databricks Engineer`
-  5. `Data Platform Engineer`
-* **Location Types:** `On-site`, `Hybrid`, `Remote`
-* **On-site / Hybrid Locations (Max 5):**
-  1. `Bengaluru, Karnataka, India`
-  2. `Hyderabad, Telangana, India`
-  3. `Pune, Maharashtra, India`
-  4. `Gurugram, Haryana, India`
-  5. `Noida, Uttar Pradesh, India`
-* **Remote:** `Yes` (Expands search footprint pan-India)
-* **Start Date:** `Immediately, I'm actively applying` *(Puts profile in the Top 10% candidate spotlight)*
+* **Job Titles (Max 5):** `{', '.join(bp["open_to_work_settings"]["job_titles"])}`
+* **Locations:** `{', '.join(bp["open_to_work_settings"]["locations_on_site"])}` + `Remote`
+* **Start Date:** `Immediately, I'm actively applying`
 * **Employment Types:** `Full-time`, `Contract`
-* **Visibility:** **Recruiters only** *(Protects current employer visibility while maximizing inbound recruiter InMails)*
+* **Visibility:** **Recruiters only**
 
 ---
 
@@ -966,63 +808,45 @@ Recruiters use the **"Open to Work" Spotlight filter** on LinkedIn Recruiter to 
 
 ---
 
-## 4. Experience Section (Title Alignment & Skill Tags)
+## 4. Experience Section (Canonical `01_FACT_MATRIX.md` Alignment)
 
 ### Role 1: Current Employment
-* **Company:** `CGI India (PNC Bank GCC)`
-* **Designation:** `DevOps Engineer / Azure Data Engineer`
-* **Dates:** `June 2026 – Present`
-* **Location:** `Bengaluru / Hyderabad, India`
+* **Company:** `{exp0["company"]}`
+* **Designation:** `{exp0["title"]}`
+* **Dates:** `{exp0["dates"]}`
+* **Location:** `{exp0["location"]}`
 * **Description:**
 ```text
-• Engineered and maintained enterprise Azure Databricks Lakehouse pipelines processing 2M+ daily financial transaction events into Bronze, Silver, and Gold Delta tables using PySpark and ADLS Gen2.
-• Orchestrated 15+ automated Azure Data Factory (ADF) multi-activity pipelines and Databricks workflows with automated retry triggers and alerting, sustaining 99.95% batch ETL reliability.
-• Configured Delta Lake ACID transactions, Liquid Clustering, and Change Data Capture (CDC) via Spark Structured Streaming, slashing downstream query latency by 35%.
-• Automated DataOps infrastructure provisioning across Dev, Stage, and Prod environments using Terraform IaC and Azure DevOps multi-stage CI/CD pipelines.
+{chr(10).join("• " + b for b in exp0["bullets"])}
 
-Skills: Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · Apache Spark · ADLS Gen2 · SQL · Terraform · Azure DevOps · Unity Catalog
+Skills: {' · '.join(exp0["skills"])}
 ```
 
 ### Role 2: Previous Employment
-* **Company:** `HFCL Limited`
-* **Designation:** `Engineer 1 — DevOps / Platform Engineering`
-* **Dates:** `August 2025 – June 2026`
-* **Location:** `Gurugram, Haryana, India`
+* **Company:** `{exp1["company"]}`
+* **Designation:** `{exp1["title"]}`
+* **Dates:** `{exp1["dates"]}`
+* **Location:** `{exp1["location"]}`
 * **Description:**
 ```text
-• Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry across 15+ microservices with sub-100ms scraping latency, slashing incident MTTR by 40%.
-• Containerized and deployed distributed data ingestion services on Kubernetes (EKS) using Docker and Helm, sustaining 99.9% uptime during peak network telemetry spikes.
-• Configured automated multi-stage CI/CD release pipelines with automated rollback safeguards using GitLab CI and Bash scripting, reducing production release lead time by 65%.
+{chr(10).join("• " + b for b in exp1["bullets"])}
 
-Skills: Kubernetes · Docker · Helm · Prometheus · Grafana · CI/CD · GitLab CI · Linux · Bash · Python · OpenTelemetry
+Skills: {' · '.join(exp1["skills"])}
 ```
 
 ---
 
 ## 5. Top 50 Skills Taxonomy (Recruiter Filter Saturation)
 
-Add all 50 skills to LinkedIn. **Pin the top 3 skills to the top of your profile**:
-
 ### 📌 Top 3 Pinned Skills (Priority 1)
-1. **`Azure Databricks`**
-2. **`PySpark`**
-3. **`Azure Data Factory (ADF)`**
+1. **`{bp["top_50_skills"][0]}`**
+2. **`{bp["top_50_skills"][1]}`**
+3. **`{bp["top_50_skills"][2]}`**
 
 ### Remaining 47 Skills (Full Category Saturation):
 ```text
 {', '.join(bp["top_50_skills"][3:])}
 ```
-
----
-
-## 6. The Math of 100k+ Search Appearances
-
-To generate **100,000+ monthly search appearances** (~3,300 appearances/day):
-
-1. **Title Matching Multiplier (5x):** Having all 5 canonical titles (`Azure Data Engineer`, `Data Engineer`, `Big Data Engineer`, `Databricks Engineer`, `Data Platform Engineer`) across your Headline, Current Role, and Open-to-Work indices your profile in every recruiter boolean string.
-2. **50-Skill Saturation (3x):** Recruiters frequently apply 3 to 5 skill filters in LinkedIn Recruiter (e.g. `Databricks` + `PySpark` + `ADF`). If even one skill is missing from your 50 skills list, your profile is excluded from search results.
-3. **Immediate Notice Filter (4x):** In India GCC hiring, recruiters search for `< 30 days notice` or `Immediate`. Having `Immediate – 15 Days Notice` in your headline and "Immediately" in Open to Work boosts your placement into the highest-priority recruiter candidate bucket.
-4. **Active Recruiter Spotlight:** Daily logins and responding to all InMails within 2 hours unlocks the `"More likely to respond"` spotlight filter, giving your profile priority placement in search rankings.
 """
     with open(target_path, "w", encoding="utf-8") as f:
         f.write(md_content)

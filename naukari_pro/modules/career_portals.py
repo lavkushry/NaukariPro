@@ -453,9 +453,9 @@ class ATSFormSchemaPlanner:
                     elif "location" in fname.lower():
                         ans = p.get("city", "Hyderabad, India")
                     elif "linkedin" in fname.lower():
-                        ans = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                        ans = p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/")
                     elif any(k in fname.lower() for k in ("website", "portfolio", "github")):
-                        ans = p.get("portfolioUrl", "https://github.com/lavkush-kumar")
+                        ans = p.get("portfolioUrl", "https://github.com/lavkushry")
                     else:
                         decision = self.solver.evaluate_question(lbl, context={"options": opt_labels})
                         if decision and decision.answer and not decision.is_ambiguous:
@@ -1039,8 +1039,8 @@ class GreenhouseHandler(BaseATSHandler):
             ("email", "Email", "email", "email", "email", "#email, input[type='email'], input[name*='email' i]", p.get("email", "lav84095@gmail.com"), "Email"),
             ("phone", "Phone", "tel", "phone", "phone", "#phone, input[type='tel'], input[name*='phone' i]", p.get("phone", "+91-9122036484"), "Phone"),
             ("job_application_location", "Location", "address-level2", "location", "location", "#job_application_location, input[name*='location' i]", p.get("city", "Hyderabad"), "Location"),
-            ("linkedin", "LinkedIn", "", "linkedin", "linkedin", "input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
-            ("website", "Website", "", "website", "portfolio", "input[name*='website' i], input[name*='portfolio' i], input[name*='github' i]", p.get("portfolioUrl", "https://github.com/lavkush-kumar"), "Website"),
+            ("linkedin", "LinkedIn", "", "linkedin", "linkedin", "input[name*='linkedin' i], input[id*='linkedin' i]", p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/"), "LinkedIn"),
+            ("website", "Website", "", "website", "portfolio", "input[name*='website' i], input[name*='portfolio' i], input[name*='github' i]", p.get("portfolioUrl", "https://github.com/lavkushry"), "Website"),
         ]
         for f_id, lbl_txt, ac, nm, aria, css, val, label in contact_ladder:
             try:
@@ -1122,7 +1122,7 @@ class GreenhouseHandler(BaseATSHandler):
                                 ans_to_fill = decision.answer if (decision and decision.confidence >= 0.7 and decision.answer) else None
                                 if not ans_to_fill:
                                     if "linkedin" in q_lower:
-                                        ans_to_fill = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                                        ans_to_fill = p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/")
                                     elif any(
                                         k in q_lower
                                         for k in (
@@ -1137,7 +1137,7 @@ class GreenhouseHandler(BaseATSHandler):
                                         ans_to_fill = "None — I do not require sponsorship or work-authorization assistance."
                                     elif any(k in q_lower for k in ["github", "portfolio", "website", "artifact", "code", "project"]):
                                         # Do NOT match bare "work" — it hits "work authorization" sponsorship textboxes
-                                        ans_to_fill = p.get("portfolioUrl", "https://github.com/lavkush-kumar")
+                                        ans_to_fill = p.get("portfolioUrl", "https://github.com/lavkushry")
                                     elif any(k in q_lower for k in ["country", "timezone", "time zone"]):
                                         ans_to_fill = "India (IST, UTC+5:30)"
                                     elif any(k in q_lower for k in ["hear about", "opportunity", "source", "referral"]):
@@ -1156,6 +1156,16 @@ class GreenhouseHandler(BaseATSHandler):
                                             ans_to_fill = p.get("lastName") or "Kumar"
                                         else:
                                             ans_to_fill = p.get("firstName") or "Lavkush"
+                                    elif q_lower.strip() in ("city", "city*", "city *") or (
+                                        q_lower.startswith("city") and "capacity" not in q_lower and "electric" not in q_lower
+                                    ):
+                                        # Oura/GH: never dump bio into City*
+                                        ans_to_fill = p.get("city") or "Hyderabad"
+                                    elif any(
+                                        k in q_lower
+                                        for k in ("current location", "current city", "where are you located", "your city")
+                                    ):
+                                        ans_to_fill = p.get("city") or "Hyderabad, India"
                                     elif any(
                                         k in q_lower
                                         for k in (
@@ -2119,6 +2129,10 @@ class GreenhouseHandler(BaseATSHandler):
                             val = p.get("lastName") or "Kumar"
                         elif "preferred" in lab or "first name" in lab:
                             val = p.get("firstName") or "Lavkush"
+                        elif lab.strip() in ("city", "city*", "city *") or (
+                            lab.startswith("city") and "capacity" not in lab
+                        ):
+                            val = p.get("city") or "Hyderabad"
                         elif any(
                             k in lab
                             for k in (
@@ -2243,25 +2257,68 @@ class GreenhouseHandler(BaseATSHandler):
                     if code and len(code) in [6, 8]:
                         print(f"    🔑 Entering Greenhouse security code: {code}")
                         entered = False
-                        # 1. Try segmented inputs (e.g. input#security-input-0 .. 7)
-                        first_seg = page.locator("input#security-input-0")
+                        # 1. Segmented OTP boxes (GH/Oura: security-input-N or maxlength=1)
+                        first_seg = page.locator(
+                            "input#security-input-0, input[id^='security-input-'], "
+                            "input[autocomplete='one-time-code'][maxlength='1'], "
+                            ".email-verification input[maxlength='1']"
+                        )
                         if safe_count(first_seg) > 0:
                             for i, ch in enumerate(code):
-                                inp_i = page.locator(f"input#security-input-{i}")
-                                if safe_count(inp_i) > 0:
+                                inp_i = page.locator(
+                                    f"input#security-input-{i}, "
+                                    f"input[id='security-input-{i}']"
+                                )
+                                if safe_count(inp_i) == 0:
+                                    # Generic OTP sequence: Nth maxlength=1 inside verification panel
+                                    otp_boxes = page.locator(
+                                        ".email-verification input[maxlength='1'], "
+                                        "div:has-text('security code') input[maxlength='1'], "
+                                        "div:has-text('verification code') input[maxlength='1'], "
+                                        "input[maxlength='1'][type='text']"
+                                    )
+                                    if safe_count(otp_boxes) > i:
+                                        inp_i = otp_boxes.nth(i)
+                                    else:
+                                        break
+                                try:
                                     inp_i.fill(ch)
-                            entered = True
+                                    entered = True
+                                except Exception:
+                                    try:
+                                        inp_i.click(timeout=1000)
+                                        if hasattr(page, "keyboard"):
+                                            page.keyboard.type(ch, delay=30)
+                                        entered = True
+                                    except Exception:
+                                        pass
 
-                        # 2. Fallback to unified single code input if segmented not found
+                        # 2. Fallback: type full code into first OTP / single field
                         if not entered:
                             single_inputs = page.locator(
                                 "input#security_code, input[name*='security_code' i], input[name*='code' i], "
-                                "input[placeholder*='code' i], input[aria-label*='code' i], input[type='text'][maxlength='8'], "
+                                "input[placeholder*='code' i], input[aria-label*='code' i], "
+                                "input[autocomplete='one-time-code'], "
+                                "input[type='text'][maxlength='8'], "
                                 "input[type='text'][maxlength='6']"
                             )
                             if safe_count(single_inputs) > 0 and single_inputs.first.is_visible():
-                                single_inputs.first.fill(code)
-                                entered = True
+                                try:
+                                    single_inputs.first.click(timeout=2000)
+                                    single_inputs.first.fill(code)
+                                    entered = True
+                                except Exception:
+                                    try:
+                                        single_inputs.first.click(timeout=1000)
+                                        if hasattr(page, "keyboard"):
+                                            page.keyboard.type(code, delay=40)
+                                        entered = True
+                                    except Exception:
+                                        pass
+                        if not entered:
+                            print("    ⚠️ Security code fetched but OTP inputs not filled — leaving for resubmit path")
+                        else:
+                            print(f"    ✓ Security code entered into form ({len(code)} chars)")
 
                         self.record_field(
                             label="Greenhouse Email Verification Code",
@@ -2378,9 +2435,9 @@ class LeverHandler(BaseATSHandler):
             ("input[name='email']", p.get("email", "lav84095@gmail.com"), "Email"),
             ("input[name='phone']", p.get("phone", "+91-9122036484"), "Phone"),
             ("input[name='org']", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Current Company"),
-            ("input[name='urls[LinkedIn]']", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
-            ("input[name='urls[GitHub]']", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
-            ("input[name='urls[Portfolio]'], input[name='urls[Other]']", p.get("portfolioUrl", "https://github.com/lavkush-kumar"), "Portfolio"),
+            ("input[name='urls[LinkedIn]']", p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/"), "LinkedIn"),
+            ("input[name='urls[GitHub]']", p.get("githubUrl", "https://github.com/lavkushry"), "GitHub"),
+            ("input[name='urls[Portfolio]'], input[name='urls[Other]']", p.get("portfolioUrl", "https://github.com/lavkushry"), "Portfolio"),
             ("input[name='location']", p.get("city", "Hyderabad, India"), "Location"),
             ("textarea[name='comments'], input[name='comments']", "Experienced Azure Data Engineer (2.5 YOE) specializing in Databricks, PySpark, Delta Lake, ADF, and high-throughput streaming pipelines.", "Additional Information"),
         ]
@@ -2751,7 +2808,7 @@ class AshbyHandler(BaseATSHandler):
             pass
 
         # 2. Standard system fields
-        linkedin_url = p.get("linkedInUrl") or p.get("linkedin") or "https://linkedin.com/in/lavkush-kumar"
+        linkedin_url = p.get("linkedInUrl") or p.get("linkedin") or "https://www.linkedin.com/in/lavkushry/"
         if linkedin_url and not str(linkedin_url).startswith("http"):
             linkedin_url = f"https://{linkedin_url}"
         current_ctc = str(p.get("currentCtcLpa") or p.get("current_ctc") or "12")
@@ -2775,7 +2832,7 @@ class AshbyHandler(BaseATSHandler):
                 linkedin_url,
                 "LinkedIn",
             ),
-            ("input[name*='github' i], input[id*='github' i], input[placeholder*='github' i]", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
+            ("input[name*='github' i], input[id*='github' i], input[placeholder*='github' i]", p.get("githubUrl", "https://github.com/lavkushry"), "GitHub"),
         ]
         for sel, val, label in std_map:
             try:
@@ -3152,7 +3209,7 @@ class AshbyHandler(BaseATSHandler):
                     lt = label_text.lower()
                     ans_to_fill = ""
                     if "github" in lt:
-                        ans_to_fill = p.get("githubUrl", "https://github.com/lavkush-kumar")
+                        ans_to_fill = p.get("githubUrl", "https://github.com/lavkushry")
                         filled.append("GitHub Profile")
                     elif "linkedin" in lt:
                         ans_to_fill = linkedin_url
@@ -6563,7 +6620,7 @@ class WorkdayHandler(BaseATSHandler):
                         lbl_l = lbl_text.lower()
                         ans = solver_answer(self.solver, lbl_text, default="")
                         if any(k in lbl_l for k in ["linkedin", "website"]):
-                            ans = p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")
+                            ans = p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/")
                         elif "overall work experience" in lbl_l or ("work experience" in lbl_l and "fresher" in lbl_l):
                             ans = str(p.get("experienceYears") or p.get("totalExperience") or "2")
                         elif "current company" in lbl_l:
@@ -7506,8 +7563,8 @@ class GenericPortalHandler(BaseATSHandler):
             ("input[autocomplete='address-level2'], input[data-automation-id*='city' i], input[data-automation-id*='location' i], input[name*='city' i], input[name*='location' i], #location, input[placeholder*='city' i]", p.get("city", "Hyderabad"), "Location"),
             ("input[autocomplete='organization'], input[data-automation-id*='company' i], input[name*='company' i], input[name*='org' i], input[placeholder*='company' i]", p.get("currentCompany", "CGI India (PNC Bank GCC)"), "Company"),
             ("input[autocomplete='organization-title'], input[data-automation-id*='title' i], input[name*='title' i], input[name*='designation' i], input[placeholder*='job title' i]", p.get("currentTitle", "DevOps Engineer / Azure Data Engineer"), "Title"),
-            ("input[data-automation-id*='linkedin' i], input[name*='linkedin' i], input[id*='linkedin' i], input[placeholder*='linkedin' i]", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"), "LinkedIn"),
-            ("input[data-automation-id*='github' i], input[name*='github' i], input[id*='github' i], input[placeholder*='github' i]", p.get("githubUrl", "https://github.com/lavkush-kumar"), "GitHub"),
+            ("input[data-automation-id*='linkedin' i], input[name*='linkedin' i], input[id*='linkedin' i], input[placeholder*='linkedin' i]", p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/"), "LinkedIn"),
+            ("input[data-automation-id*='github' i], input[name*='github' i], input[id*='github' i], input[placeholder*='github' i]", p.get("githubUrl", "https://github.com/lavkushry"), "GitHub"),
         ]
         for selector, val, label in field_map:
             try:
@@ -7549,8 +7606,8 @@ class GenericPortalHandler(BaseATSHandler):
             ("Mobile", phone_national),
             ("Phone Number", phone_national),
             ("Current Company", p.get("currentCompany", "CGI India (PNC Bank GCC)")),
-            ("LinkedIn", p.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar")),
-            ("GitHub", p.get("githubUrl", "https://github.com/lavkush-kumar")),
+            ("LinkedIn", p.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/")),
+            ("GitHub", p.get("githubUrl", "https://github.com/lavkushry")),
             ("Total Experience", p.get("experienceYears", "2.5")),
             ("Current CTC", "12"),
             ("Expected CTC", "22"),
@@ -9384,8 +9441,8 @@ class CareerPortalFiller:
             "email": self.profile.get("email", "lav84095@gmail.com"),
             "phone": self.profile.get("phone", "+91-9122036484"),
             "location": self.profile.get("city", "Hyderabad"),
-            "linkedin": self.profile.get("linkedInUrl", "https://linkedin.com/in/lavkush-kumar"),
-            "github": self.profile.get("githubUrl", "https://github.com/lavkush-kumar"),
+            "linkedin": self.profile.get("linkedInUrl", "https://www.linkedin.com/in/lavkushry/"),
+            "github": self.profile.get("githubUrl", "https://github.com/lavkushry"),
             "experience": self.profile.get("experienceYears", "2.5"),
             "notice_period": self.profile.get("noticePeriodDays", "15"),
             "current_ctc_lpa": self.profile.get("currentCtcLpa", "12"),
@@ -9963,7 +10020,8 @@ class CareerPortalFiller:
                         policy_version="v2.1-linucb"
                     )
 
-                    submitted += 1
+                    if sub_status == "Submitted (Confirmed)":
+                        submitted += 1
                     results.append({"company": company, "title": title, "status": sub_status, "ats": ats_type})
                     if active_page != page:
                         try:
@@ -9998,7 +10056,7 @@ _CURATED_ADE_JD = (
 CURATED_ATS_VACANCIES: List[Dict[str, Any]] = [
     {
         "company": "Microsoft GCC",
-        "title": "Lead Azure Data Engineer",
+        "title": "Azure Data Engineer",
         "salary": None,
         "url": "https://boards.greenhouse.io/microsoftgcc/jobs/401",
         "jd": None,
@@ -10038,7 +10096,7 @@ CURATED_ATS_VACANCIES: List[Dict[str, Any]] = [
     },
     {
         "company": "Databricks Partner GCC",
-        "title": "Senior Azure Databricks Specialist",
+        "title": "Azure Databricks Engineer",
         "salary": None,
         "url": "https://jobs.ashbyhq.com/databricks-partner/904",
         "jd": None,
@@ -10103,7 +10161,7 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                     from naukari_pro.modules.job_alerts import calculate_match_score
                     score = float(calculate_match_score(f"{title} {co_name}"))
                     is_ok, _ = is_strictly_data_or_cloud_role(title, content, score=score, company=co_name)
-                    if is_ok or any(kw in title.lower() for kw in ["data engineer", "databricks", "pyspark", "azure data", "cloud data", "devops", "platform engineer", "data platform"]):
+                    if is_ok:
                         loc_dict = j.get("location") or {}
                         loc_name = loc_dict.get("name") if isinstance(loc_dict, dict) else (str(loc_dict) if loc_dict else None)
                         by_ats["Greenhouse"].append({
@@ -10137,8 +10195,10 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                     if board_added >= per_ashby_board:
                         break
                     title = j.get("title", "")
-                    if any(kw in title.lower() for kw in keywords):
-                        desc = j.get("descriptionHtml") or j.get("descriptionPlain") or j.get("description")
+                    desc = j.get("descriptionHtml") or j.get("descriptionPlain") or j.get("description")
+                    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                    is_ok, _ = is_strictly_data_or_cloud_role(title, desc or "", company=co_name)
+                    if is_ok:
                         comp = j.get("compensationTierSummary") or j.get("compensation")
                         salary = comp.strip() if isinstance(comp, str) and comp.strip() else None
                         by_ats["Ashby"].append({
@@ -10183,7 +10243,7 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                         if not ext_path or ext_path in seen_wd_paths:
                             continue
                         is_ok, _ = is_strictly_data_or_cloud_role(title, "", company=co_name)
-                        if is_ok or any(kw in title.lower() for kw in ["data engineer", "databricks", "pyspark", "azure", "devops", "platform engineer", "cloud"]):
+                        if is_ok:
                             seen_wd_paths.add(ext_path)
                             real_jd = j.get("jobDescription") or j.get("description") or None
                             by_ats["Workday"].append({
@@ -10218,7 +10278,7 @@ def fetch_live_ats_vacancies(limit: int = 25, ats_types: Optional[List[str]] = N
                     score = float(calculate_match_score(f"{title} {co_name}"))
                     desc = j.get("descriptionPlain") or j.get("description") or ""
                     is_ok, _ = is_strictly_data_or_cloud_role(title, desc, score=score, company=co_name)
-                    if is_ok or any(kw in title.lower() for kw in ["data engineer", "databricks", "pyspark", "azure", "devops", "platform"]):
+                    if is_ok:
                         wpt = (j.get("workplaceType") or "").strip()
                         loc_cat = (j.get("categories") or {}).get("location", "")
                         loc_str = f"{loc_cat} ({wpt.capitalize()})" if wpt and loc_cat else (loc_cat or wpt or None)

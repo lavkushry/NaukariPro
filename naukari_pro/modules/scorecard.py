@@ -144,7 +144,7 @@ class CycleScorecard:
             self.record_skipped_closed(platform)
         elif "SESSION" in s or "AUTH" in s or "COOKIE" in s or "LOGIN" in s:
             self.record_failed_session(platform)
-        elif "FAIL" in s or "ERROR" in s:
+        elif "FAIL" in s or "ERROR" in s or "CLICKED_NO_CONFIRMATION" in s or "FALLBACK" in s or "NOT_FOUND" in s or "TIMEOUT" in s or "VALIDATION" in s or "CAPTCHA" in s or "SIGNIN" in s:
             self.record_failed_form(platform)
         else:
             if "REJECT" in s or "SKIP" in s:

@@ -791,7 +791,7 @@ class JobMatchScorer:
         r"\b(android|ios|swift|flutter|mobile developer)\b",
         r"\b(hr|human\s+resources|recruiter|recruiting|sourcing|talent\s+acquisition|headhunter)\b",
         r"\b(financial|finance|accounting|auditor|compliance|legal|sales|marketing|account\s+manager|account\s+executive|business\s+development|content\s+writer|copywriter|wordpress)\b",
-        r"\b(director|vp|vice president|head of data|engineering manager|principal|staff engineer|chief architect)\b",
+        r"\b(director|vp|vice\s+president|head\s+of|engineering\s+manager|manager|mgr|principal|staff|lead|architect)\b",
         r"\b(embedded|firmware|hardware|mechanical|civil)\b",
     ]
 

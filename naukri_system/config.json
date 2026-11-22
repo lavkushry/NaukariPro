@@ -5,14 +5,14 @@
     "applicant_email": "",
     "naukri_email": "",
     "phone": "",
-    "current_company": "CGI India (PNC Bank GCC)",
-    "current_designation": "Azure Data Engineer",
+    "current_company": "CGI India",
+    "current_designation": "DevOps Engineer",
     "current_ctc_lakhs": 12,
     "expected_ctc_lakhs": 20,
     "total_experience_years": 2.5,
     "notice_period_days": 15,
     "notice_period": "15 Days or less",
-    "primary_location": "Hyderabad, India",
+    "primary_location": "Bangalore, India",
     "preferred_locations": [
       "Bengaluru",
       "Hyderabad",
@@ -22,71 +22,69 @@
       "Mumbai",
       "Chennai"
     ],
-    "target_title": "Azure Data Engineer",
+    "target_title": "Platform & MLOps Engineer",
     "linkedin": "",
     "github": "",
-    "resume_path": "Lavkush_Kumar_Azure_Data_Engineer_Resume.pdf"
+    "resume_path": "Lavkush_Kumar_MLOps_Resume.pdf"
   },
   "search_settings": {
     "roles": [
-      "azure-data-engineer",
-      "data-engineer",
-      "databricks-engineer",
-      "devops-engineer"
+      "mlops-engineer",
+      "ml-platform-engineer",
+      "platform-engineer",
+      "devops-engineer",
+      "ai-infrastructure-engineer"
     ],
     "keywords": [
-      "Azure Data Engineer",
-      "Azure Databricks",
-      "PySpark",
-      "Delta Lake",
-      "Apache Spark",
-      "Spark SQL",
-      "Data Engineering",
-      "ETL Pipelines",
-      "ELT Pipelines",
-      "Data Lakehouse",
-      "Medallion Architecture",
-      "ADLS Gen2",
-      "Azure Synapse Analytics",
-      "Microsoft Fabric",
-      "Change Data Capture (CDC)",
-      "SQL",
-      "PostgreSQL",
-      "Data Modeling",
-      "Star Schema",
-      "Snowflake",
-      "Redis",
-      "MongoDB",
-      "Query Optimization",
-      "Apache Kafka",
-      "Spark Structured Streaming",
-      "Event Streaming",
-      "Kafka Connect",
-      "Azure Event Hubs",
-      "Terraform",
-      "Infrastructure as Code (IaC)",
-      "Azure DevOps",
-      "CI/CD",
-      "Docker",
+      "MLOps Engineer",
+      "Platform Engineer",
+      "DevOps Engineer",
       "Kubernetes",
+      "Docker",
       "Helm",
-      "Git",
-      "GitHub Actions",
+      "ArgoCD",
+      "Terraform",
+      "Ansible",
+      "AWS EKS",
+      "CI/CD",
+      "Jenkins",
       "GitLab CI",
-      "Linux",
-      "Bash",
-      "Unity Catalog",
-      "Great Expectations",
-      "Data Quality Gates",
+      "GitHub Actions",
+      "Trivy",
+      "SonarQube",
       "Prometheus",
       "Grafana",
-      "OpenTelemetry",
-      "Data Pipelines Observability",
-      "dbt",
-      "Cloud Data Management",
-      "Python (Programming Language)",
+      "Alertmanager",
+      "ELK Stack",
+      "Elasticsearch",
+      "Logstash",
+      "Kibana",
+      "Velero",
+      "Harbor Registry",
+      "Nginx Ingress",
+      "Kong Gateway",
+      "containerd",
+      "Apache Kafka",
+      "Redis",
+      "PostgreSQL",
+      "TimescaleDB",
+      "MongoDB",
+      "pgvector",
+      "MinIO",
+      "Python",
+      "Rust",
+      "FastAPI",
+      "SQL",
+      "Linux",
+      "Bash",
+      "YAML",
+      "PySpark",
+      "Azure Databricks",
+      "Delta Lake",
       "Azure Data Factory",
-      "Data Engineer"
+      "MLflow",
+      "Site Reliability Engineering",
+      "Infrastructure as Code (IaC)"
     ],
     "locations": [
       "bengaluru",
@@ -107,174 +105,169 @@
     "daily_application_limit": 15,
     "linkedin_automation_enabled": true
   },
-  "profile_summary": "Azure Data Engineer with 2.5 YOE specializing in Azure Databricks, PySpark, Delta Lake, and ADF within enterprise Medallion Lakehouses. Engineered scalable batch and real-time streaming architectures (Apache Kafka, ADLS Gen2, Unity Catalog) processing 2M+ events/day into Bronze, Silver, and Gold Delta tables with sub-second latency. Automated DataOps CI/CD release cycles and infrastructure provisioning via Terraform, cutting ETL execution runtime by 35% and sustaining 99.95% cloud data platform availability.",
+  "profile_summary": "Platform, DevOps & MLOps Infrastructure Engineer with ~2.5 years of experience operating high-availability Kubernetes platforms (50-node kubeadm and AWS EKS), Terraform/Ansible automation, CI/CD pipelines, and stateful data backbones (Kafka, Redis, PostgreSQL/TimescaleDB, MongoDB). Automated bare-metal clusters (83% faster bootstrap), Velero disaster recovery (93% RTO reduction, 45% MTTR reduction), and built open-source AI infrastructure and data platform projects in Rust and Python (AegisAgent, Project Vulcan, Azure Medallion Lakehouse).",
   "technical_competencies": {
-    "Data Engineering & Lakehouse": "Azure Databricks, Apache Spark, PySpark, Spark SQL, Delta Lake, Medallion Architecture, ETL Pipelines, ELT Pipelines, Data Lakehouse, ADLS Gen2, Azure Synapse Analytics, Microsoft Fabric, Change Data Capture (CDC), Unity Catalog.",
-    "Data Modeling & Databases": "SQL, PostgreSQL, Snowflake, Data Modeling, Star Schema, Redis, MongoDB, Query Optimization, Cloud Data Management.",
-    "Streaming & Event Hubs": "Apache Kafka, Spark Structured Streaming, Event Streaming, Kafka Connect, Azure Event Hubs.",
-    "DataOps, IaC & CI/CD": "Terraform, Infrastructure as Code (IaC), Azure DevOps, CI/CD, Docker, Kubernetes, Helm, Git, GitHub Actions, GitLab CI, Linux, Bash, dbt.",
-    "Observability & Data Quality": "Great Expectations, Data Quality Gates, Prometheus, Grafana, OpenTelemetry, Data Pipelines Observability, Python (Programming Language)."
+    "Platform & Orchestration": "Kubernetes (kubeadm, AWS EKS), Docker, containerd, Helm, ArgoCD (GitOps), Harbor Registry.",
+    "Infrastructure as Code": "Terraform (modular IaC, remote state), Ansible (40+ roles, Jinja2), Bash, YAML.",
+    "CI/CD & Security": "Jenkins (declarative), GitLab CI, GitHub Actions, Trivy container scanning, SonarQube, RBAC, Nginx Ingress, Kong Gateway.",
+    "Observability & SRE": "Prometheus, Grafana, Alertmanager, ELK Stack (Elasticsearch, Logstash Grok, Kibana), Velero DR.",
+    "Data & Streaming Systems": "Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, pgvector (HNSW), MinIO S3.",
+    "Languages & Data/AI Tooling": "Python (FastAPI, PySpark, PyTest), Rust, SQL, Azure Databricks, Delta Lake, Azure Data Factory (ADF), ADLS Gen2, MLflow, Cedar Policy Engine."
   },
   "default_keywords": [
-    "Azure Data Factory (ADF)",
-    "Azure Databricks",
-    "PySpark",
-    "Delta Lake",
-    "Medallion Architecture",
-    "ADLS Gen2",
-    "Apache Kafka",
-    "SQL",
-    "Spark SQL",
-    "Python",
-    "Apache Spark",
-    "Azure Synapse Analytics",
-    "Microsoft Fabric",
-    "Terraform",
-    "Infrastructure as Code (IaC)",
-    "ETL Pipelines",
-    "ELT Pipelines",
-    "Data Modeling",
-    "Star Schema",
-    "DataOps",
-    "CI/CD",
-    "Docker",
     "Kubernetes",
+    "Docker",
     "Helm",
-    "Git",
-    "GitHub Actions",
+    "Terraform",
+    "Ansible",
+    "AWS EKS",
+    "ArgoCD",
+    "CI/CD",
+    "Jenkins",
     "GitLab CI",
-    "Linux",
-    "Bash",
-    "Unity Catalog",
-    "Schema Enforcement",
-    "Change Data Capture (CDC)",
-    "Snowflake",
-    "Redis",
-    "MongoDB",
-    "Query Optimization",
-    "Spark Structured Streaming",
-    "Event Streaming",
-    "Kafka Connect",
-    "Azure Event Hubs",
-    "dbt",
-    "Great Expectations",
-    "Data Quality Gates",
+    "GitHub Actions",
+    "Trivy",
     "Prometheus",
     "Grafana",
-    "OpenTelemetry",
-    "Data Pipelines Observability",
-    "Cloud Data Management",
-    "Python (Programming Language)"
+    "ELK Stack",
+    "Apache Kafka",
+    "Redis",
+    "PostgreSQL",
+    "TimescaleDB",
+    "MongoDB",
+    "Velero",
+    "Harbor Registry",
+    "Nginx Ingress",
+    "Kong Gateway",
+    "Python",
+    "FastAPI",
+    "Rust",
+    "Linux",
+    "SQL",
+    "PySpark",
+    "Azure Databricks",
+    "Delta Lake",
+    "Azure Data Factory",
+    "MLflow",
+    "pgvector",
+    "MinIO",
+    "SonarQube",
+    "containerd",
+    "Infrastructure as Code (IaC)",
+    "GitOps",
+    "Site Reliability Engineering"
   ],
   "experience": [
     {
-      "company": "CGI India (PNC Bank GCC)",
-      "title": "DevOps Engineer / Azure Data Engineer",
+      "company": "CGI India",
+      "title": "DevOps Engineer",
       "duration": "Jun 2026 – Present",
-      "location": "Hyderabad / Bangalore",
+      "location": "Bangalore, India",
       "bullets": [
-        "Engineered scalable cloud data lakehouse infrastructure on Azure using Terraform modules, establishing automated ADLS Gen2 storage tiers, Azure Databricks workspaces, and Unity Catalog RBAC governance across 3 environments, cutting provisioning time by 60%.",
-        "Orchestrated robust batch ETL/ELT pipelines using Azure Data Factory (ADF) and PySpark with complex Spark SQL transformations, slashing daily financial dataset ingestion runtime by 40% across 8 production data feeds.",
-        "Automated declarative CI/CD release pipelines across Azure DevOps and GitLab CI with Trivy container vulnerability scanning and automated data validation quality gates, cutting deployment lead time by 45%."
+        "Standardized multi-tenant AWS EKS container platform deployments using modular Terraform and Ansible, establishing reproducible cluster baselines, auto-scaling node groups, and IAM roles across 3 environments.",
+        "Engineered automated CI/CD pipelines in Jenkins and GitLab CI with Trivy vulnerability scanning, container linting, and staging smoke tests, eliminating manual release gates.",
+        "Hardened cluster ingress and API gateway policies using Nginx Ingress and Kong Gateway (rate-limiting, TLS termination), and automated GitOps rollouts with ArgoCD and Helm charts."
       ]
     },
     {
-      "company": "Himachal Futuristic Communications (HFCL)",
-      "title": "Engineer 1 - DevOps - Platform Engineering",
+      "company": "HFCL Limited",
+      "title": "Engineer 1 — DevOps / Platform Engineering",
       "duration": "Aug 2025 – Jun 2026",
-      "location": "Gurugram / Bangalore",
+      "location": "Bangalore, India",
       "bullets": [
-        "Orchestrated stateful distributed data backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, slashing RTO from 8h to 30min (93% reduction) and MTTR by 45%.",
-        "Automated bare-metal Kubernetes (kubeadm) cluster lifecycle management using 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting cluster bootstrap time from 2 days to 4 hours (83% reduction).",
-        "Provisioned and monitored a 50-node on-premise Kubernetes data platform for 15+ mission-critical microservices with namespace isolation, RBAC, and HPA, sustaining 99.95% platform availability."
+        "Automated bare-metal Kubernetes (kubeadm) cluster lifecycle via 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting bootstrap time from 2 days to 4 hours (83% reduction).",
+        "Operated a 50-node on-premise Kubernetes platform for 15+ distributed microservices with namespace isolation, RBAC, and HPA, sustaining 99.95% platform availability.",
+        "Orchestrated stateful cluster workloads (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, slashing RTO from 8h to 30min (93%) and MTTR by 45%.",
+        "Standardized declarative Jenkins pipelines with Docker, Helm, SonarQube, and Trivy security gates, enabling zero-downtime rolling updates and doubling release frequency (2x)."
       ]
     },
     {
       "company": "CGI India",
-      "title": "Security Analyst Apprentice (Log Analytics & Telemetry)",
+      "title": "Security Analyst Apprentice",
       "duration": "Sep 2024 – Aug 2025",
-      "location": "Bangalore",
+      "location": "Bangalore, India",
       "bullets": [
-        "Engineered centralized log telemetry ingestion pipelines via ELK Stack (Elasticsearch, Logstash, Kibana) and SQL analytical queries, authoring custom Logstash Grok parsing patterns that transformed 500GB+ of unstructured telemetry into structured schemas, accelerating incident triage by 50%."
+        "Centralized multi-source log ingestion via the ELK Stack (Elasticsearch, Logstash, Kibana), building operational dashboards and query filters that reduced root-cause investigation time by 35%.",
+        "Authored custom Logstash Grok patterns to parse high-volume unstructured syslog and firewall/IDS telemetry into structured schemas, cutting log triage time by 45%."
       ]
     },
     {
-      "company": "Stipe Solution Private Limited",
+      "company": "Stipe Solutions",
       "title": "Full Stack Developer Intern",
       "duration": "Mar 2024 – Sep 2024",
-      "location": "Bengaluru",
+      "location": "Bangalore, India",
       "bullets": [
-        "Shipped 30+ responsive UI screens and data validation workflows using React Native and Flutter, integrating RESTful APIs and SQL queries for 1,000+ daily active users, cutting initial screen load latency by 35%.",
-        "Optimized client-side caching and mobile state management across iOS and Android builds, slashing application crash rates by 25%."
+        "Developed 30+ cross-platform mobile screens using React Native and Flutter with RESTful API integrations and PostgreSQL query optimization for 1,000+ daily active users."
       ]
     }
   ],
   "projects": [
     {
-      "name": "Enterprise Medallion Lakehouse Platform on Azure",
-      "client": "Enterprise Cloud Data Platform",
-      "role": "Architected Medallion Lakehouse pipelines and distributed PySpark batch transformations on Azure Databricks with Delta Lake.",
-      "tech_stack": "Azure Databricks, PySpark, Delta Lake, ADF, ADLS Gen2, Terraform, SQL",
+      "name": "AegisAgent — Zero-Trust AI Agent Security Gateway",
+      "url": "https://github.com/lavkushry/AegisAgent",
+      "client": "Open-Source AI Infrastructure",
+      "role": "Architected a zero-trust AI agent security gateway in Rust with Cedar ABAC policy evaluation and Kubernetes Helm charts.",
+      "tech_stack": "Rust, Cedar Policy Engine, Kubernetes, Helm, Docker, GitHub Actions",
       "bullets": [
-        "Architected an end-to-end Medallion Lakehouse on Azure Databricks and Delta Lake, orchestrating ADF pipelines to ingest 1.5M+ events/day into curated Bronze, Silver, and Gold layers across ADLS Gen2 with Unity Catalog governance.",
-        "Optimized distributed PySpark and Spark SQL batch transformations with schema validation and partition pruning, slashing ETL pipeline runtime from 4.0h to 2.6h (35% reduction) while ensuring ACID transactional consistency."
+        "Architected an open-source zero-trust security gateway for AI agents in Rust, integrating the Cedar Policy Engine to enforce ABAC over MCP tool invocations with sub-75ms policy evaluation.",
+        "Engineered production Kubernetes Helm charts (aegis-gateway), ServiceMonitors, and NetworkPolicies with reproducible GitHub Actions CI/SAST pipelines ensuring 100% scan coverage."
       ]
     },
     {
-      "name": "Real-Time Streaming Ingestion & CDC Lakehouse",
-      "client": "Streaming Lakehouse Platform",
-      "role": "Engineered real-time streaming ingestion and CDC pipelines using Apache Kafka, Spark Structured Streaming, and Delta Lake.",
-      "tech_stack": "Apache Kafka, Spark Structured Streaming, Delta Lake, Unity Catalog, SQL",
+      "name": "Project Vulcan — Enterprise Automation Control Plane",
+      "url": "https://github.com/lavkushry/vulcan",
+      "client": "Open-Source Platform & SRE Tooling",
+      "role": "Engineered a distributed infrastructure automation control plane in Python (FastAPI) with Redis Redlock, MinIO S3, and pgvector.",
+      "tech_stack": "Python, FastAPI, pgvector, Redis Redlock, MinIO S3, WebSockets, Ansible",
       "bullets": [
-        "Engineered a low-latency real-time streaming ingestion pipeline using Apache Kafka and Spark Structured Streaming, processing 2M+ events/day into Delta Lake with under 500ms end-to-end ingestion latency.",
-        "Integrated Change Data Capture (CDC) with Delta Lake MERGE operations and Unity Catalog access controls, cutting data freshness lag from 4 hours to sub-minute latency (98% reduction)."
+        "Architected an infrastructure control plane in Python (FastAPI), implementing distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate runbook race conditions.",
+        "Integrated semantic incident retrieval using PostgreSQL with pgvector (HNSW indexing) and WebSocket live log streaming, cutting SRE diagnostics down to under 2 minutes per task."
       ]
     },
     {
-      "name": "Cloud Data Platform CI/CD & Governance",
-      "client": "DataOps & Cloud Infrastructure",
-      "role": "Automated end-to-end DataOps release cycles, Terraform IaC provisioning, and Great Expectations quality validation gates.",
-      "tech_stack": "Azure DevOps, Terraform, Great Expectations, Prometheus/Grafana, Databricks",
+      "name": "Azure Medallion Lakehouse Platform",
+      "url": "https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project",
+      "client": "Open-Source Cloud Data Platform",
+      "role": "Built an end-to-end Medallion Lakehouse (Bronze/Silver/Gold) on Azure Databricks, Delta Lake, and ADF.",
+      "tech_stack": "PySpark, Azure Databricks, Delta Lake, Azure Data Factory (ADF), ADLS Gen2, SQL",
       "bullets": [
-        "Automated end-to-end DataOps release cycles using Azure DevOps multi-stage CI/CD pipelines and Terraform IaC across 3 environments, cutting workspace deployment time from 6 hours to 20 minutes (94% reduction).",
-        "Configured automated data quality validation gates with Great Expectations and Prometheus/Grafana monitoring, catching 99.2% of upstream schema anomalies before Gold table ingestion."
-      ]
-    },
-    {
-      "name": "Cloud AI Infrastructure & Observability Platform",
-      "client": "Cloud AI & Platform Engineering",
-      "role": "Engineered real-time platform observability, telemetry dashboards, and automated CI/CD release pipelines across 15+ microservices.",
-      "tech_stack": "Kubernetes, Docker, Prometheus, Grafana, OpenTelemetry, Python, CI/CD",
-      "bullets": [
-        "Built an end-to-end telemetry and observability backbone using Prometheus, Grafana, and OpenTelemetry, monitoring 15+ distributed microservices with under 100ms scraping latency, slashing incident MTTR by 40%.",
-        "Automated deployment and scaling of data serving microservices using Docker, Kubernetes, and GitHub Actions with automated canary rollback safeguards, sustaining 99.9% platform availability."
+        "Built an end-to-end Medallion Lakehouse (Bronze/Silver/Gold) on Azure Databricks, Delta Lake, and ADF, optimizing PySpark batch transformations to cut ETL runtime by 35% with ACID schema validation."
       ]
     }
   ],
   "education": [
     {
       "degree": "B.Tech in Computer Science and Engineering",
-      "institution": "Maharishi Dayanand University (MDU), Rohtak",
+      "institution": "World College of Technology and Management (MDU, Rohtak)",
       "dates": "2020 – 2023"
+    },
+    {
+      "degree": "Diploma in Computer Science Engineering",
+      "institution": "Government Polytechnic, Patna-7",
+      "dates": "2016 – 2019"
     }
   ],
   "certifications": [
     "Microsoft Certified: Azure Fundamentals (AZ-900)",
     "Microsoft SC-200",
-    "Databricks Data Engineer Associate (In Progress)"
+    "Certified Kubernetes Administrator (CKA) (In Progress)"
   ],
   "answers_to_common_questions": {
     "experience": "2.5",
-    "pyspark_experience": "2",
-    "databricks_experience": "2",
-    "azure_experience": "2.5",
-    "sql_experience": "2.5",
-    "kubernetes_experience": "2.5",
-    "terraform_experience": "2",
+    "kubernetes_experience": "1.5",
+    "docker_experience": "2",
+    "terraform_experience": "1.5",
+    "ansible_experience": "1.5",
+    "python_experience": "2.5",
+    "sql_experience": "2",
+    "kafka_experience": "1",
+    "azure_experience": "1",
+    "pyspark_experience": "0.5",
+    "databricks_experience": "0.5",
     "notice_period": "15 days",
     "notice_period_detail": "15 Days or less",
     "preferred_locations": "Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai",
-    "current_location": "Hyderabad",
+    "current_location": "Bangalore",
     "relocation": "Yes"
   },
   "headline_experiment": {
@@ -282,8 +275,8 @@
     "test_start_date": "2026-10-28",
     "test_end_date": "2026-11-04",
     "evaluation_date": "2026-11-05",
-    "control_headline": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
-    "test_headline": "Azure Data Engineer | 2.5 YOE | Azure Databricks · PySpark · Delta Lake · ADF | Medallion Lakehouse (2M+ events/day) | 15 Days Notice (Immediate Joiner)",
+    "control_headline": "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | 2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice",
+    "test_headline": "Platform & MLOps Engineer | 2.5 YOE | Kubernetes · Terraform · Ansible · CI/CD · Kafka · Prometheus | 50-Node K8s & AI Infra | 15 Days Notice",
     "baseline_7day_metrics": {
       "search_appearances": 642,
       "profile_views": 7,
@@ -294,97 +287,65 @@
     },
     "protocol": "Keep constant for 7 days. Day 8 compare against baseline variance. Declare win ONLY if delta > normal variance."
   },
-  "headline_template": "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD",
+  "headline_template": "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | 2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice",
   "tracker_excel_path": "Naukri_Live_Application_Tracker.xlsx",
   "skill_demand_data": {
-    "Core Data Engineering": [
+    "Core Platform & MLOps": [
       {
-        "skill": "PySpark / Spark SQL",
-        "demand": "94%",
-        "priority": "CRITICAL",
-        "yoe_sweet_spot": "2-4 Yrs"
-      },
-      {
-        "skill": "Azure Databricks",
-        "demand": "91%",
+        "skill": "Kubernetes (kubeadm, AWS EKS)",
+        "demand": "95%",
         "priority": "CRITICAL",
         "yoe_sweet_spot": "1.5-3 Yrs"
       },
       {
-        "skill": "Delta Lake & Medallion",
-        "demand": "86%",
-        "priority": "HIGH",
-        "yoe_sweet_spot": "1-3 Yrs"
-      },
-      {
-        "skill": "Advanced SQL (CTEs, Window)",
-        "demand": "98%",
-        "priority": "MANDATORY",
+        "skill": "Docker & Helm",
+        "demand": "92%",
+        "priority": "CRITICAL",
         "yoe_sweet_spot": "2+ Yrs"
       },
       {
-        "skill": "Azure Data Factory (ADF)",
+        "skill": "Terraform & Ansible (IaC)",
+        "demand": "88%",
+        "priority": "HIGH",
+        "yoe_sweet_spot": "1.5-3 Yrs"
+      },
+      {
+        "skill": "CI/CD (Jenkins, GitLab CI, ArgoCD)",
+        "demand": "91%",
+        "priority": "CRITICAL",
+        "yoe_sweet_spot": "2+ Yrs"
+      },
+      {
+        "skill": "Prometheus, Grafana & ELK Stack",
         "demand": "84%",
         "priority": "HIGH",
         "yoe_sweet_spot": "1.5-3 Yrs"
       },
       {
-        "skill": "Apache Kafka / Event Streaming",
-        "demand": "72%",
+        "skill": "Apache Kafka & Redis StatefulSets",
+        "demand": "76%",
         "priority": "HIGH",
         "yoe_sweet_spot": "1-2 Yrs"
       }
     ],
-    "DataOps & Infrastructure": [
+    "Languages & AI/Data Tooling": [
       {
-        "skill": "Terraform / IaC",
-        "demand": "76%",
-        "priority": "HIGH",
-        "yoe_sweet_spot": "1.5-3 Yrs"
-      },
-      {
-        "skill": "Kubernetes (EKS/StatefulSets)",
-        "demand": "68%",
-        "priority": "HIGH",
+        "skill": "Python (FastAPI, Automation)",
+        "demand": "94%",
+        "priority": "CRITICAL",
         "yoe_sweet_spot": "2+ Yrs"
       },
       {
-        "skill": "Docker & Helm",
-        "demand": "82%",
-        "priority": "STANDARD",
-        "yoe_sweet_spot": "2+ Yrs"
+        "skill": "Rust (Systems / Agent Security)",
+        "demand": "42%",
+        "priority": "DIFFERENTIATOR",
+        "yoe_sweet_spot": "Project"
       },
       {
-        "skill": "CI/CD (Jenkins, GitLab CI)",
-        "demand": "85%",
-        "priority": "STANDARD",
-        "yoe_sweet_spot": "2+ Yrs"
-      }
-    ],
-    "Emerging 2026 High-Value Accelerators": [
-      {
-        "skill": "Unity Catalog (Governance)",
-        "demand": "64%",
-        "trend": "Rapidly Growing",
-        "salary_impact": "+15%"
-      },
-      {
-        "skill": "Apache Iceberg Open Table Format",
-        "demand": "52%",
-        "trend": "Trending in GCCs",
-        "salary_impact": "+12%"
-      },
-      {
-        "skill": "dbt (data build tool)",
-        "demand": "58%",
-        "trend": "High Demand",
-        "salary_impact": "+10%"
-      },
-      {
-        "skill": "Microsoft Fabric",
-        "demand": "45%",
-        "trend": "Adoption Phase",
-        "salary_impact": "+15%"
+        "skill": "PySpark, Databricks & Delta Lake",
+        "demand": "70%",
+        "priority": "PROJECT_PROOF",
+        "yoe_sweet_spot": "Project"
       }
     ]
   },
@@ -416,46 +377,46 @@
   },
   "top_hiring_companies": [
     {
-      "name": "Lloyds Technology Centre",
-      "hub": "Hyderabad",
-      "focus": "Azure Databricks & Cloud Lakehouse",
-      "package": "₹22 - 27 LPA"
+      "name": "Atlassian",
+      "hub": "Bengaluru / Remote",
+      "focus": "Platform Engineering & Kubernetes",
+      "package": "₹24 - 32 LPA"
     },
     {
-      "name": "PNC Bank GCC",
-      "hub": "Hyderabad / Remote",
-      "focus": "Platform & Data Infra",
-      "package": "₹22 - 26 LPA"
+      "name": "Flipkart",
+      "hub": "Bengaluru",
+      "focus": "ML Platform & Cloud Infra",
+      "package": "₹22 - 28 LPA"
     },
     {
-      "name": "JPMorgan Chase",
+      "name": "Razorpay",
+      "hub": "Bengaluru",
+      "focus": "DevOps / SRE & Kafka/K8s",
+      "package": "₹20 - 26 LPA"
+    },
+    {
+      "name": "Microsoft",
       "hub": "Bengaluru / Hyderabad",
-      "focus": "Big Data PySpark & AWS/Azure",
+      "focus": "Cloud Platform & AI Infrastructure",
+      "package": "₹24 - 32 LPA"
+    },
+    {
+      "name": "Uber",
+      "hub": "Bengaluru / Hyderabad",
+      "focus": "Infrastructure & Observability",
       "package": "₹24 - 30 LPA"
     },
     {
-      "name": "Barclays",
-      "hub": "Pune",
-      "focus": "Data Engineering & Kafka",
-      "package": "₹20 - 25 LPA"
+      "name": "Salesforce",
+      "hub": "Bengaluru / Hyderabad",
+      "focus": "Kubernetes & CI/CD Platform",
+      "package": "₹22 - 28 LPA"
     },
     {
-      "name": "Walmart Global Tech",
-      "hub": "Bengaluru",
-      "focus": "Lakehouse & Real-time Streaming",
-      "package": "₹25 - 32 LPA"
-    },
-    {
-      "name": "HSBC Technology",
-      "hub": "Hyderabad / Pune",
-      "focus": "Data Platform & Kubernetes",
-      "package": "₹21 - 26 LPA"
-    },
-    {
-      "name": "Cognizant / Infosys / TCS (High-growth Accounts)",
-      "hub": "Pan-India",
-      "focus": "Azure Databricks Migrations",
-      "package": "₹16 - 22 LPA"
+      "name": "Adobe",
+      "hub": "Bengaluru / Noida",
+      "focus": "Cloud Platform & MLOps",
+      "package": "₹22 - 28 LPA"
     }
   ],
   "learning": {
@@ -550,92 +511,90 @@
   },
   "mlops_persona": {
     "target_title": "MLOps Engineer",
-    "headline_template": "MLOps Engineer | 2.5 YOE | Kubernetes · Docker · Triton · vLLM · MLflow · CI/CD · Terraform · AWS · Kafka | 15 Days Notice",
-    "summary": "MLOps & DevOps Engineer with 2.5 YOE specializing in Kubernetes (EKS, StatefulSets), high-throughput model serving (vLLM, Triton), CI/CD pipelines, and cloud platform infrastructure. Automated deployment workflows and monitoring (Prometheus, Grafana), sustaining 99.95% production availability.",
+    "headline_template": "MLOps & Platform Engineer | 2.5 YOE | Kubernetes (EKS, kubeadm) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Prometheus · Kafka · Python | 15 Days Notice",
+    "summary": "Platform, DevOps & MLOps Engineer with ~2.5 YOE operating 50-node kubeadm and AWS EKS Kubernetes clusters, Terraform/Ansible automation, CI/CD pipelines, and stateful data backbones (Kafka, Redis, PostgreSQL/TimescaleDB, MongoDB). Built open-source AI infrastructure projects in Rust and Python (AegisAgent, Project Vulcan), sustaining 99.95% production availability.",
     "keywords": [
       "Kubernetes",
       "Docker",
       "Helm",
+      "ArgoCD",
       "CI/CD",
       "GitHub Actions",
+      "GitLab CI",
+      "Jenkins",
       "Terraform",
+      "Ansible",
       "Prometheus",
       "Grafana",
-      "Triton Inference Server",
-      "vLLM",
+      "ELK Stack",
+      "Velero",
       "MLflow",
-      "Kafka",
+      "Apache Kafka",
       "Python",
+      "Rust",
       "Linux",
       "FastAPI",
-      "AWS",
-      "EKS",
+      "AWS EKS",
       "Redis",
       "StatefulSets",
-      "PyTorch"
+      "pgvector",
+      "Trivy"
     ],
     "it_skills": [
       {
-        "skill": "Kubernetes",
+        "skill": "Kubernetes (kubeadm, AWS EKS)",
         "version": "1.30+",
         "last_used": "2026",
-        "exp_years": 2,
+        "exp_years": 1,
         "exp_months": 6
       },
       {
-        "skill": "Docker",
+        "skill": "Docker & containerd",
         "version": "Latest",
         "last_used": "2026",
         "exp_years": 2,
-        "exp_months": 6
+        "exp_months": 0
       },
       {
-        "skill": "Helm",
+        "skill": "Helm & ArgoCD",
         "version": "v3",
         "last_used": "2026",
-        "exp_years": 2,
+        "exp_years": 1,
         "exp_months": 0
       },
       {
         "skill": "Terraform",
         "version": "1.8+",
         "last_used": "2026",
-        "exp_years": 2,
-        "exp_months": 0
+        "exp_years": 1,
+        "exp_months": 6
       },
       {
-        "skill": "MLflow",
-        "version": "2.14+",
+        "skill": "Ansible",
+        "version": "2.16+",
         "last_used": "2026",
         "exp_years": 1,
         "exp_months": 6
       },
       {
-        "skill": "vLLM",
-        "version": "0.5+",
-        "last_used": "2026",
-        "exp_years": 1,
-        "exp_months": 0
-      },
-      {
-        "skill": "Triton Inference Server",
-        "version": "24.x",
-        "last_used": "2026",
-        "exp_years": 1,
-        "exp_months": 0
-      },
-      {
         "skill": "Prometheus & Grafana",
         "version": "Latest",
         "last_used": "2026",
-        "exp_years": 2,
-        "exp_months": 0
+        "exp_years": 1,
+        "exp_months": 6
+      },
+      {
+        "skill": "ELK Stack",
+        "version": "8.x",
+        "last_used": "2026",
+        "exp_years": 1,
+        "exp_months": 6
       },
       {
         "skill": "Apache Kafka",
         "version": "3.x",
         "last_used": "2026",
-        "exp_years": 2,
+        "exp_years": 1,
         "exp_months": 0
       },
       {
@@ -657,14 +616,21 @@
         "version": "Enterprise",
         "last_used": "2026",
         "exp_years": 2,
-        "exp_months": 6
+        "exp_months": 0
       },
       {
         "skill": "AWS (EKS, IAM, S3)",
         "version": "Latest",
         "last_used": "2026",
-        "exp_years": 2,
-        "exp_months": 0
+        "exp_years": 1,
+        "exp_months": 6
+      },
+      {
+        "skill": "MLflow & FastAPI (Projects)",
+        "version": "2.14+",
+        "last_used": "2026",
+        "exp_years": 0,
+        "exp_months": 6
       }
     ]
   }

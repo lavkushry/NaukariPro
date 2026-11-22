@@ -96,7 +96,7 @@ def test_direct_inmail_template_content():
     assert "35%" in body
     assert "+91-9122036484" in body
     assert "lav84095@gmail.com" in body
-    assert ("linkedin.com/in/lavkushry" in body or "linkedin.com/in/lavkush-kumar" in body)
+    assert "linkedin.com/in/lavkushry" in body
     assert "₹20–25 LPA" in body
 
 

@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from pypdf import PdfReader
+
+from naukari_pro.config import load_config
+from naukari_pro.modules.candidate_profile import load_hybrid_profile
+from naukari_pro.modules.resume_maker import AIResumeMaker
 from naukari_pro.resume_gen.pipeline import ResumeGenerationPipeline
+from naukari_pro.resume_gen.render import render_resume_pdf
 from naukari_pro.resume_gen.tailor import audit_no_fabrication, tailor_from_facts
 
 
@@ -70,3 +77,90 @@ def test_pipeline_pdf_roundtrip_and_gate(tmp_path):
     assert art.score["overall_score"] >= 85
     assert "Name_Role" not in art.pdf_path.name  # uses real name/role/company
     assert "Lavkush" in art.pdf_path.name
+
+
+def test_render_resume_pdf_emits_clickable_uris_and_no_empty_dates(tmp_path):
+    cfg = load_config()
+    cand = dict(cfg["candidate"])
+    cand["email"] = "lav84095@gmail.com"
+    cand["linkedin"] = "https://www.linkedin.com/in/lavkushry/"
+    cand["github"] = "https://github.com/lavkushry"
+    facts = {
+        "summary": cfg["profile_summary"],
+        "skills": cfg["default_keywords"],
+        "experience": cfg["experience"],
+        "projects": cfg["projects"],
+        "education": cfg["education"],
+        "certifications": cfg["certifications"],
+    }
+    tailored = tailor_from_facts(
+        facts,
+        {"must_haves": ["Kubernetes", "Terraform"], "ats_keywords": ["Docker", "Kafka"]},
+    )
+    pdf_path = render_resume_pdf(cand, tailored, output_dir=tmp_path, role="Platform_Engineer", company="Target")
+    reader = PdfReader(str(pdf_path))
+    txt = "\n".join((p.extract_text() or "") for p in reader.pages)
+    assert "( – )" not in txt
+    assert "None – None" not in txt
+    assert "Jun 2026" in txt
+
+    uris = {
+        annot.get_object()["/A"]["/URI"]
+        for page in reader.pages
+        for annot in (page.get("/Annots") or [])
+        if annot.get_object().get("/Subtype") == "/Link"
+    }
+    assert "mailto:lav84095@gmail.com" in uris
+    assert "https://www.linkedin.com/in/lavkushry/" in uris
+    assert "https://github.com/lavkushry" in uris
+    assert "https://github.com/lavkushry/AegisAgent" in uris
+    assert "https://github.com/lavkushry/vulcan" in uris
+    assert "https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project" in uris
+
+
+def test_resume_maker_pdf_has_clickable_uris_and_fact_compliance(tmp_path):
+    cfg = load_config()
+    cfg["candidate"]["email"] = "lav84095@gmail.com"
+    cfg["candidate"]["linkedin"] = "https://www.linkedin.com/in/lavkushry/"
+    cfg["candidate"]["github"] = "https://github.com/lavkushry"
+    out_pdf = tmp_path / "maker.pdf"
+    AIResumeMaker(output_pdf_path=str(out_pdf)).build_ats_resume_pdf(config=cfg)
+    reader = PdfReader(str(out_pdf))
+    assert len(reader.pages) == 1
+    txt = reader.pages[0].extract_text() or ""
+    bad_slug = "lavkush" + "-kumar"
+    assert bad_slug not in txt
+    assert "mlops-platform-automation" not in txt
+    assert "genai-observability-platform" not in txt
+
+    uris = {
+        annot.get_object()["/A"]["/URI"]
+        for annot in (reader.pages[0].get("/Annots") or [])
+        if annot.get_object().get("/Subtype") == "/Link"
+    }
+    assert "https://www.linkedin.com/in/lavkushry/" in uris
+    assert "https://github.com/lavkushry" in uris
+    assert "https://github.com/lavkushry/AegisAgent" in uris
+    assert "https://github.com/lavkushry/vulcan" in uris
+    assert "https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project" in uris
+
+
+def test_candidate_profile_env_override_takes_precedence_over_json(tmp_path, monkeypatch):
+    prof_file = tmp_path / "profile.json"
+    prof_file.write_text(
+        json.dumps(
+            {
+                "linkedInUrl": "https://linkedin.com/in/stale-override",
+                "githubUrl": "https://github.com/stale-override",
+                "portfolioUrl": "https://github.com/stale-override",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/in/lavkushry/")
+    monkeypatch.setenv("CANDIDATE_GITHUB", "https://github.com/lavkushry")
+    monkeypatch.setenv("CANDIDATE_PORTFOLIO", "https://github.com/lavkushry")
+    prof = load_hybrid_profile(profile_path=prof_file)
+    assert prof["linkedInUrl"] == "https://www.linkedin.com/in/lavkushry/"
+    assert prof["githubUrl"] == "https://github.com/lavkushry"
+    assert prof["portfolioUrl"] == "https://github.com/lavkushry"

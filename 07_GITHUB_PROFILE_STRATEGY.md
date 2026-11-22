@@ -1,7 +1,7 @@
 # 07_GITHUB_PROFILE_STRATEGY.md — 90-Second GitHub Recruiter Audit & Optimization
 
 > **Author:** Agent 6 — Technical GitHub Recruiter  
-> **Candidate Profile:** [`github.com/lavkush-kumar`](https://github.com/lavkush-kumar)  
+> **Candidate Profile:** [`github.com/lavkushry`](https://github.com/lavkushry)  
 > **Evaluation Window:** 90 Seconds (Hiring Manager First Screen)  
 > **Goal:** Convert profile visits into immediate technical phone screen invitations  
 
@@ -76,13 +76,13 @@ The candidate must pin exactly **4 to 6 high-signal repositories**, ordered to t
 
 ## 4. GitHub Profile README Template (`lavkushry/lavkushry`)
 
-Create or update the profile README (`https://github.com/lavkush-kumar/lavkushry/README.md`) with this technical layout:
+Create or update the profile README (`https://github.com/lavkushry/lavkushry/blob/main/README.md`) with this technical layout:
 
 ```markdown
 # Hi, I'm Lavkush Kumar 👋
 ### ML Platform & AI Infrastructure Engineer | Kubernetes · Distributed Systems · SRE
 
-I build resilient, automated, and secure infrastructure for high-scale distributed systems and AI workloads. My background combines 2.5+ years of enterprise platform operations (50-node bare-metal & cloud Kubernetes, Ansible lifecycle automation, stateful data backbones) with systems programming in Rust and Python.
+I build resilient, automated, and secure infrastructure for high-scale distributed systems and AI workloads. My background combines ~2.5 years of enterprise platform operations (50-node bare-metal & cloud Kubernetes, Ansible lifecycle automation, stateful data backbones) with systems programming in Rust and Python.
 
 📍 **Location:** Bangalore, India  
 💼 **Current:** DevOps Engineer at CGI India  
@@ -92,9 +92,9 @@ I build resilient, automated, and secure infrastructure for high-scale distribut
 
 ### 🚀 Flagship Systems & Engineering Proof
 
-- 🛡️ **[AegisAgent](https://github.com/lavkush-kumar/AegisAgent)** — Zero-Trust API Firewall and Sandboxed Runtime for Autonomous AI Agents & Model Context Protocol (MCP) in **Rust** and **Kubernetes** (Cedar Policy Engine, sub-75ms evaluation).
-- ⚙️ **[Project Vulcan](https://github.com/lavkush-kumar/vulcan)** — Enterprise Automation Control Plane in **Python (FastAPI)** featuring **pgvector HNSW** indexing, **Redis Redlock** distributed concurrency, and **MinIO S3** decoupled storage.
-- 🌊 **[Azure Medallion Lakehouse](https://github.com/lavkush-kumar/Azure-Data-Engineering-Medallion-Lakehouse-Project)** — Production-grade data platform on **Azure Databricks**, **Delta Lake**, and **Azure Data Factory** (PySpark batch processing).
+- 🛡️ **[AegisAgent](https://github.com/lavkushry/AegisAgent)** — Zero-Trust API Firewall and Sandboxed Runtime for Autonomous AI Agents & Model Context Protocol (MCP) in **Rust** and **Kubernetes** (Cedar Policy Engine, sub-75ms evaluation).
+- ⚙️ **[Project Vulcan](https://github.com/lavkushry/vulcan)** — Enterprise Automation Control Plane in **Python (FastAPI)** featuring **pgvector HNSW** indexing, **Redis Redlock** distributed concurrency, and **MinIO S3** decoupled storage.
+- 🌊 **[Azure Medallion Lakehouse](https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project)** — End-to-end data platform on **Azure Databricks**, **Delta Lake**, and **Azure Data Factory** (PySpark batch processing).
 
 ---
 
@@ -112,7 +112,7 @@ I build resilient, automated, and secure infrastructure for high-scale distribut
 ---
 
 ### 📬 Connect With Me
-- 🌐 **LinkedIn:** [linkedin.com/in/lavkush-kumar](https://linkedin.com/in/lavkush-kumar)
+- 🌐 **LinkedIn:** [linkedin.com/in/lavkushry](https://www.linkedin.com/in/lavkushry/)
 - 📧 **Email:** [lav84095@gmail.com](mailto:lav84095@gmail.com)
 ```
 
@@ -120,8 +120,16 @@ I build resilient, automated, and secure infrastructure for high-scale distribut
 
 ## 5. Candidate Action Items (Execute Immediately)
 
-1. **Delete / Unpublish Dead Links:** Remove any external references to `mlops-platform-automation` and `genai-observability-platform`.
+1. **Delete / Unpublish Dead Links:** Remove any external references to unverified 404 draft repositories.
 2. **Update Profile Bio:** Change GitHub bio to: *"ML Platform & AI Infrastructure Engineer | Kubernetes · Distributed Systems · Rust · Python · SRE"*.
 3. **Set Location:** Update GitHub location field to **"Bangalore, India"**.
 4. **Pin Top 4 Repos:** Pin `AegisAgent`, `vulcan`, `Azure-Data-Engineering-Medallion-Lakehouse-Project`, and `ApplyBot`.
 5. **Update Profile README:** Deploy the markdown template above to `lavkushry/lavkushry`.
+
+---
+
+## Changelog
+
+### Update: November 22, 2026
+- Replaced all broken vanity URLs with canonical `https://github.com/lavkushry` and `https://www.linkedin.com/in/lavkushry/`.
+- Removed ghost-repository literal references from action items and added Changelog per `AGENTS.md §6`.

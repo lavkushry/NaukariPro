@@ -11,6 +11,7 @@ import os
 import re
 import json
 import logging
+from xml.sax.saxutils import escape as _xml_escape
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -144,8 +145,8 @@ class AIResumeMaker:
             target_keywords = set(tokens)
         else:
             target_keywords = {
-                "azure", "databricks", "pyspark", "delta", "lake", "sql", "adf",
-                "kafka", "terraform", "medallion", "kubernetes", "ci/cd"
+                "kubernetes", "docker", "terraform", "ansible", "helm", "argocd",
+                "ci/cd", "prometheus", "grafana", "kafka", "python", "rust",
             }
 
         full_resume_text = (
@@ -292,15 +293,39 @@ class AIResumeMaker:
 
         elements = []
 
+        def _norm_url(raw_url: str, default_url: str) -> str:
+            u = (raw_url or default_url).strip()
+            if not u:
+                return ""
+            if not u.startswith(("http://", "https://")):
+                u = f"https://{u.lstrip('/')}"
+            return u
+
         # 1. Header
-        elements.append(Paragraph(cand.get("name", "Lavkush Kumar").upper(), name_style))
+        elements.append(Paragraph(_xml_escape(cand.get("name", "Lavkush Kumar").upper()), name_style))
         elements.append(Spacer(1, 1))
         loc = cand.get("location") or cand.get("primary_location", "")
         phone = cand.get("phone", "")
-        email = cand.get("email", "")
-        linkedin = cand.get("linkedin", "linkedin.com/in/lavkush-kumar")
-        github = cand.get("github", "github.com/lavkush-kumar")
-        contact_parts = [p for p in [loc, phone, email, linkedin, github] if p]
+        email = (cand.get("email") or "").strip()
+        linkedin = _norm_url(cand.get("linkedin", ""), "https://www.linkedin.com/in/lavkushry/")
+        github = _norm_url(cand.get("github", ""), "https://github.com/lavkushry")
+
+        contact_parts = []
+        if loc:
+            contact_parts.append(_xml_escape(str(loc)))
+        if phone:
+            contact_parts.append(_xml_escape(str(phone)))
+        if email:
+            safe_email = _xml_escape(email)
+            contact_parts.append(f'<link href="mailto:{safe_email}" color="#1A73E8">{safe_email}</link>')
+        if linkedin:
+            safe_li = _xml_escape(linkedin)
+            li_label = _xml_escape(linkedin.replace("https://www.", "").replace("https://", "").rstrip("/"))
+            contact_parts.append(f'<link href="{safe_li}" color="#1A73E8">{li_label}</link>')
+        if github:
+            safe_gh = _xml_escape(github)
+            gh_label = _xml_escape(github.replace("https://", "").rstrip("/"))
+            contact_parts.append(f'<link href="{safe_gh}" color="#1A73E8">{gh_label}</link>')
         contact_line = " • ".join(contact_parts)
         elements.append(Paragraph(contact_line, contact_style))
         elements.append(Spacer(1, 3))
@@ -309,7 +334,7 @@ class AIResumeMaker:
         # 2. Professional Summary (Mandatory AGENTS.md §2)
         if summary_text:
             elements.append(Paragraph("PROFESSIONAL SUMMARY", section_style))
-            elements.append(Paragraph(summary_text, body_style))
+            elements.append(Paragraph(_xml_escape(str(summary_text)), body_style))
             elements.append(Spacer(1, 2))
 
         # 3. Technical Skills Grid
@@ -331,18 +356,20 @@ class AIResumeMaker:
                     skills_str = skills
                 else:
                     skills_str = ", ".join(skill_items)
-            skills_text_lines.append(f"<b>{cat_name}:</b> {skills_str}")
+            skills_text_lines.append(f"<b>{_xml_escape(str(cat_name))}:</b> {_xml_escape(str(skills_str))}")
         elements.append(Paragraph("<br/>".join(skills_text_lines), body_style))
         elements.append(Spacer(1, 2))
 
         # 4. Professional Experience
         elements.append(Paragraph("PROFESSIONAL EXPERIENCE", section_style))
         for exp in experience_list:
-            comp = exp.get("company", "")
-            title = exp.get("title", "")
-            dates = exp.get("duration") or exp.get("dates", "")
-            loc = exp.get("location", "")
-            header_text = f"<b>{comp}</b> | {title} <font color='{SLATE_GRAY}'>({dates} • {loc})</font>"
+            comp = _xml_escape(str(exp.get("company", "")))
+            title = _xml_escape(str(exp.get("title", "")))
+            dates = _xml_escape(str(exp.get("duration") or exp.get("dates") or ""))
+            eloc = _xml_escape(str(exp.get("location", "")))
+            meta_parts = [p for p in (dates, eloc) if p]
+            meta_str = f" <font color='{SLATE_GRAY}'>({' • '.join(meta_parts)})</font>" if meta_parts else ""
+            header_text = f"<b>{comp}</b> | {title}{meta_str}"
             elements.append(Paragraph(header_text, role_header_style))
 
             bullets = exp.get("bullets", [])
@@ -350,40 +377,48 @@ class AIResumeMaker:
                 bullets = sorted(bullets, key=lambda b: self._score_text(b, jd_keywords), reverse=True)
 
             for b in bullets:
-                elements.append(Paragraph(f"• {b}", bullet_style))
+                elements.append(Paragraph(f"• {_xml_escape(str(b))}", bullet_style))
             elements.append(Spacer(1, 1.5))
 
         # 5. Key Projects
         elements.append(Paragraph("KEY ENGINEERING PROJECTS", section_style))
         for proj in projects_list:
-            pname = proj.get("name", "")
-            ptech = proj.get("tech_stack", "")
+            pname = _xml_escape(str(proj.get("name", "")))
+            ptech = _xml_escape(str(proj.get("tech_stack", "")))
+            purl = (proj.get("url") or "").strip()
             pbullets = proj.get("bullets", [])
-            header = f"<b>{pname}</b>"
+            if purl:
+                safe_purl = _xml_escape(_norm_url(purl, purl))
+                header = f'<link href="{safe_purl}" color="#11355D"><b>{pname}</b></link>'
+            else:
+                header = f"<b>{pname}</b>"
             if ptech:
                 header += f" <font color='{SLATE_GRAY}'>({ptech})</font>"
+            if purl:
+                safe_purl = _xml_escape(_norm_url(purl, purl))
+                header += f' — <link href="{safe_purl}" color="#1A73E8">GitHub</link>'
             elements.append(Paragraph(header, role_header_style))
             if jd_keywords:
                 pbullets = sorted(pbullets, key=lambda b: self._score_text(b, jd_keywords), reverse=True)
             for pb in pbullets:
-                elements.append(Paragraph(f"• {pb}", bullet_style))
+                elements.append(Paragraph(f"• {_xml_escape(str(pb))}", bullet_style))
             elements.append(Spacer(1, 1.5))
 
         # 6. Education (Separated)
         elements.append(Paragraph("EDUCATION", section_style))
         edu_lines = []
         for edu in education_list:
-            deg = edu.get("degree", "")
-            inst = edu.get("institution", "")
-            dates = edu.get("dates", "")
-            edu_lines.append(f"<b>{deg}</b> | {inst} ({dates})")
+            deg = _xml_escape(str(edu.get("degree", "")))
+            inst = _xml_escape(str(edu.get("institution", "")))
+            edates = _xml_escape(str(edu.get("dates", "")))
+            edu_lines.append(f"<b>{deg}</b> | {inst} ({edates})" if edates else f"<b>{deg}</b> | {inst}")
         elements.append(Paragraph("<br/>".join(edu_lines), body_style))
         elements.append(Spacer(1, 2))
 
         # 7. Certifications (Separated)
         if certifications_list:
             elements.append(Paragraph("CERTIFICATIONS", section_style))
-            elements.append(Paragraph(" • ".join(certifications_list), body_style))
+            elements.append(Paragraph(" • ".join(_xml_escape(str(c)) for c in certifications_list), body_style))
 
         # Build document
         doc.build(elements)

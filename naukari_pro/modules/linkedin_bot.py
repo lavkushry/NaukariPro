@@ -333,8 +333,8 @@ def get_candidate_profile() -> Dict[str, Any]:
         "preferred_locations": cand.get("preferred_locations", [
             "Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Mumbai", "Chennai"
         ]),
-        "linkedin": cand.get("linkedin", "linkedin.com/in/lavkush-kumar"),
-        "github": cand.get("github", "github.com/lavkush-kumar"),
+        "linkedin": cand.get("linkedin", "https://www.linkedin.com/in/lavkushry/"),
+        "github": cand.get("github", "https://github.com/lavkushry"),
         "resume_path": cand.get("resume_path", RESUME_PDF_PATH),
         "education_degree": "Bachelor's Degree",
         "education_field": "Computer Science and Engineering",
@@ -792,9 +792,15 @@ class LinkedInScreeningSolver:
 
         # 9. LinkedIn / Portfolio URL
         if "linkedin" in label_low:
-            return f"https://www.{self.candidate.get('linkedin', 'linkedin.com/in/lavkush-kumar')}"
+            raw_li = str(self.candidate.get("linkedin", "https://www.linkedin.com/in/lavkushry/")).strip()
+            if raw_li.startswith(("http://", "https://")):
+                return raw_li
+            return f"https://www.{raw_li.lstrip('/')}" if not raw_li.startswith("www.") else f"https://{raw_li}"
         if any(k in label_low for k in ["github", "website", "portfolio", "blog"]):
-            return f"https://{self.candidate.get('github', 'github.com/lavkush-kumar')}"
+            raw_gh = str(self.candidate.get("github", "https://github.com/lavkushry")).strip()
+            if raw_gh.startswith(("http://", "https://")):
+                return raw_gh
+            return f"https://{raw_gh.lstrip('/')}"
 
         # 10. Education
         if any(k in label_low for k in ["degree", "education", "highest qualification"]):

@@ -1120,13 +1120,14 @@ def test_tier1_f26_cover_letter_cites_verifiable_profile_facts(candidate_facts):
     sample_res = {
         "cover_letter": "I am excited to apply for the Azure Data Engineer role at Acme. With experience at CGI India automating CI/CD pipelines, I bring strong expertise.",
         "claims_used": ["CGI India experience", "CI/CD automation"],
+        "unsupported_claims": [],
     }
     ok, errs = validate_response(sample_res, schema)
     assert ok is True
 
 def test_tier1_f26_cover_letter_returns_claims_used_list():
     schema = load_schema(Path("naukari_pro/llm/prompts/schemas/P5_cover_letter.json"))
-    sample_res = {"cover_letter": "Letter content", "claims_used": ["claim1"]}
+    sample_res = {"cover_letter": "Letter content", "claims_used": ["claim1"], "unsupported_claims": []}
     ok, _ = validate_response(sample_res, schema)
     assert ok is True
 
@@ -1295,6 +1296,7 @@ def test_tier1_f31_dashboard_funnel_stages_defined():
     assert "interview" in stages
 
 def test_tier1_f31_fastapi_app_instantiated(temp_tracking_store):
+    pytest.importorskip("fastapi")
     app = create_app(temp_tracking_store)
     assert app is not None
     assert app.title == "NaukariPro Tracking"

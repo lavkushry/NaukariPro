@@ -461,10 +461,34 @@ def record_applied_job(
         is_dup = False
         try:
             existing_row = conn.execute("SELECT job_id, status FROM applied_jobs WHERE job_id = ?", (final_id,)).fetchone()
+            upgradeable_statuses = (
+                "External Redirect",
+                "Not Available",
+                "Targeted Vacancy",
+                "Form Auto-Filled",
+                "Form Auto-Filled (Ready for Review)",
+                "FAILED_FORM_ERROR",
+                "FALLBACK (CLICKED_NO_CONFIRMATION)",
+                "CLICKED_NO_CONFIRMATION",
+                "FALLBACK (SUBMIT_NOT_FOUND)",
+                "SUBMIT_NOT_FOUND",
+                "FALLBACK (SIGNIN_WALL)",
+                "SIGNIN_WALL",
+                "FALLBACK (CAPTCHA)",
+                "CAPTCHA",
+                "FALLBACK (VALIDATION_ERRORS)",
+                "VALIDATION_ERRORS",
+                "FALLBACK (TIMEOUT_240S)",
+                "TIMEOUT_240S",
+                "FALLBACK (OTP_NOT_FOUND)",
+                "OTP_NOT_FOUND",
+                "EXHAUSTED (FALLBACK (CLICKED_NO_CONFIRMATION))",
+                "EXHAUSTED (CLICKED_NO_CONFIRMATION)",
+            )
             if existing_row:
-                if existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy", "Form Auto-Filled", "Form Auto-Filled (Ready for Review)", "FAILED_FORM_ERROR") and status == "Submitted (Confirmed)":
+                if existing_row["status"] in upgradeable_statuses and status == "Submitted (Confirmed)":
                     is_dup = False
-                elif existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy"):
+                elif existing_row["status"] in ("External Redirect", "Not Available", "Targeted Vacancy", "FALLBACK (CLICKED_NO_CONFIRMATION)", "CLICKED_NO_CONFIRMATION"):
                     is_dup = False
                 else:
                     is_dup = True
@@ -840,12 +864,21 @@ def is_job_already_applied(
         "REJECTED_NON_DATA_ROLE",
         "REJECTED_BELOW_THRESHOLD",
         "FALLBACK (SUBMIT_NOT_FOUND)",
+        "SUBMIT_NOT_FOUND",
         "FALLBACK (CLICKED_NO_CONFIRMATION)",
+        "CLICKED_NO_CONFIRMATION",
+        "EXHAUSTED (FALLBACK (CLICKED_NO_CONFIRMATION))",
+        "EXHAUSTED (CLICKED_NO_CONFIRMATION)",
         "FALLBACK (SIGNIN_WALL)",
+        "SIGNIN_WALL",
         "FALLBACK (CAPTCHA)",
+        "CAPTCHA",
         "FALLBACK (VALIDATION_ERRORS)",
+        "VALIDATION_ERRORS",
         "FALLBACK (TIMEOUT_240S)",
+        "TIMEOUT_240S",
         "FALLBACK (OTP_NOT_FOUND)",
+        "OTP_NOT_FOUND",
         # Incomplete / barrier statuses — drainable by Always-on Beast via allow_retry=True
         "Workday Account / Sign-In Barrier — vault auth incomplete (needs mail verify or manual)",
         "Workday Account / Sign-In Barrier — still on login after vault",
@@ -1613,20 +1646,21 @@ def get_daily_application_count(
     try:
         if not target_date:
             now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-            date_filter = now_ist.strftime("%Y-%m-%d")
+            date_filters = list({now_ist.strftime("%Y-%m-%d"), datetime.now().strftime("%Y-%m-%d")})
         else:
-            date_filter = target_date[:10]
+            date_filters = [target_date[:10]]
 
-        query = """
+        date_placeholders = ",".join("?" for _ in date_filters)
+        query = f"""
             SELECT COUNT(*) FROM applied_jobs
-            WHERE substr(applied_at, 1, 10) = ?
+            WHERE substr(applied_at, 1, 10) IN ({date_placeholders})
               AND (
                   status LIKE 'Submitted%'
                   OR status LIKE 'Applied%'
                   OR status IN ('APPLIED', 'Submitted (Confirmed)', 'Submitted (Pending)', 'Form Auto-Filled (Ready for Review)')
               )
         """
-        params: List[Any] = [date_filter]
+        params: List[Any] = list(date_filters)
         if platform:
             query += " AND LOWER(platform) = LOWER(?)"
             params.append(platform.strip())

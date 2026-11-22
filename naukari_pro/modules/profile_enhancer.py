@@ -53,13 +53,29 @@ class ProfileEnhancerEngine:
         except Exception as e:
             logger.warning("Could not save session state: %s", e)
 
+    @staticmethod
+    def _safe_count(loc) -> int:
+        try:
+            c = loc.count()
+            return c if isinstance(c, int) else 0
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _safe_visible(loc) -> bool:
+        try:
+            v = loc.is_visible()
+            return bool(v) if isinstance(v, bool) else True
+        except Exception:
+            return False
+
     def bump_profile(self, page, force=False, cooldown_seconds=7200):
         """
         Micro-toggles the headline punctuation or executes controlled keyword mutation
         to force Naukri backend to update 'Last updated today'.
         Enforces a cooldown throttle (default 2 hours / 7200s): skips redundant edits if bumped within
         the cooldown period unless force=True, enabling 3x/day scheduled boosts.
-        Ensures the full 247-char Azure Data Engineer headline is persisted and logged to profile_mutations ledger.
+        Ensures the grounded Platform & MLOps Engineer headline is persisted and logged to profile_mutations ledger.
         """
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
@@ -92,7 +108,7 @@ class ProfileEnhancerEngine:
 
         try:
             hl_section = page.locator('#lazyResumeHead, .resumeHeadline').first
-            if hl_section.count() > 0:
+            if self._safe_count(hl_section) > 0:
                 try:
                     hl_section.scroll_into_view_if_needed()
                 except Exception:
@@ -104,13 +120,26 @@ class ProfileEnhancerEngine:
                 'span[aria-label*="Edit resume headline"], span[aria-label*="resume headline" i], .resumeHeadline .edit'
             ).first
 
-            if headline_edit.count() > 0:
+            if self._safe_count(headline_edit) > 0:
+                clicked = False
                 try:
                     headline_edit.click(force=True)
+                    clicked = True
+                except TypeError:
+                    try:
+                        headline_edit.click()
+                        clicked = True
+                    except Exception:
+                        pass
                 except Exception:
-                    eh = headline_edit.element_handle()
-                    if eh:
-                        page.evaluate("(el) => el && el.click()", eh)
+                    pass
+                if not clicked and hasattr(headline_edit, "element_handle"):
+                    try:
+                        eh = headline_edit.element_handle()
+                        if eh:
+                            page.evaluate("(el) => el && el.click()", eh)
+                    except Exception:
+                        pass
                 time.sleep(2)
 
                 textarea = None
@@ -122,26 +151,28 @@ class ProfileEnhancerEngine:
                     ".ltCont.open textarea",
                 ]:
                     cand = page.locator(ta_sel).first
-                    if cand.count() > 0 and cand.is_visible():
-                        textarea = cand
-                        break
+                    cnt = self._safe_count(cand)
+                    if (cnt > 0 or hasattr(cand, "input_value")) and self._safe_visible(cand):
+                        if cnt > 0:
+                            textarea = cand
+                            break
 
-                if textarea is None or not textarea.is_visible():
+                if textarea is None or not self._safe_visible(textarea):
                     logger.warning("Headline textarea did not open.")
                     return False
 
                 curr_val = textarea.input_value().strip()
                 default_target_headline = (
-                    "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-                    "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | "
-                    "Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD"
+                    "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+                    "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+                    "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
                 )
                 template = self.cfg.get("headline_template", default_target_headline).strip()
                 if not template:
                     template = default_target_headline
 
-                core_keywords = ["Azure Data Engineer", "Databricks", "Delta Lake", "ADF"]
-                is_complete = len(curr_val) >= 200 and all(kw.lower() in curr_val.lower() for kw in core_keywords)
+                core_keywords = ["Kubernetes", "Docker", "Terraform", "CI/CD"]
+                is_complete = len(curr_val) >= 180 and all(kw.lower() in curr_val.lower() for kw in core_keywords)
 
                 can_kw = self.mutator.can_mutate("naukri")
 
@@ -157,7 +188,7 @@ class ProfileEnhancerEngine:
                     pass
 
                 if not is_complete:
-                    logger.info("Headline missing or truncated (current len: %d). Overwriting with full %d-char Azure Data Engineer headline.", len(curr_val), len(template))
+                    logger.info("Headline missing or truncated (current len: %d). Overwriting with full %d-char Platform & MLOps headline.", len(curr_val), len(template))
                     new_val = template.rstrip(".")
                     is_kw = True
                     rationale = "resdex_headline_saturation_recovery"
@@ -196,12 +227,12 @@ class ProfileEnhancerEngine:
                 time.sleep(1)
 
                 save_btn = page.locator(
-                    '.resumeHeadlineEdit button:has-text("Save"), .resumeHeadline button:has-text("Save"), .ltCont.open button:has-text("Save"), button.btn-dark-ot:has-text("Save"), button:has-text("Save")'
+                    'button.btn-dark-ot:has-text("Save"), form[name="resumeHeadline"] button:has-text("Save"), .ltCont.open button:has-text("Save"), .resumeHeadline button:has-text("Save"), button:has-text("Save")'
                 ).first
-                if save_btn.count() == 0 or not save_btn.is_visible():
+                if self._safe_count(save_btn) == 0 or not self._safe_visible(save_btn):
                     save_btn = page.get_by_role("button", name="Save", exact=True)
 
-                if save_btn.count() > 0 and save_btn.is_visible():
+                if self._safe_count(save_btn) > 0 and self._safe_visible(save_btn):
                     save_btn.click()
                     time.sleep(3)
                     state["last_bumped_date"] = today
@@ -242,7 +273,7 @@ class ProfileEnhancerEngine:
         return False
 
     def upload_resume_pdf(self, page, pdf_path=RESUME_PDF_PATH):
-        """Uploads the latest single-page ATS-optimized Azure Data Engineer resume."""
+        """Uploads the latest single-page ATS-optimized Platform & MLOps resume."""
         if not os.path.exists(pdf_path):
             logger.error("Resume file not found at %s", pdf_path)
             return False
@@ -264,7 +295,7 @@ class ProfileEnhancerEngine:
                 file_input.set_input_files(pdf_path)
                 logger.info("File attached to input. Waiting for server confirmation...")
                 time.sleep(6)
-                logger.info("SUCCESS: Latest Azure Data Engineer ATS Resume uploaded!")
+                logger.info("SUCCESS: Latest Platform & MLOps ATS Resume uploaded!")
                 return True
             else:
                 logger.warning("Could not find resume file upload input.")
@@ -310,7 +341,7 @@ class ProfileEnhancerEngine:
 
         # 2. Headline Keyword Density
         headline = self.cfg.get("headline_template", "")
-        core_kw = ["azure databricks", "pyspark", "delta lake", "sql", "azure data factory"]
+        core_kw = ["kubernetes", "docker", "terraform", "ansible", "ci/cd"]
         kw_count = sum(1 for kw in core_kw if kw in headline.lower())
         pts = 20 if kw_count >= 3 else (10 if kw_count >= 1 else 0)
         earned_score += pts

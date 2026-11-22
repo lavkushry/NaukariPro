@@ -30,6 +30,15 @@ def test_tracked_config_json_scrubbed_identity():
     assert not cand.get("email")
     assert not cand.get("phone")
     assert "lav84095" not in str(cand.get("email") or "")
+    raw_text = (ROOT / "naukri_system" / "config.json").read_text(encoding="utf-8")
+    bad_slug = "lavkush" + "-kumar"
+    for forbidden in (bad_slug, "mlops-platform-automation", "genai-observability-platform", "vLLM", "Triton"):
+        assert forbidden not in raw_text
+    assert cand.get("current_designation") == "DevOps Engineer"
+    assert data["experience"][0]["title"] == "DevOps Engineer"
+    assert data["experience"][1]["title"] == "Engineer 1 — DevOps / Platform Engineering"
+    assert data["experience"][2]["title"] == "Security Analyst Apprentice"
+    assert data["experience"][3]["title"] == "Full Stack Developer Intern"
 
 
 def test_load_config_overlays_candidate_env(monkeypatch):

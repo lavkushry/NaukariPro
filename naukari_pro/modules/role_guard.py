@@ -84,7 +84,11 @@ FORBIDDEN_ROLE_KEYWORDS = (
     # Finance, Accounting, Legal & HR
     "accountant", "chartered accountant", "bookkeeper", "tax consultant",
     "audit associate", "hr executive", "recruiter", "talent acquisition",
-    "hr generalist", "paralegal", "lawyer", "legal associate"
+    "hr generalist", "paralegal", "lawyer", "legal associate",
+    "finance", "financial", "legal",
+    # Seniority / Staff / Principal / Lead / Architect / Managerial exclusions (for ~2.5 YOE profile)
+    "staff", "principal", "lead", "architect", "director", "vp", "vice president",
+    "head of", "chief", "manager", "mgr", "sr-mgr", "sr mgr", "senior", "sr."
 )
 
 # Known gig annotation / crowd-task / spam vendors
@@ -162,6 +166,12 @@ def is_strictly_data_or_cloud_role(
         or (bool(re.search(r"\bcloud\b", title_clean)) and bool(re.search(r"\bengineer\b", title_clean)))
     )
     if has_target:
+        # Even with target title, reject if non-empty JD is strictly non-technical/retail with zero competencies
+        if jd_clean and not any(comp in jd_clean for comp in COMPETENCY_KEYWORDS) and any(
+            bad_jd in jd_clean
+            for bad_jd in ("retail", "storefront", "cash register", "cold-call", "bartender", "cashier", "telecalling")
+        ):
+            return False, "Rejected: Job description indicates non-technical/retail role with zero competencies"
         # Even with target title, zero-score check if score is explicitly 0.0 with empty text
         if score is not None and score <= 0.0 and not any(
             k in title_clean

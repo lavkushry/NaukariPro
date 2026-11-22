@@ -53,40 +53,40 @@ logger = logging.getLogger("naukariPro.VisibilityGrowth")
 # ==============================================================================
 
 TIER_1_MUST_HAVE = [
-    "Azure Data Engineer",
-    "Azure Databricks",
-    "Databricks",
-    "PySpark",
-    "Delta Lake",
-    "Azure Data Factory",
-    "ADF",
-    "SQL",
+    "Kubernetes",
+    "Docker",
+    "Terraform",
+    "Ansible",
+    "Helm",
+    "ArgoCD",
+    "CI/CD",
+    "AWS EKS",
     "Python",
-    "Spark"
+    "Linux"
 ]
 
 TIER_2_STRONG_SIGNAL = [
-    "Medallion Architecture",
-    "Lakehouse",
+    "Prometheus",
+    "Grafana",
+    "ELK Stack",
     "Apache Kafka",
-    "ADLS Gen2",
-    "Terraform",
-    "CI/CD",
-    "Unity Catalog",
-    "DataOps",
-    "ETL Pipelines",
-    "Spark SQL"
+    "Redis",
+    "Velero",
+    "Trivy",
+    "Jenkins",
+    "GitLab CI",
+    "PostgreSQL"
 ]
 
 TIER_3_DIFFERENTIATORS = [
-    "Structured Streaming",
-    "Great Expectations",
-    "Data Governance",
-    "Snowflake",
-    "Docker",
-    "Linux",
-    "ACID Transactions",
-    "Liquid Clustering",
+    "Rust",
+    "FastAPI",
+    "pgvector",
+    "MLflow",
+    "PySpark",
+    "Azure Databricks",
+    "Delta Lake",
+    "GitOps",
     "MLOps"
 ]
 
@@ -95,8 +95,6 @@ DILUTING_TERMS = [
     "frontend",
     "php",
     "wordpress",
-    "security analyst apprentice",
-    "internship",
     "junior web",
     "html css"
 ]
@@ -152,116 +150,116 @@ class RecruiterKeywordOptimizer:
 
 # Verified Variations strictly respecting candidate ground truth:
 # - Candidate: Lavkush Kumar
-# - Total Experience: 2.5 YOE Azure Data Engineer
+# - Total Experience: ~2.5 YOE Platform / DevOps / MLOps & AI Infrastructure Engineer
 # - Notice Period: 15 Days (Immediate Joiner)
-# - Target CTC: ₹22-25 LPA
+# - Target CTC: ₹20-25 LPA
 # - Employers: CGI India (Present), HFCL Limited (Ex)
 # - Character constraints: Naukri <= 250, LinkedIn <= 220
 
 PROFILE_VARIATIONS: Dict[str, Dict[str, Any]] = {
     "Variation_A_Lakehouse_Scale": {
-        "name": "Variation A — Medallion Lakehouse & High-Throughput Scale",
-        "rationale": "Prioritizes PySpark, Databricks, Delta Lake, and high-volume stream ingestion (2M+ events).",
+        "name": "Variation A — Platform, Kubernetes & MLOps Scale",
+        "rationale": "Prioritizes Kubernetes, Docker, Terraform, Ansible, ArgoCD, and 50-node platform reliability.",
         "naukri_headline": (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-            "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform | "
-            "2.5 YOE Cloud Data Platforms & Medallion Lakehouse | Immediate Joiner (15 Days Notice)"
+            "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+            "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+            "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
         ),
         "linkedin_headline": (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory (ADF) · "
-            "SQL · Apache Kafka · Terraform | Medallion Lakehouse | Ex-HFCL | Immediate – 15 Days Notice"
+            "Platform & MLOps Engineer | Kubernetes (EKS, kubeadm) · Terraform · Ansible · "
+            "Docker · Helm · ArgoCD · CI/CD · Kafka · Prometheus · Python · Rust | 2.5 YOE | 15 Days Notice"
         ),
         "key_skills": [
-            "PySpark",
-            "Azure Databricks",
-            "Delta Lake",
-            "Azure Data Factory (ADF)",
-            "SQL",
-            "Apache Kafka",
-            "ADLS Gen2",
-            "Medallion Architecture",
-            "Terraform",
-            "Python",
-            "Spark SQL",
-            "Data Pipelines",
-            "Unity Catalog",
+            "Kubernetes",
             "Docker",
-            "Linux"
+            "Helm",
+            "Terraform",
+            "Ansible",
+            "ArgoCD",
+            "AWS EKS",
+            "CI/CD",
+            "Jenkins",
+            "GitLab CI",
+            "Prometheus",
+            "Grafana",
+            "ELK Stack",
+            "Apache Kafka",
+            "Python"
         ],
         "summary": (
-            "Azure Data Engineer with 2.5 years of experience architecting distributed batch and real-time streaming "
-            "Lakehouse platforms on Microsoft Azure, Databricks, PySpark, Delta Lake, and ADF. Engineered scalable Medallion "
-            "Lakehouses processing 2M+ events/day with sub-second Kafka ingestion lag. Immediate joiner available in 15 days."
+            "Platform, DevOps & MLOps Engineer with ~2.5 years of experience operating 50-node kubeadm and AWS EKS "
+            "Kubernetes platforms, Terraform/Ansible automation, CI/CD pipelines, and Kafka/Redis/PostgreSQL StatefulSets "
+            "(83% faster bootstrap, 93% RTO reduction, 99.95% availability). 15 days notice."
         )
     },
     "Variation_B_Enterprise_GCC_Ingestion": {
-        "name": "Variation B — Enterprise GCC Ingestion & Real-Time Streaming",
-        "rationale": "Targets enterprise GCC recruiter searches (PNC Bank GCC, CGI, Microsoft, Walmart) with ADF and Kafka focus.",
+        "name": "Variation B — Enterprise GCC Platform, IaC & Data Backbones",
+        "rationale": "Targets enterprise GCC platform & SRE searches with EKS, Terraform, Kafka, and Velero focus.",
         "naukri_headline": (
-            "Azure Data Engineer | PySpark · Azure Databricks · Delta Lake · ADF · ADLS Gen2 · "
-            "Apache Kafka · Advanced SQL · Terraform IaC | Medallion Architecture & Real-Time Streaming | "
-            "Immediate – 15 Days Notice"
+            "DevOps & Platform Engineer | AWS EKS · Kubernetes (kubeadm) · Terraform · Ansible · "
+            "Jenkins · GitLab CI · ArgoCD · Trivy · Apache Kafka · Redis · Prometheus · ELK | "
+            "2.5 YOE Cloud & Stateful Infra | 15 Days Notice"
         ),
         "linkedin_headline": (
-            "Azure Data Engineer | PySpark · Databricks · Delta Lake · ADF · Apache Kafka · SQL · "
-            "Terraform | Real-time Ingestion & Lakehouse Platforms | CGI ex-HFCL | 15 Days Notice"
+            "DevOps & Platform Engineer | AWS EKS · Kubernetes · Terraform · Ansible · ArgoCD · "
+            "Jenkins · GitLab CI · Apache Kafka · Prometheus · Python | 2.5 YOE | 15 Days Notice"
         ),
         "key_skills": [
-            "Azure Databricks",
-            "PySpark",
-            "Apache Kafka",
-            "Delta Lake",
-            "Spark Structured Streaming",
-            "Azure Data Factory",
-            "SQL",
-            "ADLS Gen2",
+            "AWS EKS",
+            "Kubernetes",
             "Terraform",
-            "DataOps",
-            "Event Hubs",
-            "CDC",
-            "Python",
+            "Ansible",
+            "Jenkins",
+            "GitLab CI",
+            "ArgoCD",
+            "Trivy",
+            "Nginx Ingress",
+            "Kong Gateway",
+            "Apache Kafka",
+            "Redis",
             "PostgreSQL",
-            "Redis"
-        ],
-        "summary": (
-            "Results-driven Azure Data Engineer with 2.5 YOE architecting enterprise real-time data pipelines and ETL workflows "
-            "in global corporate banking and telecom networking environments. Automated end-to-end DataOps with Terraform IaC, "
-            "cutting deployment cycles from 6 hours to 20 minutes. Immediate joiner serving 15 days notice."
-        )
-    },
-    "Variation_C_DataOps_Governance": {
-        "name": "Variation C — DataOps, Governance & Reliability",
-        "rationale": "Highlights Unity Catalog data governance, Great Expectations quality gates, and 99.95% availability.",
-        "naukri_headline": (
-            "Azure Data Engineer | Databricks · PySpark · Delta Lake · Azure Data Factory · "
-            "Kafka Streaming · Unity Catalog · CI/CD · Terraform | High-Throughput Cloud Data Platforms | "
-            "2.5 YOE | Immediate Joiner"
-        ),
-        "linkedin_headline": (
-            "Azure Data Engineer | Databricks · PySpark · Delta Lake · Azure Data Factory · "
-            "Kafka · Unity Catalog · Terraform | High-Throughput Lakehouse | Immediate Joiner (15 Days)"
-        ),
-        "key_skills": [
-            "PySpark",
-            "Delta Lake",
-            "Azure Databricks",
-            "Azure Data Factory (ADF)",
-            "Unity Catalog",
-            "SQL",
-            "Medallion Architecture",
-            "Apache Kafka",
-            "Great Expectations",
-            "Terraform",
-            "Python",
-            "Snowflake",
-            "Docker",
-            "CI/CD",
+            "Velero",
             "Linux"
         ],
         "summary": (
-            "Cloud Data Platform Engineer with 2.5 years of experience deploying production lakehouse architectures on Azure Databricks, "
-            "Delta Lake, and PySpark. Implemented automated quality validation gates with Great Expectations and Prometheus telemetry, "
-            "intercepting 99.2% of schema anomalies. Immediate joiner with 15-day notice period."
+            "DevOps & Platform Engineer with 2.5 YOE automating AWS EKS and bare-metal Kubernetes platforms across "
+            "enterprise banking (CGI India) and telecom systems (HFCL Limited). Engineered Terraform/Ansible IaC, "
+            "Velero DR (RTO 8h -> 30min), and ELK observability. Immediate joiner (15 days notice)."
+        )
+    },
+    "Variation_C_DataOps_Governance": {
+        "name": "Variation C — AI Infrastructure, GitOps & Reliability",
+        "rationale": "Highlights AegisAgent (Rust/Cedar), Project Vulcan (FastAPI/pgvector), and Azure Medallion Lakehouse.",
+        "naukri_headline": (
+            "MLOps & AI Infrastructure Engineer | Kubernetes · Docker · Helm · Terraform · "
+            "ArgoCD · CI/CD · Prometheus · Grafana · Rust · FastAPI · pgvector · PySpark · Delta Lake | "
+            "2.5 YOE | AZ-900 · CKA (In Progress) | 15 Days Notice"
+        ),
+        "linkedin_headline": (
+            "MLOps & AI Infrastructure Engineer | Kubernetes · Docker · Terraform · ArgoCD · "
+            "Prometheus · Rust · FastAPI · pgvector · PySpark · Delta Lake | 2.5 YOE | 15 Days Notice"
+        ),
+        "key_skills": [
+            "Kubernetes",
+            "Docker",
+            "Helm",
+            "Terraform",
+            "ArgoCD",
+            "Prometheus",
+            "Grafana",
+            "Rust",
+            "FastAPI",
+            "pgvector",
+            "MLflow",
+            "PySpark",
+            "Azure Databricks",
+            "Delta Lake",
+            "Python"
+        ],
+        "summary": (
+            "AI Infrastructure & MLOps Engineer with ~2.5 years of experience combining production Kubernetes/IaC "
+            "operations with open-source AI security and data systems (AegisAgent in Rust/Cedar, Project Vulcan in "
+            "FastAPI/pgvector, and Azure Medallion Lakehouse in PySpark/Databricks). 15-day notice period."
         )
     }
 }

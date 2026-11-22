@@ -67,17 +67,17 @@ class TestLinkedInTokenRotatorStress50Cycles:
     def test_inject_about_sentence_boundary_conditions(self):
         rotator = LinkedInTokenRotator()
         marker = "⚡ CORE TECHNICAL EXPERTISE:\n"
-        base_short = f"Azure Data Engineer.\n\n{marker}• PySpark\n• Delta Lake"
-        injected = rotator.inject_about_sentence(base_short, "Unity Catalog")
+        base_short = f"Platform & MLOps Engineer.\n\n{marker}• Kubernetes\n• Docker"
+        injected = rotator.inject_about_sentence(base_short, "Terraform")
         assert len(injected) <= 2600
-        assert "Unity Catalog" in injected
+        assert "Terraform" in injected
 
         # Boundary test: base text under 2600 chars, but injection would overflow
         filler = "A" * 2500
-        base_long = f"{filler}\n\n{marker}• PySpark"
+        base_long = f"{filler}\n\n{marker}• Kubernetes"
         assert len(base_long) <= 2600
         # Should gracefully return original base text (length <= 2600) without applying overflowing injection
-        result = rotator.inject_about_sentence(base_long, "Unity Catalog")
+        result = rotator.inject_about_sentence(base_long, "Terraform")
         assert len(result) <= 2600
         assert result == base_long
 
@@ -111,13 +111,13 @@ class TestNaukriSkillSwapStress50Cycles:
     @pytest.fixture
     def canonical_25_skills(self) -> List[str]:
         return [
-            "Azure Databricks", "PySpark", "Delta Lake", "SQL",
-            "Azure Data Factory (ADF)", "Apache Kafka", "Terraform",
-            "Python", "ETL Pipelines", "Data Modeling",
-            "Data Warehousing", "Azure Synapse Analytics", "ADLS Gen2",
-            "Git", "CI/CD", "Docker", "Linux",
-            "Data Engineering", "Azure DevOps", "Snowflake",
-            "REST APIs", "Data Lakehouse", "Power BI", "Bash", "Airflow"
+            "Kubernetes", "Docker", "Terraform", "Ansible",
+            "CI/CD", "Linux", "Python",
+            "Git", "Bash", "SQL",
+            "Jenkins", "GitLab CI", "GitHub Actions",
+            "Trivy", "SonarQube", "Nginx Ingress", "Kong Gateway",
+            "FastAPI", "Rust", "pgvector",
+            "REST APIs", "PySpark", "Azure Databricks", "Delta Lake", "MLflow"
         ]
 
     def test_50_cycles_skill_swap_invariants(self, canonical_25_skills):
@@ -230,12 +230,13 @@ class TestBlacklistValidatorBaselineDefenses:
             BlacklistValidator.enforce(blocked_text, field_name="headline")
 
     @pytest.mark.parametrize("canonical_truth", [
-        "Azure Data Engineer with 2.5 YOE",
+        "Platform & MLOps Engineer with 2.5 YOE",
         "Current CTC 12 LPA, Expected CTC 22 LPA",
         "Immediate – 15 Days Notice",
-        "B.Tech CSE from MDU Rohtak",
+        "B.Tech CSE from WCTM (MDU Rohtak)",
         "AZ-900 Certified",
-        "Databricks Certified Associate Data Engineer (Pursuing)",
+        "CKA (In Progress)",
+        "Certified Kubernetes Administrator (CKA) (In Progress)",
         "CGI India and HFCL Limited experience",
     ])
     def test_canonical_ground_truth_cleanly_permitted(self, canonical_truth):

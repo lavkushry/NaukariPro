@@ -41,9 +41,9 @@ def sample_profile():
         "city": "Hyderabad",
         "currentCompany": "CGI India (PNC Bank GCC)",
         "currentTitle": "DevOps Engineer / Azure Data Engineer",
-        "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
-        "githubUrl": "https://github.com/lavkush-kumar",
-        "portfolioUrl": "https://github.com/lavkush-kumar",
+        "linkedInUrl": "https://www.linkedin.com/in/lavkushry/",
+        "githubUrl": "https://github.com/lavkushry",
+        "portfolioUrl": "https://github.com/lavkushry",
         "experienceYears": "2.5",
         "noticePeriodDays": "15",
         "resumePath": "/tmp/dummy_resume.pdf"
@@ -374,8 +374,8 @@ class TestFieldStepAuditLedger:
             "email": "lav84095@gmail.com",
             "phone": "+91-9122036484",
             "city": "Hyderabad",
-            "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
-            "portfolioUrl": "https://github.com/lavkush-kumar"
+            "linkedInUrl": "https://www.linkedin.com/in/lavkushry/",
+            "portfolioUrl": "https://github.com/lavkushry"
         }
         handler = GreenhouseHandler(profile)
         mock_page = MagicMock()
@@ -406,8 +406,8 @@ class TestFieldStepAuditLedger:
             "fullName": "Lavkush Kumar",
             "email": "lav84095@gmail.com",
             "phone": "+919122036484",
-            "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
-            "githubUrl": "https://github.com/lavkush-kumar",
+            "linkedInUrl": "https://www.linkedin.com/in/lavkushry/",
+            "githubUrl": "https://github.com/lavkushry",
             "city": "Hyderabad"
         }
         handler = AshbyHandler(profile)
@@ -437,9 +437,9 @@ class TestFieldStepAuditLedger:
             "email": "lav84095@gmail.com",
             "phone": "+91-9122036484",
             "currentCompany": "CGI India",
-            "linkedInUrl": "https://linkedin.com/in/lavkush-kumar",
-            "githubUrl": "https://github.com/lavkush-kumar",
-            "portfolioUrl": "https://github.com/lavkush-kumar"
+            "linkedInUrl": "https://www.linkedin.com/in/lavkushry/",
+            "githubUrl": "https://github.com/lavkushry",
+            "portfolioUrl": "https://github.com/lavkushry"
         }
         handler = LeverHandler(profile)
         mock_page = MagicMock()
@@ -1042,41 +1042,41 @@ class TestComprehensiveDataEngineeringSkillsInScreeningSolver:
         solver = FactMatrixScreeningSolver()
 
         skills = [
-            ("How many years of experience do you have with Delta Lake?", "2.5"),
-            ("Years of hands-on experience with Apache Spark?", "2.5"),
-            ("Total experience in Spark SQL?", "2.5"),
-            ("Years of experience in Data Engineering?", "2.5"),
-            ("Experience building ETL Pipelines?", "2.5"),
-            ("Experience with ELT Pipelines in cloud?", "2.5"),
-            ("Experience in Data Lakehouse architecture?", "2.5"),
-            ("Years of experience with Medallion Architecture?", "2.5"),
-            ("Experience with ADLS Gen2?", "2.5"),
-            ("Years of experience in Azure Synapse Analytics?", "2.5"),
-            ("Hands-on experience with Microsoft Fabric?", "2.0"),
-            ("Experience with Change Data Capture (CDC)?", "2.0"),
-            ("Experience in SQL and Query Optimization?", "2.5"),
-            ("Years of hands-on experience in PostgreSQL?", "2.0"),
-            ("Experience with Star Schema Data Modeling?", "2.5"),
-            ("Years of experience in Snowflake?", "2.0"),
-            ("Experience with Redis caching?", "2.0"),
-            ("Hands-on tenure with MongoDB?", "2.0"),
-            ("Experience with Apache Kafka event streaming?", "2.0"),
-            ("Experience in Spark Structured Streaming?", "2.0"),
-            ("Years of experience with Kafka Connect?", "2.0"),
-            ("Experience with Azure Event Hubs?", "2.0"),
-            ("Years of experience with Terraform IaC?", "2.0"),
-            ("Experience in Azure DevOps CI/CD?", "2.5"),
-            ("Hands-on experience with Docker and Kubernetes?", "2.5"),
-            ("Years of experience with Helm charts?", "2.0"),
+            ("How many years of experience do you have with Delta Lake?", "0.5"),
+            ("Years of hands-on experience with Apache Spark?", "0.5"),
+            ("Total experience in Spark SQL?", "0.5"),
+            ("Years of experience in Data Engineering?", "0.5"),
+            ("Experience building ETL Pipelines?", "0.5"),
+            ("Experience with ELT Pipelines in cloud?", "0.5"),
+            ("Experience in Data Lakehouse architecture?", "0.5"),
+            ("Years of experience with Medallion Architecture?", "0.5"),
+            ("Experience with ADLS Gen2?", "0.5"),
+            ("Years of experience in Azure Synapse Analytics?", "0"),
+            ("Hands-on experience with Microsoft Fabric?", "0"),
+            ("Experience with Change Data Capture (CDC)?", "0.5"),
+            ("Experience in SQL and Query Optimization?", "2.0"),
+            ("Years of hands-on experience in PostgreSQL?", "1.5"),
+            ("Experience with Star Schema Data Modeling?", "0.5"),
+            ("Years of experience in Snowflake?", "0"),
+            ("Experience with Redis caching?", "1.5"),
+            ("Hands-on tenure with MongoDB?", "1.0"),
+            ("Experience with Apache Kafka event streaming?", "1.0"),
+            ("Experience in Spark Structured Streaming?", "0.5"),
+            ("Years of experience with Kafka Connect?", "0"),
+            ("Experience with Azure Event Hubs?", "0"),
+            ("Years of experience with Terraform IaC?", "1.5"),
+            ("Experience in Azure DevOps CI/CD?", "1.0"),
+            ("Hands-on experience with Docker and Kubernetes?", "2.0"),
+            ("Years of experience with Helm charts?", "1.0"),
             ("Experience in Git and GitHub Actions?", "2.5"),
-            ("Experience in GitLab CI pipelines?", "2.0"),
+            ("Experience in GitLab CI pipelines?", "1.0"),
             ("Tenure with Linux and Bash scripting?", "2.5"),
-            ("Experience with Unity Catalog governance?", "2.0"),
-            ("Years of experience with Great Expectations data quality gates?", "2.0"),
-            ("Experience with Prometheus and Grafana monitoring?", "2.0"),
-            ("Experience in OpenTelemetry pipeline observability?", "2.0"),
-            ("Hands-on experience with dbt?", "2.0"),
-            ("Years of experience in Cloud Data Management?", "2.5"),
+            ("Experience with Unity Catalog governance?", "0"),
+            ("Years of experience with Great Expectations data quality gates?", "0"),
+            ("Experience with Prometheus and Grafana monitoring?", "1.5"),
+            ("Experience in OpenTelemetry pipeline observability?", "0"),
+            ("Hands-on experience with dbt?", "0"),
+            ("Years of experience in Cloud Data Management?", "0.5"),
             ("Experience with Python programming language?", "2.5"),
         ]
 
@@ -1087,7 +1087,7 @@ class TestComprehensiveDataEngineeringSkillsInScreeningSolver:
 
     def test_boolean_skill_questions_affirmative(self):
         solver = FactMatrixScreeningSolver()
-        # Radio questions: "Do you have experience with X?" -> "Yes"
+        # Radio questions: "Do you have experience with X?" -> "Yes" for verified skills, "No" for unverified
         q1 = solver.evaluate_question("Do you have experience with Delta Lake and Medallion Architecture?", context={"options": ["Yes", "No"]})
         assert q1.answer == "Yes"
 
@@ -1098,7 +1098,7 @@ class TestComprehensiveDataEngineeringSkillsInScreeningSolver:
         assert q3.answer == "Yes"
 
         q4 = solver.evaluate_question("Do you have hands-on experience with dbt and Snowflake?", context={"options": ["Yes", "No"]})
-        assert q4.answer == "Yes"
+        assert q4.answer == "No"
 
 
 class TestExternalSitesAndReachFixes:

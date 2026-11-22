@@ -68,7 +68,7 @@
 ```
 LAVKUSH KUMAR
 Bangalore, India | +91-9122036484 | lav84095@gmail.com
-linkedin.com/in/lavkush-kumar | GitHub.com/lavkushry
+linkedin.com/in/lavkushry | github.com/lavkushry
 ```
 
 **Rules:**
@@ -89,9 +89,9 @@ linkedin.com/in/lavkush-kumar | GitHub.com/lavkushry
 |:---|:---|:---|
 | **General MLOps** | `MLOps Engineer \| Kubernetes · Docker · CI/CD for ML · AWS/GCP` | Standard MLOps roles |
 | **Platform Infra** | `ML Platform Engineer \| Model Serving · Kubeflow · Terraform · GCP` | Platform engineering roles |
-| **AI Infrastructure** | `AI Infrastructure Engineer \| K8s · ArgoCD · MLflow · Triton · AWS` | FAANG AI infra roles |
+| **AI Infrastructure** | `AI Infrastructure Engineer \| K8s · ArgoCD · MLflow · KServe · AWS` | FAANG AI infra roles |
 | **DevOps + ML** | `MLOps & DevOps Engineer \| GitOps · Helm · Airflow · Prometheus · EKS` | DevOps-leaning roles |
-| **LLMOps (2026)** | `LLMOps & ML Platform Engineer \| vLLM · RAG · Vector DBs · K8s · GCP` | GenAI/LLM infra roles |
+| **LLMOps (2026)** | `LLMOps & ML Platform Engineer \| FastAPI · RAG · Vector DBs · K8s · AWS` | GenAI/LLM infra roles |
 
 ---
 
@@ -123,7 +123,7 @@ Line 3: Proficient in [6–8 core skills].
 > ML Platform Engineer with 2 years bridging data engineering pipelines and scalable inference engines. Designed feature stores and Airflow ETL DAGs handling 2TB+ daily data streams, optimizing PyTorch model serving latency by 40% on Docker and SageMaker endpoints. Proficient in Python, Feast, Apache Spark, FastAPI, Docker, and GCP.
 
 #### 6. LLMOps & GenAI Infrastructure (2026)
-> MLOps Engineer building production LLM serving and RAG pipeline infrastructure using vLLM, Qdrant, and Kubernetes. Engineered GPU-aware inference clusters with Triton dynamic batching, achieving 3x throughput improvement while tracking token cost via Langfuse. Proficient in Python, Docker, K8s, vLLM, LangChain, FastAPI, and Terraform.
+> MLOps Engineer building production LLM serving and RAG pipeline infrastructure using KServe, Qdrant, and Kubernetes. Engineered scalable inference clusters with FastAPI and Redis caching, achieving 3x throughput improvement while tracking token cost via Langfuse. Proficient in Python, Docker, K8s, KServe, LangChain, FastAPI, and Terraform.
 
 ---
 
@@ -134,7 +134,7 @@ Line 3: Proficient in [6–8 core skills].
 ```
 • Languages:             Python, Go, Bash, SQL
 • MLOps & Orchestration:  Kubeflow, MLflow (Model Registry), Airflow, DVC, Feast
-• Model Serving & APIs:   FastAPI, Triton Inference Server, vLLM, KServe, gRPC, ONNX Runtime
+• Model Serving & APIs:   FastAPI, KServe, gRPC, ONNX Runtime, BentoML
 • Containers & K8s:       Docker, Kubernetes (EKS/GKE), Helm, ArgoCD, GitOps
 • Cloud & IaC:            AWS (SageMaker, S3, ECR, IAM), GCP (Vertex AI), Terraform
 • Monitoring & CI/CD:     Prometheus, Grafana, OpenTelemetry, GitHub Actions, GitLab CI
@@ -182,7 +182,7 @@ $$\text{[Action Verb]} + \text{[Production System]} + \text{[MLOps/DevOps Stack]
 
 9. **Built** scalable async inference microservices using FastAPI and uvicorn, handling 500+ concurrent requests/second with sub-45ms average response time.
 10. **Optimized** PyTorch inference by implementing ONNX Runtime conversion and INT8 quantization, reducing model artifact size by 4x and p95 latency by 35%.
-11. **Deployed** multi-model serving on Triton Inference Server with dynamic batching, increasing GPU throughput by 2.5x across 5 concurrent model endpoints.
+11. **Deployed** multi-model serving on KServe with autoscaling and request batching, increasing inference throughput by 2.5x across 5 concurrent model endpoints.
 12. **Engineered** a gRPC-based real-time prediction service with connection pooling and circuit breakers, maintaining sub-60ms p99 latency under 3x traffic bursts.
 
 #### MLflow, Airflow & Pipeline Orchestration (4 bullets)
@@ -247,11 +247,11 @@ Tech Stack:   Python, Feast, Redis, PostgreSQL, FastAPI, Docker Compose, Kafka
 #### Project 3: Production LLMOps RAG Pipeline
 
 ```
-Architecture: Documents → LangChain → Embeddings → Qdrant → vLLM → Langfuse/Prometheus
-Tech Stack:   Python, vLLM, Qdrant, LangChain, FastAPI, Docker, Prometheus, Grafana
+Architecture: Documents → LangChain → Embeddings → Qdrant → KServe → Langfuse/Prometheus
+Tech Stack:   Python, KServe, Qdrant, LangChain, FastAPI, Docker, Prometheus, Grafana
 ```
 
-* Built a RAG deployment pipeline using vLLM and Qdrant vector database, serving sub-400ms query responses with automated hallucination guardrail alerts.
+* Built a RAG deployment pipeline using FastAPI, KServe, and Qdrant vector database, serving sub-400ms query responses with automated hallucination guardrail alerts.
 * Integrated Langfuse and Prometheus to monitor LLM token cost, retrieval accuracy, and response quality metrics across production traffic.
 
 #### Project 4: Automated ML Drift Monitoring & Retraining System
@@ -310,12 +310,12 @@ Based on analysis of 50+ public MLOps/ML Platform JDs (June 2026):
 | **Infrastructure** | Kubernetes, Docker, Helm, Linux | ArgoCD, GitOps, EKS/GKE, HPA | Multi-tenant K8s, Slurm, GPU scheduling |
 | **CI/CD** | CI/CD, GitHub Actions, Git | GitLab CI, Canary Deployment, Argo Workflows | Model validation gates, Continuous Training (CT) |
 | **MLOps** | MLflow, Model Registry, Airflow | Kubeflow, DVC, Feast, Feature Store, W&B | Model Governance, Lineage, Great Expectations |
-| **Serving** | REST APIs, Python, FastAPI, Model Deployment | Triton, gRPC, ONNX Runtime, KServe | vLLM, TensorRT, INT8 Quantization, Dynamic Batching |
+| **Serving** | REST APIs, Python, FastAPI, Model Deployment | BentoML, gRPC, ONNX Runtime, KServe | TorchServe, TensorRT, INT8 Quantization, Dynamic Batching |
 | **Monitoring** | Prometheus, Grafana, Logging | Data Drift, OpenTelemetry, Evidently AI | PSI/KL Divergence, SLO/SLI, Langfuse |
 | **Cloud** | AWS/GCP/Azure, S3, IAM | SageMaker, Vertex AI, Terraform | CloudFormation/CDK, Lambda, Multi-region |
 | **Data** | SQL, Data Pipelines | Spark, Kafka, PostgreSQL, Redis | Feature Engineering, Streaming ML |
 | **ML** | PyTorch, Model Training | TensorFlow, Scikit-Learn, XGBoost | Ray, DeepSpeed, FSDP, LoRA |
-| **LLMOps** | (Emerging) | RAG, LangChain, Vector Database | vLLM, Prompt Versioning, Guardrails, Agentic AI |
+| **LLMOps** | (Emerging) | RAG, LangChain, Vector Database | KServe, Prompt Versioning, Guardrails, Agentic AI |
 
 > **Source:** Google Careers, Amazon Jobs, Meta Careers, NVIDIA Careers, Databricks Careers, Flipkart Careers (June 2026)
 
@@ -341,7 +341,7 @@ Maintain 4–5 resume variants tailored for different role types:
 
 **Emphasis:** Model training infrastructure, distributed training, inference optimization, GPU management
 
-**Skills to front-load:** PyTorch, ONNX, Triton/vLLM, Kubernetes, Ray, Spark
+**Skills to front-load:** PyTorch, ONNX, KServe/BentoML, Kubernetes, Ray, Spark
 
 **Summary lead:** "Machine Learning Engineer with 2 years building scalable training and inference infrastructure..."
 
@@ -402,103 +402,114 @@ Maintain 4–5 resume variants tailored for different role types:
 
 ## 12. Sample Resume Template
 
-> **Note:** This template uses placeholder data. Replace with your actual information.
+> **Note:** Grounded in `AGENTS.md §9` and `01_FACT_MATRIX.md` canonical employment and verified public repositories.
 
 ```markdown
 # LAVKUSH KUMAR
 Bangalore, India | +91-9122036484 | lav84095@gmail.com
-linkedin.com/in/lavkush-kumar | GitHub.com/lavkushry
+https://www.linkedin.com/in/lavkushry/ | https://github.com/lavkushry
 
 ---
 
 ### PROFESSIONAL SUMMARY
-MLOps Engineer with 2 years of experience architecting containerized model
-serving infrastructure, automated CI/CD pipelines, and ML observability stacks.
-Reduced model deployment lead time from 7 days to 3 hours for 15+ production
-microservices on AWS and Kubernetes. Proficient in Python, Docker, K8s (EKS),
-MLflow, Airflow, Prometheus, FastAPI, and Terraform.
+Platform, DevOps & MLOps Infrastructure Engineer with 2.5 years of experience
+operating high-availability Kubernetes platforms, stateful data backbones, and
+automated CI/CD pipelines. Automated bare-metal cluster provisioning (83% faster
+bootstrap), disaster recovery (93% RTO reduction), and open-source AI agent
+security and data platform projects in Rust and Python.
 
 ---
 
 ### TECHNICAL SKILLS
-• Languages:         Python, Go, Bash, SQL
-• MLOps:             MLflow (Model Registry), Airflow, Kubeflow, DVC, Feast
-• Serving & APIs:    FastAPI, Triton Inference Server, vLLM, gRPC, ONNX Runtime
-• Containers & K8s:  Docker, Kubernetes (EKS), Helm, ArgoCD, GitOps
-• Cloud & IaC:       AWS (SageMaker, S3, ECR, IAM), GCP (Vertex AI), Terraform
-• Monitoring & CI/CD: Prometheus, Grafana, OpenTelemetry, GitHub Actions, ELK Stack
-• Data:              Apache Spark, Kafka, PostgreSQL, Redis, MinIO
-• ML Frameworks:     PyTorch, Scikit-Learn, XGBoost
+• Platform & K8s:     Kubernetes (kubeadm, AWS EKS), Docker, containerd, Helm, ArgoCD, Harbor
+• IaC & Automation:   Terraform (modular IaC, remote state), Ansible (40+ roles, Jinja2), Bash
+• CI/CD & Security:   Jenkins, GitLab CI, GitHub Actions, Trivy, SonarQube, Nginx/Kong
+• Observability:      Prometheus, Grafana, Alertmanager, ELK Stack (Grok, Kibana), Velero DR
+• Data & Streaming:   Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, pgvector, MinIO S3
+• Languages & Data:   Python (FastAPI, PySpark, PyTest), Rust, SQL, Databricks, Delta Lake, ADF
 
 ---
 
 ### PROFESSIONAL EXPERIENCE
 
-**MLOps Engineer** | CGI India | Bangalore, India
-*July 2024 – Present*
+**DevOps Engineer** | CGI India | Bangalore, India
+*Jun 2026 – Present*
 
-• Architected multi-tenant Kubernetes (EKS) infrastructure using Terraform and
-  Helm, hosting 12+ production ML microservices serving 1.2M+ daily prediction
-  requests with 99.95% uptime.
-• Engineered end-to-end ML CI/CD pipelines in GitHub Actions and ArgoCD,
-  automating linting, container security scanning, and canary rollouts to
-  eliminate manual deployment steps.
-• Implemented automated ML drift detection using Evidently AI and Airflow DAGs,
-  tracking prediction feature distributions to lower MTTD by 65%.
-• Designed a centralized model registry in MLflow, standardizing version
-  governance and artifact lineage across 25+ production model iterations.
-• Configured Kubernetes HPA based on custom GPU/memory metrics, maintaining
-  sub-75ms p99 latency during 3x traffic spikes while cutting idle spend by 28%.
+• Standardized multi-tenant AWS EKS container platform deployments using modular
+  Terraform and Ansible, establishing reproducible cluster baselines, node groups,
+  and IAM roles across 3 environments.
+• Engineered automated CI/CD pipelines in Jenkins and GitLab CI integrating
+  Trivy vulnerability scanning, container linting, and staging smoke tests.
+• Hardened cluster ingress and API gateway policies using Nginx Ingress and Kong
+  Gateway, and automated GitOps rollouts with ArgoCD and Helm charts.
 
-**Associate ML Platform Engineer** | HFCL Limited
-*July 2023 – June 2024*
+**Engineer 1 — DevOps / Platform Engineering** | HFCL Limited | Bangalore, India
+*Aug 2025 – Jun 2026*
 
-• Containerized 10+ ML models using multi-stage Docker builds, reducing
-  deployment artifact sizes by 50% and accelerating container startup.
-• Built async inference microservices using Python and FastAPI, handling 400+
-  API requests/second with average latency under 50ms.
-• Developed 15+ Airflow DAGs for automated data ingestion and model retraining,
-  eliminating manual weekly execution.
-• Integrated DVC with AWS S3, establishing dataset version control and exact
-  experiment reproducibility across 6 engineering team members.
-• Established production observability using Prometheus and Grafana, monitoring
-  API counts, latency, and hardware load to resolve incidents 40% faster.
+• Automated bare-metal Kubernetes (kubeadm) cluster lifecycle via 40+ Ansible
+  roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting cluster
+  bootstrap time from 2 days to 4 hours (83% reduction).
+• Operated a 50-node on-premise Kubernetes platform for 15+ distributed
+  microservices with namespace isolation, RBAC, and HPA, sustaining 99.95%
+  platform availability.
+• Orchestrated stateful cluster workloads (Kafka, Redis, PostgreSQL, TimescaleDB,
+  MongoDB) via StatefulSets; configured Velero DR and Prometheus/Grafana alerts,
+  slashing RTO from 8h to 30min (93%) and MTTR by 45%.
+• Standardized declarative Jenkins pipelines with Docker, Helm, SonarQube, and
+  Trivy security gates, doubling release frequency (2x) with zero-downtime rollouts.
+
+**Security Analyst Apprentice** | CGI India | Bangalore, India
+*Sep 2024 – Aug 2025*
+
+• Centralized multi-source log ingestion via the ELK Stack (Elasticsearch, Logstash,
+  Kibana), reducing root-cause investigation time by 35%.
+• Authored custom Logstash Grok patterns to parse unstructured syslog and
+  firewall/IDS telemetry, cutting log triage time by 45%.
+
+**Full Stack Developer Intern** | Stipe Solutions | Bangalore, India
+*Mar 2024 – Sep 2024*
+
+• Developed 30+ cross-platform mobile screens in React Native and Flutter with
+  RESTful API integrations and PostgreSQL optimization for 1,000+ daily active users.
 
 ---
 
 ### KEY PROJECTS
 
-**AegisAgent --- Zero-Trust Agent Security Gateway** | GitHub.com/lavkushry/AegisAgent
-*Tech: Rust, Cedar Policy Engine, Kubernetes, Helm, Python/TypeScript SDKs, GitHub Actions*
-• Architected a zero-trust API firewall and security gateway for AI agents using Rust and the Cedar Policy Engine, enforcing ABAC policies with sub-75ms latency.
-• Engineered Helm charts and containerized deployment pipelines, automating multi-tenant gateway rollouts on Kubernetes with 100% CI scan coverage in GitHub Actions.
+**AegisAgent — Zero-Trust AI Agent Security Gateway** | https://github.com/lavkushry/AegisAgent
+*Tech: Rust, Cedar Policy Engine, Kubernetes, Helm, Docker, GitHub Actions*
+• Architected a zero-trust API firewall and security gateway for AI agents in Rust and the Cedar Policy Engine, enforcing ABAC policies with sub-75ms evaluation latency.
+• Engineered production Kubernetes Helm charts (aegis-gateway), ServiceMonitors, and NetworkPolicies with reproducible GitHub Actions CI/SAST scanning.
 
-**MLOps Developer Platform Automation** | GitHub.com/lavkushry/mlops-platform-automation
-*Tech: FastAPI, React, WebSockets, Ansible, Terraform, Jenkins, Python*
-• Architected a self-service MLOps portal using FastAPI, React, and WebSockets, enabling developers to trigger infrastructure provisioning and training runbooks in under 2 minutes.
-• Integrated Ansible and Terraform automation into the FastAPI backend, implementing automated rollback logic that cut model validation failure recovery times by 70%.
+**Project Vulcan — Enterprise Automation Control Plane** | https://github.com/lavkushry/vulcan
+*Tech: Python, FastAPI, pgvector, Redis Redlock, MinIO S3, WebSockets*
+• Architected an infrastructure automation control plane in Python (FastAPI) with Redis Redlock distributed concurrency and MinIO S3 artifact storage.
+• Integrated semantic incident retrieval using PostgreSQL with pgvector (HNSW indexing) and WebSocket live log streaming, cutting SRE diagnostics under 2 minutes.
 
-**GenAI Observability & Monitoring Platform** | GitHub.com/lavkushry/genai-observability-platform
-*Tech: GitHub Actions, Docker, Prometheus, Grafana, Evidently AI, Slack API*
-• Engineered a containerized CI/CD workflow for LLM applications using GitHub Actions and multi-stage Docker builds, reducing container build times by 50% via caching.
-• Instrumented automated drift detection using Evidently AI and custom Python Prometheus exporters, triggering retraining workflows when feature drift exceeded a 15% threshold.
+**Azure Medallion Lakehouse Platform** | https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project
+*Tech: PySpark, Azure Databricks, Delta Lake, Azure Data Factory, ADLS Gen2*
+• Built an end-to-end Medallion Lakehouse (Bronze/Silver/Gold) on Azure Databricks, Delta Lake, and ADF, cutting batch ETL pipeline runtime by 35% with ACID schema validation.
 
 ---
 
 ### EDUCATION
-**B.Tech in Computer Science & Engineering**
-World College of Technology and Management, Gurgaon | 2023 | GPA: 8.4/10
+**B.Tech in Computer Science & Engineering** — World College of Technology and Management (MDU, Rohtak) | 2020 – 2023
+**Diploma in Computer Science Engineering** — Government Polytechnic, Patna-7 | 2016 – 2019
 
 ---
 
 ### CERTIFICATIONS
 • Microsoft Azure Fundamentals (AZ-900) (2025)
+• Microsoft Security Operations Analyst (SC-200) (2025)
 • Certified Kubernetes Administrator (CKA) – CNCF (In Progress)
 ```
 
 ---
 
 ## Changelog
+
+### Update: November 22, 2026
+- Purged broken vanity URLs, ghost repositories, unverified inference-serving claims, and synthetic sample role inflation; aligned §12 sample resume with `AGENTS.md §9` and `01_FACT_MATRIX.md`.
 
 ### Update: June 29, 2026
 
@@ -517,7 +528,7 @@ World College of Technology and Management, Gurgaon | 2023 | GPA: 8.4/10
 - Added distributed batch inference project (Project 5)
 - Added role-specific customization section with 5 variants
 - Updated ATS keyword map with 9 categories and 3-tier priority
-- Updated skills grid with 2026 tools (vLLM, Langfuse, Qdrant, Ray)
+- Updated skills grid with 2026 tools (KServe, Langfuse, Qdrant, Ray)
 - Added "Note" that sample resume uses placeholder data
 - Expanded common mistakes table (added AI-detection and "we" vs "I")
 - Added source citations throughout

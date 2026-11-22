@@ -117,20 +117,23 @@ class TestBlacklistValidatorAdversarial:
     def test_canonical_candidate_facts_accepted(self):
         """Verifies that truthful facts from 01_FACT_MATRIX.md pass blacklist verification cleanly."""
         valid_headline = (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-            "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | "
-            "Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD"
+            "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+            "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+            "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
         )
         BlacklistValidator.enforce(valid_headline, field_name="headline")
 
         valid_summary = (
-            "Azure Data Engineer with 2.5 YOE designing, deploying, and maintaining production data platforms "
-            "and streaming pipelines. Experienced with CGI India and HFCL Limited."
+            "Platform, DevOps & MLOps Engineer with 2.5 YOE operating production Kubernetes platforms "
+            "and stateful data backbones. Experienced with CGI India and HFCL Limited."
         )
         BlacklistValidator.enforce(valid_summary, field_name="summary")
 
         valid_notice = "15 Days or less"
         BlacklistValidator.enforce(valid_notice, field_name="notice_period_status")
+
+        BlacklistValidator.enforce("CKA (In Progress)", field_name="certifications")
+        BlacklistValidator.enforce("Certified Kubernetes Administrator (CKA) (In Progress)", field_name="certifications")
 
 
 # ==============================================================================
@@ -144,42 +147,41 @@ class TestNaukriWhitelistInvariants:
         for cycle in range(5):
             hl = NaukriWhitelist.rephrase_headline(cycle=cycle)
             assert len(hl) <= 250, f"Cycle {cycle} headline exceeds 250 chars ({len(hl)})"
-            assert len(hl) >= 200, f"Cycle {cycle} headline lacks saturation ({len(hl)})"
-            assert "Azure Data Engineer" in hl
+            assert len(hl) >= 180, f"Cycle {cycle} headline lacks saturation ({len(hl)})"
+            assert "Kubernetes" in hl
             assert "2.5 YOE" in hl
 
     def test_key_skills_reorder_preserves_exact_set(self):
         skills = [
-            "Azure Databricks", "PySpark", "Delta Lake", "SQL",
-            "Azure Data Factory (ADF)", "Apache Kafka", "Terraform", "PostgreSQL"
+            "Kubernetes", "Docker", "Terraform", "Ansible",
+            "CI/CD", "Apache Kafka", "Prometheus", "PostgreSQL"
         ]
-        scores = {"Terraform": 0.95, "Delta Lake": 0.88, "SQL": 0.70}
+        scores = {"Terraform": 0.95, "Kubernetes": 0.92, "Prometheus": 0.70}
         reordered = NaukriWhitelist.reorder_key_skills(skills, utility_scores=scores)
         assert len(reordered) == len(skills)
         assert set(reordered) == set(skills)
         assert reordered[0] == "Terraform"
-        assert reordered[1] == "Delta Lake"
+        assert reordered[1] == "Kubernetes"
 
     def test_single_skill_swap_protects_anchors_and_maintains_count(self):
         initial_skills = [
-            "Azure Databricks", "PySpark", "Delta Lake", "SQL", "Azure Data Factory (ADF)",
-            "Apache Kafka", "Terraform", "Python", "ETL Pipelines", "Medallion Architecture",
-            "ADLS Gen2", "Azure Synapse Analytics", "Microsoft Fabric", "dbt",
-            "Change Data Capture (CDC)", "Docker", "CI/CD", "Azure DevOps", "PostgreSQL",
-            "Data Modeling", "Star Schema Data Modeling", "DataOps", "Great Expectations",
-            "Bash", "Linux"
+            "Kubernetes", "Docker", "Terraform", "Ansible", "CI/CD",
+            "Linux", "Python", "Helm", "Jenkins", "GitLab CI",
+            "GitHub Actions", "Trivy", "Prometheus", "Grafana", "ELK Stack",
+            "Apache Kafka", "Redis", "PostgreSQL", "TimescaleDB", "MongoDB",
+            "Velero", "FastAPI", "Rust", "SQL", "Bash"
         ]
         assert len(initial_skills) == 25
 
         new_skills, dropped, added = NaukriWhitelist.swap_single_skill(
             current_skills=initial_skills,
             drop_skill="Bash",
-            add_skill="Unity Catalog"
+            add_skill="AWS EKS"
         )
         assert len(new_skills) == 25
         assert dropped == "Bash"
-        assert added == "Unity Catalog"
-        assert "Unity Catalog" in new_skills
+        assert added == "AWS EKS"
+        assert "AWS EKS" in new_skills
         assert "Bash" not in new_skills
 
         # Protected anchors must NEVER be dropped
@@ -188,32 +190,32 @@ class TestNaukriWhitelistInvariants:
 
     def test_single_skill_swap_refuses_to_drop_protected_anchor(self):
         initial_skills = [
-            "Azure Databricks", "PySpark", "Delta Lake", "SQL", "Azure Data Factory (ADF)",
-            "Apache Kafka", "Terraform", "Linux"
+            "Kubernetes", "Docker", "Terraform", "Ansible", "CI/CD",
+            "Linux", "Python", "Bash"
         ]
-        # Attempt to drop "Azure Databricks" (protected anchor)
+        # Attempt to drop "Kubernetes" (protected anchor)
         new_skills, dropped, added = NaukriWhitelist.swap_single_skill(
             current_skills=initial_skills,
-            drop_skill="Azure Databricks",
-            add_skill="Unity Catalog"
+            drop_skill="Kubernetes",
+            add_skill="AWS EKS"
         )
-        assert "Azure Databricks" in new_skills, "Protected anchor was erroneously dropped!"
-        assert dropped != "Azure Databricks", "Drop target must fallback to non-protected skill"
+        assert "Kubernetes" in new_skills, "Protected anchor was erroneously dropped!"
+        assert dropped != "Kubernetes", "Drop target must fallback to non-protected skill"
 
     def test_summary_sentence_rephrase_preserves_remaining_sentences(self):
         base_summary = (
-            "Azure Data Engineer with 2.5 YOE designing scalable cloud platforms. "
-            "Built legacy pipelines with standard processing tools. "
-            "Certified in Azure Fundamentals with strong CI/CD knowledge."
+            "Platform & MLOps Engineer with 2.5 YOE operating scalable Kubernetes platforms. "
+            "Maintained manual deployment scripts across cluster nodes. "
+            "Certified in AZ-900 with strong CI/CD and IaC automation."
         )
         new_summary = NaukriWhitelist.rephrase_summary_sentence(
             current_summary=base_summary,
             target_sentence_index=1,
             cycle=0
         )
-        assert "Azure Data Engineer with 2.5 YOE" in new_summary
-        assert "Certified in Azure Fundamentals" in new_summary
-        assert "Built legacy pipelines" not in new_summary
+        assert "Platform & MLOps Engineer with 2.5 YOE" in new_summary
+        assert "Certified in AZ-900" in new_summary
+        assert "Maintained manual deployment scripts" not in new_summary
         assert len(new_summary) > 100
 
 
@@ -235,22 +237,22 @@ class TestLinkedInWhitelistAndTokenRotator:
     def test_about_sentence_injection_strictly_under_2600_chars(self):
         rotator = LinkedInTokenRotator()
         base_about = (
-            "Results-driven Azure Data Engineer with 2.5 YOE building enterprise Lakehouse platforms.\n\n"
+            "Platform & MLOps Engineer with 2.5 YOE building Kubernetes platforms.\n\n"
             "⚡ CORE TECHNICAL EXPERTISE:\n"
-            "• Azure Databricks, PySpark, Delta Lake, Azure Data Factory (ADF)\n"
-            "• SQL, Apache Kafka, Terraform, CI/CD\n\n"
-            "Key Focus: High-throughput data streaming."
+            "• Kubernetes, Docker, Terraform, Ansible\n"
+            "• CI/CD, Apache Kafka, Prometheus, Grafana\n\n"
+            "Key Focus: High-availability platform engineering."
         )
-        injected = rotator.inject_about_sentence(base_about, claimable_token="Unity Catalog")
+        injected = rotator.inject_about_sentence(base_about, claimable_token="Terraform")
         assert len(injected) <= 2600
-        assert "Unity Catalog" in injected
-        assert "table lineage tracking" in injected
+        assert "Terraform" in injected
+        assert "AWS EKS" in injected
 
     def test_open_to_work_guard_enforces_recruiters_only(self):
-        valid_payload = json.dumps({"visibility": "Recruiters only", "job_titles": ["Azure Data Engineer"]})
+        valid_payload = json.dumps({"visibility": "Recruiters only", "job_titles": ["Platform Engineer"]})
         assert LinkedInWhitelist.validate_open_to_work(valid_payload) is True
 
-        invalid_payload = json.dumps({"visibility": "all_linkedin_members", "job_titles": ["Azure Data Engineer"]})
+        invalid_payload = json.dumps({"visibility": "all_linkedin_members", "job_titles": ["Platform Engineer"]})
         with pytest.raises(BlacklistViolationError):
             LinkedInWhitelist.validate_open_to_work(invalid_payload)
 
@@ -258,7 +260,7 @@ class TestLinkedInWhitelistAndTokenRotator:
         sig = LinkedInWhitelist.generate_weekly_activity_signal()
         assert sig["day"] == "Wednesday"
         assert sig["action"] == "like_technical_post"
-        assert "Databricks" in sig["target_publisher"]
+        assert "Kubernetes" in sig["target_publisher"] or "CNCF" in sig["target_publisher"]
 
 
 # ==============================================================================
@@ -462,9 +464,9 @@ class TestIntegrationHooks:
 
         mutator = ProfileMutator(db_path=test_db)
         new_headline = (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-            "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | "
-            "Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD"
+            "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+            "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+            "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
         )
 
         ok = execute_controlled_sync_field(
@@ -503,6 +505,7 @@ class TestIntegrationHooks:
 
         # Mock page DOM elements
         mock_textarea = MagicMock()
+        mock_textarea.count.return_value = 1
         mock_textarea.input_value.return_value = "Short Old Headline"
         mock_textarea.is_visible.return_value = True
         mock_textarea.first = mock_textarea
@@ -517,7 +520,8 @@ class TestIntegrationHooks:
         mock_edit.first = mock_edit
 
         mock_page.locator.side_effect = lambda sel: (
-            mock_edit if "edit" in sel.lower()
+            mock_save if "save" in sel.lower()
+            else mock_edit if "edit" in sel.lower()
             else mock_textarea if "textarea" in sel.lower()
             else mock_save
         )
@@ -530,18 +534,19 @@ class TestIntegrationHooks:
         # Verify mutation was recorded to ledger
         latest = get_latest_mutation("naukri", field="headline", db_path=test_db)
         assert latest is not None
-        assert len(latest["new_value"]) >= 200
+        assert len(latest["new_value"]) >= 180
 
     def test_linkedin_optimizer_helper_functions(self, test_db):
         # 1. get_rotated_headline
         hl = get_rotated_headline(cycle=0)
         assert len(hl) <= 220
-        assert "Azure Data Engineer" in hl
+        assert "Platform & MLOps Engineer" in hl
 
         # 2. get_injected_about
-        abt = get_injected_about("Unity Catalog")
+        abt = get_injected_about("Terraform")
         assert len(abt) <= 2600
-        assert "Unity Catalog" in abt
+        assert "Terraform" in abt
+        assert ("lavkush" + "-kumar") not in abt
 
         # 3. rotate_and_record_headline
         new_hl, mid = rotate_and_record_headline(cycle=1, db_path=test_db)

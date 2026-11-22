@@ -1,22 +1,22 @@
 \documentclass[a4paper,10pt]{article}
 
 % ─── PACKAGES ─────────────────────────────────────────────────────────────────
-\usepackage[a4paper,left=0.45in,right=0.45in,top=0.38in,bottom=0.38in]{geometry}
+\usepackage[a4paper,left=0.45in,right=0.45in,top=0.36in,bottom=0.36in]{geometry}
 \usepackage{titlesec}
 \usepackage{enumitem}
 \usepackage[hidelinks]{hyperref}
 \usepackage{fancyhdr}
 \usepackage[english]{babel}
 \usepackage{xcolor}
-\usepackage[T1]{fontenc}
-\usepackage{iftex}
-\usepackage{microtype}
-
-\ifpdftex
-  \input{glyphtounicode}
-  \pdfgentounicode=1
-  \DisableLigatures{encoding = *, family = *}
-\fi
+\usepackage{fontspec}
+\defaultfontfeatures{Kerning=Off}
+\setmainfont{lmroman10-regular}[
+  Extension = .otf,
+  BoldFont = lmroman10-bold,
+  ItalicFont = lmroman10-italic,
+  BoldItalicFont = lmroman10-bolditalic,
+  Kerning = Off
+]
 
 % ─── COLOR DEFINITIONS ────────────────────────────────────────────────────────
 \definecolor{navy}{RGB}{17, 53, 93}
@@ -33,7 +33,7 @@
 \titleformat{\section}{%
   \color{navy}\fontsize{10.2pt}{11pt}\bfseries\raggedright%
 }{}{0pt}{}[\color{accent}\titlerule]
-\titlespacing*{\section}{0pt}{3.5pt}{1.5pt}
+\titlespacing*{\section}{0pt}{3.2pt}{1.5pt}
 
 % ─── COMMANDS ─────────────────────────────────────────────────────────────────
 \newcommand{\resumeItem}[1]{\item\small{#1}}
@@ -49,7 +49,7 @@
   #1 \hfill \textbf{\small\color{soft}#2}\vspace{-1pt}
 }
 
-\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, noitemsep, topsep=0pt, parsep=2pt, partopsep=0pt]}
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, noitemsep, topsep=0pt, parsep=1.8pt, partopsep=0pt]}
 \newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
 \newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=0.15in, label={\textcolor{accent}{\small\textbullet}}, noitemsep, topsep=1pt, parsep=0pt, partopsep=0pt]}
 \newcommand{\resumeItemListEnd}{\end{itemize}}
@@ -61,29 +61,28 @@
 \begin{center}
   {\fontsize{19}{21}\selectfont\bfseries\color{navy} Lavkush Kumar}\\[2.5pt]
   \small\color{soft}
-  Hyderabad, India \;\textbar\; 
-  \href{tel:+919122036484}{\color{accent}+91-9122036484} \;\textbar\; 
-  \href{mailto:lav84095@gmail.com}{\color{accent}lav84095@gmail.com} \;\textbar\; 
-  \href{https://linkedin.com/in/lavkush-kumar}{\color{accent}linkedin.com/in/lavkush-kumar} \;\textbar\; 
-  \href{https://github.com/lavkush-kumar}{\color{accent}github.com/lavkush-kumar}
+  Bangalore, India \;\textbar\;
+  \href{tel:+919122036484}{\color{accent}+91-9122036484} \;\textbar\;
+  \href{mailto:lav84095@gmail.com}{\color{accent}lav84095@gmail.com} \;\textbar\;
+  \href{https://www.linkedin.com/in/lavkushry/}{\color{accent}linkedin.com/in/lavkushry} \;\textbar\;
+  \href{https://github.com/lavkushry}{\color{accent}github.com/lavkushry}
 \end{center}
 \vspace{-6pt}
 
 %-----------SUMMARY-----------
 \section{PROFESSIONAL SUMMARY}
 \small\color{black}
-\textbf{Platform Engineer specializing in ML Platform and AI Infrastructure} with \textbf{2.5+ years} of experience operating high-availability Kubernetes platforms, scalable data streaming, and CI/CD pipelines. Pro{f}icient in \textbf{Kubernetes (kubeadm, EKS), Terraform, Ansible, Jenkins, Prometheus, and Apache Kafka}. Track record of automating bare-metal clusters (\textbf{83\% faster bootstrap}), stateful data backbones (\textbf{93\% RTO reduction}), and open-source AI agent security control planes in \textbf{Rust} and \textbf{Python}.
+\textbf{Platform, DevOps \& MLOps Infrastructure Engineer} with \textbf{2.5 years} of experience operating high-availability Kubernetes platforms, stateful data backbones, and automated CI/CD pipelines. Proficient in \textbf{Kubernetes (kubeadm, EKS), Terraform, Ansible, ArgoCD, Jenkins, Prometheus, and Apache Kafka}. Proven track record automating bare-metal clusters (\textbf{83\% faster bootstrap}), disaster recovery (\textbf{93\% R\mbox{}TO reduction}), and building open-source AI infrastructure and data platforms in \textbf{Rust} and \textbf{Python}.
 
 %-----------SKILLS-----------
 \section{TECHNICAL SKILLS}
-\begin{itemize}[leftmargin=0.0in, label={}, noitemsep, topsep=0.5pt, parsep=1.2pt, partopsep=0pt]
+\begin{itemize}[leftmargin=0.0in, label={}, noitemsep, topsep=0.5pt, parsep=1.0pt, partopsep=0pt]
   \item \small \textbf{\color{navy}Platform \& Orchestration:} Kubernetes (kubeadm, AWS EKS), Docker, containerd, Helm, ArgoCD (GitOps), Harbor Registry
-  \item \small \textbf{\color{navy}Infrastructure as Code:} Terraform (modular architecture, remote state), Ansible (40+ roles, Jinja2), Bash, YAML
-  \item \small \textbf{\color{navy}CI/CD \& Security:} Jenkins (declarative), GitLab CI, GitHub Actions, Trivy container scanning, SonarQube, RBAC
+  \item \small \textbf{\color{navy}Infrastructure as Code:} Terraform (modular IaC, remote state), Ansible (40+ roles, Jinja2), Bash, YAML
+  \item \small \textbf{\color{navy}CI/CD \& Security:} Jenkins (declarative), GitLab CI, GitHub Actions, Trivy container scanning, SonarQube, RBAC, Nginx/Kong
   \item \small \textbf{\color{navy}Observability \& SRE:} Prometheus, Grafana, Alertmanager, ELK Stack (Elasticsearch, Logstash Grok, Kibana), Velero DR
-  \item \small \textbf{\color{navy}Data \& Distributed Systems:} Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, pgvector (HNSW), MinIO S3
-  \item \small \textbf{\color{navy}Languages \& Frameworks:} Python (FastAPI, AsyncIO, PyTest), Rust, SQL, Jinja2, RESTful APIs, WebSockets
-  \item \small \textbf{\color{navy}ML \& AI Infrastructure:} ML{f}low (Model Registry, Lineage), Model Serving APIs, Vector Indexing, Cedar Policy Engine
+  \item \small \textbf{\color{navy}Data \& Streaming Systems:} Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB, pgvector (HNSW), MinIO S3
+  \item \small \textbf{\color{navy}Languages \& Data/AI Tooling:} Python (FastAPI, PySpark, PyTest), Rust, SQL, Databricks, Delta Lake, ADF, MLflow, Cedar Policy
 \end{itemize}
 
 %-----------EXPERIENCE-----------
@@ -91,37 +90,37 @@
 \resumeSubHeadingListStart
 
   \resumeSubheading
-    {\href{https://www.cgi.com}{\color{navy}CGI India (Client: PNC Bank GCC)}}{Jun 2026 -- Present}
-    {DevOps Engineer (Contractor --- Cloud Infra \& Kubernetes)}{Hyderabad, India}
+    {\href{https://www.cgi.com}{\color{navy}CGI India}}{Jun 2026 -- Present}
+    {DevOps Engineer}{Bangalore, India}
   \resumeItemListStart
-    \resumeItem{\textbf{Provisioned} multi-tenant AWS EKS cluster infrastructure using Terraform modules and Ansible, establishing reproducible VPC peering, IAM roles, and auto-scaling node groups across environments.}
-    \resumeItem{\textbf{Engineered} declarative Jenkins and GitLab CI pipelines with Trivy container scanning and automated quality gates, cutting deployment lead time by \textbf{40\%}.}
-    \resumeItem{\textbf{Hardened} ingress routing using Nginx Ingress and Kong Gateway with rate-limiting and mTLS, slashing gateway latency overhead by \textbf{15\%} across \textbf{8} production microservices.}
+    \resumeItem{\textbf{Standardized} multi-tenant AWS EKS container platform deployments using modular Terraform and Ansible, establishing reproducible cluster baselines, auto-scaling node groups, and IAM roles across 3 environments.}
+    \resumeItem{\textbf{Engineered} automated CI/CD pipelines in Jenkins and GitLab CI with Trivy vulnerability scanning, container linting, and staging smoke tests, eliminating manual release gates.}
+    \resumeItem{\textbf{Hardened} cluster ingress and API gateway policies using Nginx Ingress and Kong Gateway (rate-limiting, TLS termination), and automated GitOps rollouts with ArgoCD and Helm charts.}
   \resumeItemListEnd
 
   \resumeSubheading
     {\href{https://www.hfcl.com}{\color{navy}HFCL Limited}}{Aug 2025 -- Jun 2026}
-    {Engineer 1 --- DevOps / Platform Engineering (Platform Automation \& Reliability)}{Bangalore, India}
+    {Engineer 1 --- DevOps / Platform Engineering}{Bangalore, India}
   \resumeItemListStart
     \resumeItem{\textbf{Automated} bare-metal Kubernetes (kubeadm) cluster lifecycle via 40+ Ansible roles and Jinja2 templates (OS hardening, CNI, Harbor, Helm), cutting bootstrap time \textbf{from 2 days to 4 hours (83\% reduction)}.}
-    \resumeItem{\textbf{Operated} a 50-node on-premise Kubernetes platform for 15+ mission-critical microservices with namespace isolation, RBAC, and HPA, sustaining \textbf{99.95\% platform availability}.}
-    \resumeItem{\textbf{Orchestrated} stateful cluster workloads (Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; con{f}igured Velero DR and Prometheus/Grafana alerts, slashing \textbf{RTO from 8h to 30min (93\%)} and \textbf{MTTR by 45\%}.}
-    \resumeItem{\textbf{Standardized} declarative Jenkins pipelines with Docker, Helm, and Trivy security gates, enabling zero-downtime rolling updates and doubling release frequency (\textbf{2x}).}
+    \resumeItem{\textbf{Operated} a 50-node on-premise Kubernetes platform for 15+ distributed microservices with namespace isolation, RBAC, and HPA, sustaining \textbf{99.95\% platform availability}.}
+    \resumeItem{\textbf{Orchestrated} stateful cluster workloads (Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes via StatefulSets; configured Velero DR and Prometheus/Grafana alerts, slashing \textbf{R\mbox{}TO from 8h to 30min (93\%)} and \textbf{MTTR by 45\%}.}
+    \resumeItem{\textbf{Standardized} declarative Jenkins pipelines with Docker, Helm, SonarQube, and Trivy security gates, enabling zero-downtime rolling updates and doubling release frequency (\textbf{2x}).}
   \resumeItemListEnd
 
   \resumeSubheading
     {\href{https://www.cgi.com}{\color{navy}CGI India}}{Sep 2024 -- Aug 2025}
-    {Security Analyst Apprentice (Log Analytics \& Observability)}{Hyderabad, India}
+    {Security Analyst Apprentice}{Bangalore, India}
   \resumeItemListStart
-    \resumeItem{\textbf{Deployed} centralized log pipelines via the ELK Stack (Elasticsearch, Logstash, Kibana), building operational dashboards and query {f}ilters that reduced root-cause investigation time by \textbf{35\%}.}
-    \resumeItem{\textbf{Authored} custom Logstash Grok patterns to parse unstructured syslog and network telemetry into structured JSON schemas, accelerating incident triage by \textbf{50\%}.}
+    \resumeItem{\textbf{Centralized} multi-source log ingestion via the ELK Stack (Elasticsearch, Logstash, Kibana), building operational dashboards and query filters that reduced root-cause investigation time by \textbf{35\%}.}
+    \resumeItem{\textbf{Authored} custom Logstash Grok patterns to parse high-volume unstructured syslog and firewall/IDS telemetry into structured schemas, cutting log triage time by \textbf{45\%}.}
   \resumeItemListEnd
 
   \resumeSubheading
     {Stipe Solutions}{Mar 2024 -- Sep 2024}
-    {Full Stack Developer Intern (Mobile \& Web Engineering)}{Bangalore, India}
+    {Full Stack Developer Intern}{Bangalore, India}
   \resumeItemListStart
-    \resumeItem{\textbf{Developed} 30+ production mobile screens and UI components using React Native and F{l}utter, integrating RESTful APIs and state management for \textbf{1,000+ daily active users}.}
+    \resumeItem{\textbf{Developed} 30+ cross-platform mobile screens using React Native and Flutter with RESTful API integrations and PostgreSQL query optimization for \textbf{1,000+ daily active users}.}
   \resumeItemListEnd
 
 \resumeSubHeadingListEnd
@@ -131,36 +130,38 @@
 \resumeSubHeadingListStart
 
   \resumeProjectHeading
-    {\href{https://github.com/lavkush-kumar/AegisAgent}{\textbf{\color{navy}AegisAgent --- Zero-Trust AI Agent Security Gateway}} \;$|$\; \textit{\small Rust, Cedar Policy Engine, Kubernetes, Helm, Docker}}{2026}
+    {\href{https://github.com/lavkushry/AegisAgent}{\textbf{\color{navy}AegisAgent --- Zero-Trust AI Agent Security Gateway}} \;$|$\; \textit{\small Rust, Cedar Policy Engine, Kubernetes, Helm, Docker}}{2026}
   \resumeItemListStart
     \resumeItem{\textbf{Architected} an open-source zero-trust security gateway for AI agents in Rust, integrating the Cedar Policy Engine to enforce ABAC over MCP tool invocations with \textbf{sub-75ms policy evaluation}.}
-    \resumeItem{\textbf{Engineered} production Kubernetes Helm charts (aegis-gateway), ServiceMonitors, and NetworkPolicies, containerizing agent cages with reproducible GitHub Actions CI/SAST pipelines ensuring \textbf{100\%} scan coverage.}
+    \resumeItem{\textbf{Engineered} production Kubernetes Helm charts (aegis-gateway), ServiceMonitors, and NetworkPolicies with reproducible GitHub Actions CI/SAST pipelines ensuring \textbf{100\%} scan coverage.}
   \resumeItemListEnd
 
   \resumeProjectHeading
-    {\href{https://github.com/lavkush-kumar/vulcan}{\textbf{\color{navy}Project Vulcan --- Enterprise Automation Control Plane}} \;$|$\; \textit{\small Python, FastAPI, pgvector, Redis Redlock, MinIO S3, WebSockets}}{2025}
+    {\href{https://github.com/lavkushry/vulcan}{\textbf{\color{navy}Project Vulcan --- Enterprise Automation Control Plane}} \;$|$\; \textit{\small Python, FastAPI, pgvector, Redis Redlock, MinIO S3}}{2025}
   \resumeItemListStart
     \resumeItem{\textbf{Architected} an infrastructure control plane in Python (FastAPI), implementing distributed locking via Redis Redlock and decoupled MinIO S3 storage to eliminate runbook race conditions.}
-    \resumeItem{\textbf{Integrated} semantic incident retrieval using PostgreSQL with pgvector (HNSW indexing) and WebSocket live log streaming, cutting SRE incident diagnostics down to \textbf{under 2 minutes} per task.}
+    \resumeItem{\textbf{Integrated} semantic incident retrieval using PostgreSQL with pgvector (HNSW indexing) and WebSocket live log streaming, cutting SRE diagnostics down to \textbf{under 2 minutes} per task.}
+  \resumeItemListEnd
+
+  \resumeProjectHeading
+    {\href{https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project}{\textbf{\color{navy}Azure Medallion Lakehouse Platform}} \;$|$\; \textit{\small PySpark, Azure Databricks, Delta Lake, ADF, ADLS Gen2}}{2026}
+  \resumeItemListStart
+    \resumeItem{\textbf{Built} an end-to-end Medallion Lakehouse (Bronze/Silver/Gold) on Azure Databricks, Delta Lake, and ADF, optimizing PySpark batch transformations to cut ETL runtime by \textbf{35\%} with ACID schema validation.}
   \resumeItemListEnd
 
 \resumeSubHeadingListEnd
 
 %-----------EDUCATION-----------
 \section{EDUCATION}
-\resumeSubHeadingListStart
-  \resumeSubheading
-    {World College of Technology and Management}{Gurgaon, India}
-    {B.Tech in Computer Science \& Engineering}{Jun 2020 -- May 2023}
-  \resumeSubheading
-    {Government Polytechnic, Patna-7}{Patna, India}
-    {Diploma in Computer Science Engineering}{Jul 2016 -- Jun 2019}
-\resumeSubHeadingListEnd
+\begin{itemize}[leftmargin=0.0in, label={}, noitemsep, topsep=0.5pt, parsep=0.5pt, partopsep=0pt]
+  \item \small \textbf{\color{navy}B.T\mbox{}ech in Computer Science \& Engineering} --- World College of Technology and Management (MDU, Rohtak) \hfill \textit{\small\color{soft}2020 -- 2023}
+  \item \small \textbf{\color{navy}Diploma in Computer Science Engineering} --- Government Polytechnic, Patna-7 \hfill \textit{\small\color{soft}2016 -- 2019}
+\end{itemize}
 
 %-----------CERTIFICATIONS-----------
 \section{CERTIFICATIONS}
 \begin{itemize}[leftmargin=0.15in, label={\textcolor{accent}{\small\textbullet}}, noitemsep, topsep=0.5pt, parsep=0pt, partopsep=0pt]
-  \item \textbf{Microsoft Azure Fundamentals (AZ-900)} (2025) \;\textbar\; \textbf{Microsoft Security Operations Analyst (SC-200)} (2025) \;\textbar\; \textbf{Certi{f}ied Kubernetes Administrator (CKA)} \textit{--- CNCF (In Progress, Expected 2026)}
+  \item \small \textbf{Microsoft Azure Fundamentals (AZ-900)} (2025) \;\textbar\; \textbf{Microsoft SC-200} (2025) \;\textbar\; \textbf{Certified Kubernetes Administrator (CKA)} \textit{--- CNCF (In Progress)}
 \end{itemize}
 
 \end{document}

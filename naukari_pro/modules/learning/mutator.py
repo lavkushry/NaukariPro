@@ -161,10 +161,10 @@ class BlacklistValidator:
         re.compile(r"(?i)\b(?:stanford|harvard|mit|iit|bits\s+pilani|iim)\b"),
     ]
 
-    # 6. Unverified Certifications: Only AZ-900 & Databricks Associate (pursuing).
+    # 6. Unverified Certifications: Only AZ-900, SC-200 & CKA (In Progress/Pursuing).
     FORBIDDEN_CERT_PATTERNS: List[re.Pattern] = [
         re.compile(r"(?i)\b(?:aws\s+(?:certified\s+)?solutions\s+architect\s+professional|sap-c0\d)\b"),
-        re.compile(r"(?i)\b(?:cka|certified\s+kubernetes\s+administrator)\b"),
+        re.compile(r"(?i)(?:\bcertified\s+kubernetes\s+administrator\b|\bcka\b)(?!\s*(?:\(\s*cka\s*\)|[\(\)\]—:\-]|cncf|\s)*(?:in\s+progress|pursuing|preparing)\b)"),
         re.compile(r"(?i)\b(?:gcp\s+(?:professional\s+)?cloud\s+architect)\b"),
     ]
 
@@ -447,79 +447,79 @@ class NaukriWhitelist:
 
     # Core skills that must NEVER be dropped
     PROTECTED_ANCHORS = {
-        "Azure Databricks",
-        "PySpark",
-        "Delta Lake",
-        "SQL",
-        "Azure Data Factory (ADF)",
-        "Apache Kafka",
-        "Terraform"
+        "Kubernetes",
+        "Docker",
+        "Terraform",
+        "Ansible",
+        "CI/CD",
+        "Linux",
+        "Python"
     }
 
     # High-value candidate skills from 01_FACT_MATRIX.md validated pool
     VALIDATED_SKILL_POOL = [
-        "Unity Catalog",
-        "dbt",
-        "Microsoft Fabric",
-        "Change Data Capture (CDC)",
-        "Great Expectations",
-        "PostgreSQL",
-        "TimescaleDB",
-        "Redis",
-        "Ansible",
-        "Kubernetes (EKS)"
+        "AWS EKS",
+        "Helm",
+        "ArgoCD",
+        "Jenkins",
+        "GitLab CI",
+        "Prometheus",
+        "Grafana",
+        "ELK Stack",
+        "Apache Kafka",
+        "Redis"
     ]
 
     # Reserve candidate skills from 01_FACT_MATRIX.md for fallback and pool saturation prevention
     RESERVE_SKILL_POOL = [
-        "Python",
-        "Docker",
-        "Linux",
-        "CI/CD",
-        "Git",
-        "Azure DevOps",
-        "Snowflake",
-        "ADLS Gen2",
-        "Azure Synapse Analytics",
-        "ETL Pipelines",
-        "Data Modeling",
-        "Data Warehousing",
-        "Data Lakehouse",
-        "Airflow",
-        "REST APIs",
-        "Bash",
-        "FastAPI",
-        "Prometheus",
-        "Grafana",
-        "ELK Stack",
+        "PostgreSQL",
+        "TimescaleDB",
         "MongoDB",
+        "Velero",
         "Harbor",
         "Nginx Ingress",
         "Kong Gateway",
+        "Trivy",
+        "SonarQube",
+        "GitHub Actions",
+        "FastAPI",
+        "Rust",
+        "pgvector",
+        "MinIO",
+        "MLflow",
+        "PySpark",
+        "Azure Databricks",
+        "Delta Lake",
+        "Azure Data Factory",
+        "SQL",
+        "Bash",
+        "Git",
+        "REST APIs",
+        "containerd",
     ]
 
     HEADLINE_TEMPLATES = [
         (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · "
-            "Azure Data Factory (ADF) · SQL · Apache Kafka · Terraform · Medallion Architecture | "
-            "Certified AZ-900 · Databricks Associate (Pursuing) | 2.5 YOE Cloud Data Platforms & CI/CD"
+            "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+            "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+            "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
         ),
         (
-            "Azure Data Engineer | PySpark · Azure Databricks · Delta Lake · ADF · "
-            "Kafka · Terraform · Unity Catalog | Medallion Lakehouse (2M+ events/day) | "
-            "Certified AZ-900 | 2.5 YOE | Immediate – 15 Days Notice"
+            "MLOps & DevOps Engineer | Kubernetes · Docker · Terraform · Ansible · "
+            "Jenkins · GitLab CI · ArgoCD · Prometheus · Kafka · Python | "
+            "50-Node K8s & AI Infra | AZ-900 · CKA (In Progress) | 2.5 YOE | 15 Days Notice"
         ),
         (
-            "Azure Data Engineer | Azure Databricks · PySpark · Delta Lake · Azure Data Factory · "
-            "Apache Kafka · Terraform · dbt · CDC | Enterprise Lakehouse Architecture | "
-            "AZ-900 Certified | 2.5 YOE | Immediate – 15 Days Notice"
+            "Platform & AI Infrastructure Engineer | Kubernetes (EKS, kubeadm) · Helm · "
+            "Terraform · Ansible · CI/CD · Velero · Prometheus · Grafana · Kafka · Rust | "
+            "2.5 YOE | AZ-900 · CKA (In Progress) | Immediate – 15 Days Notice"
         )
     ]
 
     SUMMARY_SENTENCE_TEMPLATES = [
-        "Engineered scalable Medallion Architecture lakehouse pipelines processing 2M+ daily streaming and batch events with 99.9% reliability.",
-        "Architected automated data quality verification suites and table governance policies using Unity Catalog and Great Expectations.",
-        "Provisioned immutable cloud data infrastructure and automated deployment workflows using Terraform, GitHub Actions, and Azure DevOps."
+        "Automated 50-node bare-metal kubeadm Kubernetes lifecycle via 40+ Ansible roles, cutting cluster bootstrap time from 2 days to 4 hours (83% reduction).",
+        "Orchestrated stateful distributed backbones (Apache Kafka, Redis, PostgreSQL, TimescaleDB, MongoDB) on Kubernetes with Velero DR, cutting RTO from 8h to 30min (93%) and MTTR by 45%.",
+        "Built open-source AI infrastructure and data platform projects including AegisAgent (Rust/Cedar <75ms policy eval), Project Vulcan (FastAPI/pgvector), and Azure Medallion Lakehouse."
     ]
 
     @classmethod
@@ -624,7 +624,7 @@ class NaukriWhitelist:
     ) -> str:
         """Replaces a single sentence in the summary from approved templates, ensuring 500-1500 chars."""
         if not current_summary:
-            base = "Azure Data Engineer with 2.5 YOE designing production data platforms. " + cls.SUMMARY_SENTENCE_TEMPLATES[0]
+            base = "Platform, DevOps & MLOps Infrastructure Engineer with 2.5 YOE operating production Kubernetes platforms. " + cls.SUMMARY_SENTENCE_TEMPLATES[0]
             return base
 
         sentences = re.split(r"(?<=[.!?])\s+", current_summary.strip())
@@ -656,27 +656,27 @@ class LinkedInTokenRotator:
     MAX_ABOUT_CHARS = 2600
 
     PRIMARY_TOKENS = [
-        "Azure Data Engineer",
-        "Azure Databricks",
-        "PySpark",
-        "Delta Lake",
-        "Azure Data Factory (ADF)",
-        "SQL",
-        "Apache Kafka",
+        "Platform & MLOps Engineer",
+        "Kubernetes (EKS/kubeadm)",
+        "Docker",
+        "Terraform",
+        "Ansible",
+        "CI/CD",
+        "Prometheus",
         "Immediate – 15 Days Notice"
     ]
 
     SECONDARY_POOL = [
-        "Terraform",
-        "Medallion Lakehouse",
-        "ADLS Gen2",
-        "CI/CD",
-        "Unity Catalog",
-        "dbt",
-        "Great Expectations",
-        "Change Data Capture (CDC)",
-        "Microsoft Fabric",
-        "Kubernetes (EKS)"
+        "AWS EKS",
+        "Helm",
+        "ArgoCD",
+        "Jenkins",
+        "GitLab CI",
+        "Apache Kafka",
+        "Redis",
+        "ELK Stack",
+        "Python",
+        "Grafana"
     ]
 
     def __init__(self, secondary_pool: Optional[List[str]] = None):
@@ -718,15 +718,15 @@ class LinkedInTokenRotator:
         Guarantees total character length remains <= 2,600 chars.
         """
         sentence_templates = {
-            "Unity Catalog": "Implemented fine-grained data governance, access controls, and table lineage tracking using Unity Catalog across Lakehouse environments.",
-            "dbt": "Developed modular SQL data transformation models and automated documentation with dbt, enforcing consistent data modeling standards.",
-            "Great Expectations": "Configured automated data quality test suites using Great Expectations, preventing malformed records from entering production Gold tables.",
-            "Change Data Capture (CDC)": "Architected low-latency Change Data Capture (CDC) streaming pipelines, reducing transactional replication lag to under 30 seconds."
+            "Terraform": "Standardized multi-tenant AWS EKS infrastructure and cluster baselines using modular Terraform and Ansible across environments.",
+            "ArgoCD": "Automated declarative GitOps deployment synchronization and rollback policies using ArgoCD and Helm charts.",
+            "Velero": "Configured Velero disaster recovery and StatefulSet backups across Kafka, Redis, and PostgreSQL, cutting RTO from 8h to 30min.",
+            "Apache Kafka": "Orchestrated stateful Apache Kafka, Redis, and TimescaleDB workloads on a 50-node Kubernetes platform sustaining 99.95% availability."
         }
 
         injection_sentence = sentence_templates.get(
             claimable_token,
-            f"Engineered production-grade data pipelines leveraging {claimable_token} to accelerate analytics throughput."
+            f"Engineered production-grade platform automation leveraging {claimable_token} across Kubernetes and CI/CD pipelines."
         )
 
         BlacklistValidator.enforce(injection_sentence, field_name="linkedin_about_sentence")
@@ -779,7 +779,7 @@ class LinkedInWhitelist:
         """Generates the single light weekly activity signal payload for Wednesday."""
         return {
             "action": "like_technical_post",
-            "target_publisher": "Databricks / Microsoft Azure Engineering",
+            "target_publisher": "CNCF / Kubernetes & MLOps Engineering",
             "day": "Wednesday",
             "time_window": "14:00-16:00 IST",
             "approved": True

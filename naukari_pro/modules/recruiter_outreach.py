@@ -1,6 +1,6 @@
 """
 naukariPro Recruiter Outreach Engine & CRM Tracker
-Target: 5 Recruiter Calls Per Day for ₹25 LPA Azure Data Engineer Opportunities.
+Target: 5 Recruiter Calls Per Day for ₹20-25 LPA Platform / DevOps / MLOps & AI Infrastructure Opportunities.
 Operationalizes outreach template generation, CRM tracking in outreach_tracker.json,
 and synchronization to Recruiter_Outreach_Log in Naukri_Live_Application_Tracker.xlsx.
 """
@@ -47,41 +47,45 @@ CANDIDATE_FACTS = {
     "name": "Lavkush Kumar",
     "email": "lav84095@gmail.com",
     "phone": "+91-9122036484",
-    "linkedin": "linkedin.com/in/lavkush-kumar",
-    "github": "github.com/lavkush-kumar",
+    "linkedin": "https://www.linkedin.com/in/lavkushry/",
+    "github": "https://github.com/lavkushry",
     "experience_yoe": "2.5 YOE",
     "total_yoe": "2.5 YOE",
     "current_role": "DevOps Engineer",
     "current_company": "CGI India",
     "previous_company": "HFCL Limited",
-    "target_role": "Azure Data Engineer",
+    "target_role": "Platform & MLOps Engineer",
     "target_ctc": "₹20–25 LPA",
     "notice_period": "15 Days or less",
     "location": "Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)",
-    "core_stack": "Azure Databricks, PySpark, Delta Lake, ADF, Kafka, SQL, ADLS Gen2, Terraform",
+    "core_stack": "Kubernetes (EKS/kubeadm), Docker, Helm, Terraform, Ansible, ArgoCD, Jenkins/GitLab CI, Prometheus/Grafana, ELK Stack, Kafka, Redis, Python, Rust",
     "key_metrics": (
-        "Project Medallion Lakehouse: 2M+ events/day, 35% ETL runtime cut; "
-        "Employment: 50-node K8s, RTO 8h→30min (FACT_MATRIX)"
+        "Employment: 50-node K8s, 40+ Ansible roles (2d->4h bootstrap), RTO 8h->30min, 45% MTTR, 99.95% uptime; "
+        "Projects: AegisAgent (<75ms Cedar), Vulcan (<2m SRE), Medallion Lakehouse (35% ETL cut)"
     ),
-    "project_proof": "Azure-Data-Engineering-Medallion-Lakehouse-Project",
+    "project_proof": (
+        "https://github.com/lavkushry/AegisAgent | "
+        "https://github.com/lavkushry/vulcan | "
+        "https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project"
+    ),
 }
 
 TOP_GCC_TARGETS = [
-    {"company": "Microsoft", "role": "Azure Data Engineer", "recruiter": "Kavita Rao", "title": "Data & AI Technical Recruiter"},
-    {"company": "Walmart Global Tech", "role": "Azure Data Engineer", "recruiter": "Priya Sharma", "title": "Senior Data Engineering Recruiter"},
-    {"company": "JPMorgan Chase", "role": "Data Engineer - VP/Associate", "recruiter": "Rohan Gupta", "title": "Corporate Technology Talent Acquisition"},
-    {"company": "Amazon", "role": "Data Engineer II", "recruiter": "Ananya Sen", "title": "AWS / Retail Data Tech Recruiting"},
-    {"company": "PNC Bank GCC", "role": "Senior Azure Data Engineer", "recruiter": "Amit Verma", "title": "GCC Campus & Lateral Talent Acquisition"},
-    {"company": "Barclays", "role": "Data Platform Engineer", "recruiter": "Vikram Malhotra", "title": "Global Technology Recruiter - Data"},
-    {"company": "HSBC Technology", "role": "Azure Data Engineer", "recruiter": "Sneha Kulkarni", "title": "Commercial & Data Tech Talent Sourcing"},
-    {"company": "Lloyds Technology Centre", "role": "Cloud Data Engineer", "recruiter": "Arjun Nair", "title": "India Tech Hub Talent Partner"},
-    {"company": "Salesforce", "role": "Data Engineer (Data Cloud)", "recruiter": "Neha Kapoor", "title": "Core Engineering Recruiting Lead"},
-    {"company": "Adobe", "role": "Big Data / Platform Engineer", "recruiter": "Siddharth Joshi", "title": "Search & Data Platform Tech Sourcing"},
-    {"company": "Goldman Sachs", "role": "Data Engineer - Enterprise Platforms", "recruiter": "Meera Iyer", "title": "Technology Division Talent Acquisition"},
-    {"company": "Morgan Stanley", "role": "Cloud Data Platform Engineer", "recruiter": "Kunal Deshmukh", "title": "Core Tech & Data Recruiting"},
-    {"company": "Uber", "role": "Data Infrastructure Engineer", "recruiter": "Tanvi Agarwal", "title": "Platform Engineering Recruiter"},
-    {"company": "Atlassian", "role": "Data Systems Engineer", "recruiter": "Ritu Saxena", "title": "Data & Cloud Talent Partner"},
-    {"company": "Target Tech India", "role": "Data Engineer II", "recruiter": "Deepak Menon", "title": "Supply Chain & Data Tech Sourcing"}
+    {"company": "Microsoft", "role": "Platform & MLOps Engineer", "recruiter": "Kavita Rao", "title": "Cloud & AI Technical Recruiter"},
+    {"company": "Walmart Global Tech", "role": "MLOps Engineer", "recruiter": "Priya Sharma", "title": "Platform Engineering Recruiter"},
+    {"company": "JPMorgan Chase", "role": "DevOps / Platform Engineer", "recruiter": "Rohan Gupta", "title": "Corporate Technology Talent Acquisition"},
+    {"company": "Amazon", "role": "Cloud Infrastructure Engineer", "recruiter": "Ananya Sen", "title": "AWS Infrastructure Tech Recruiting"},
+    {"company": "PNC Bank GCC", "role": "Platform Engineer", "recruiter": "Amit Verma", "title": "GCC Campus & Lateral Talent Acquisition"},
+    {"company": "Barclays", "role": "Platform / DevOps Engineer", "recruiter": "Vikram Malhotra", "title": "Global Technology Recruiter"},
+    {"company": "HSBC Technology", "role": "DevOps / MLOps Engineer", "recruiter": "Sneha Kulkarni", "title": "Cloud Platform Talent Sourcing"},
+    {"company": "Lloyds Technology Centre", "role": "Cloud Platform Engineer", "recruiter": "Arjun Nair", "title": "India Tech Hub Talent Partner"},
+    {"company": "Salesforce", "role": "Platform / Infrastructure Engineer", "recruiter": "Neha Kapoor", "title": "Core Engineering Recruiting Lead"},
+    {"company": "Adobe", "role": "AI Infrastructure / MLOps Engineer", "recruiter": "Siddharth Joshi", "title": "Cloud Platform Tech Sourcing"},
+    {"company": "Goldman Sachs", "role": "Platform Reliability Engineer", "recruiter": "Meera Iyer", "title": "Technology Division Talent Acquisition"},
+    {"company": "Morgan Stanley", "role": "Cloud Platform Engineer", "recruiter": "Kunal Deshmukh", "title": "Core Tech Recruiting"},
+    {"company": "Uber", "role": "ML Infrastructure Engineer", "recruiter": "Tanvi Agarwal", "title": "Platform Engineering Recruiter"},
+    {"company": "Atlassian", "role": "Platform Engineer", "recruiter": "Ritu Saxena", "title": "Cloud & Platform Talent Partner"},
+    {"company": "Target Tech India", "role": "DevOps / MLOps Engineer", "recruiter": "Deepak Menon", "title": "Platform Tech Sourcing"}
 ]
 
 
@@ -89,7 +93,7 @@ TOP_GCC_TARGETS = [
 class RecruiterTemplateGenerator:
     """
     Generates 5 battle-tested, high-converting recruiter message templates
-    custom-tailored for 2.5 YOE Azure Data Engineer (₹20-25 LPA | 15-Day Notice).
+    custom-tailored for ~2.5 YOE Platform / DevOps / MLOps & AI Infrastructure Engineer (₹20-25 LPA | 15-Day Notice).
     """
 
     ROLE_KEYWORDS = {
@@ -110,9 +114,10 @@ class RecruiterTemplateGenerator:
         self.first_name = self.name.split()[0] if self.name else "Lavkush"
         raw_phone = self.candidate.get("phone", "+91-9122036484")
         self.phone = raw_phone.replace(" ", "-") if raw_phone else "+91-9122036484"
-        self.email = self.candidate.get("email", "lav84095@gmail.com")
-        self.linkedin = self.candidate.get("linkedin", "linkedin.com/in/lavkush-kumar")
-        self.notice = self.candidate.get("notice_period", "15 Days or less (Immediate Joiner)")
+        self.email = self.candidate.get("email") or "lav84095@gmail.com"
+        self.linkedin = self.candidate.get("linkedin") or "https://www.linkedin.com/in/lavkushry/"
+        self.github = self.candidate.get("github") or "https://github.com/lavkushry"
+        self.notice = self.candidate.get("notice_period") or "15 Days or less (Immediate Joiner)"
         self.yoe = str(self.candidate.get("total_experience_years", "2.5")) + " YOE"
 
     def _extract_first_name(self, full_or_first: str) -> Optional[str]:
@@ -175,7 +180,7 @@ class RecruiterTemplateGenerator:
         self,
         recruiter_name: str,
         company: str,
-        tech_stack: str = "Kubernetes, Docker & MLflow"
+        tech_stack: str = "Kubernetes, Docker & Terraform"
     ) -> str:
         """
         Template 1-MLOps: LinkedIn Connection Request Note for MLOps & AI Infrastructure.
@@ -209,14 +214,14 @@ class RecruiterTemplateGenerator:
 
         note2 = (
             f"{salutation} noticed you hire for {comp_clean}'s AI Platform team. "
-            f"I bring {self.yoe} in Kubernetes, Docker, Helm & MLflow (15-day notice). "
+            f"I bring {self.yoe} in Kubernetes, Docker, Helm & Terraform (15-day notice). "
             f"Would love to connect regarding open opportunities!{closing}"
         )
 
         if len(note2) <= 300:
             return note2
 
-        prefix = f"{salutation} I'm an MLOps Engineer ({self.yoe}) in K8s & MLflow (15-day notice). Connecting for roles at "
+        prefix = f"{salutation} I'm an MLOps Engineer ({self.yoe}) in K8s & Terraform (15-day notice). Connecting for roles at "
         suffix = f"!{closing}"
         budget = 300 - len(prefix) - len(suffix)
         if budget > 8:
@@ -241,53 +246,50 @@ class RecruiterTemplateGenerator:
         CRITICAL CONSTRAINT: Hard limit <= 300 characters strictly.
         Guarantees sign-off '- Lavkush' is never sliced or truncated.
         """
-        if (persona and persona.lower() in ("mlops", "ai", "platform")) or (role and any(k in role.lower() for k in ["mlops", "ai infra", "platform"])):
+        if (persona and persona.lower() in ("mlops", "ai", "platform")) or (role and any(k in role.lower() for k in ["mlops", "ai infra", "platform", "devops"])):
             return self.generate_mlops_connection_note(
                 recruiter_name=recruiter_name,
                 company=company,
-                tech_stack=tech_stack or "Kubernetes, Docker & MLflow"
+                tech_stack=tech_stack or "Kubernetes, Docker & Terraform"
             )
 
-        actual_stack = tech_stack or "Databricks, PySpark & Delta Lake"
+        actual_stack = tech_stack or "Kubernetes, Terraform & Ansible"
         comp_clean = company.strip() if company else "your firm"
         first = self._extract_first_name(recruiter_name)
 
         if first:
             salutation = f"Hi {first},"
-            lead_phrase = f"noticed you recruit for {comp_clean}'s Data team."
+            lead_phrase = f"noticed you recruit for {comp_clean}'s Platform team."
         else:
             if comp_clean and comp_clean != "your firm":
                 salutation = f"Hi {comp_clean} Recruiting Team,"
-                lead_phrase = "noticed your open Data platform roles."
+                lead_phrase = "noticed your open Platform and Cloud Infra roles."
             else:
                 salutation = "Hi there,"
-                lead_phrase = "noticed your open Data roles."
+                lead_phrase = "noticed your open Platform roles."
 
         closing = f" - {self.first_name}"
 
-        # Tier 1: Base high-converting note
         note = (
             f"{salutation} {lead_phrase} "
-            f"I'm an Azure Data Engineer ({self.yoe}) specializing in {actual_stack} "
-            f"(2M+ events/day). On a 15-day notice period. Would love to connect regarding open roles!{closing}"
+            f"I'm a Platform & MLOps Engineer ({self.yoe}) specializing in {actual_stack} "
+            f"(50-node K8s). On a 15-day notice period. Would love to connect regarding open roles!{closing}"
         )
 
         if len(note) <= 300:
             return note
 
-        # Tier 2: Fallback trimmed version if company name or stack is too long
         note2 = (
-            f"{salutation} noticed you hire Data Engineers for {comp_clean}. "
-            f"I bring {self.yoe} in Azure Databricks, PySpark & Delta Lake (15-day notice). "
+            f"{salutation} noticed you hire Platform/MLOps Engineers for {comp_clean}. "
+            f"I bring {self.yoe} in Kubernetes, Terraform, Ansible & CI/CD (15-day notice). "
             f"Would love to connect regarding open opportunities!{closing}"
         )
 
         if len(note2) <= 300:
             return note2
 
-        # Tier 3: Extreme safety truncation strictly guaranteeing <= 300 with intact closing
-        fallback_stack = "Databricks & PySpark"
-        prefix = f"{salutation} I'm an Azure Data Engineer ({self.yoe}) in {fallback_stack} (15-day notice). Connecting for roles at "
+        fallback_stack = "Kubernetes & Terraform"
+        prefix = f"{salutation} I'm a Platform & MLOps Engineer ({self.yoe}) in {fallback_stack} (15-day notice). Connecting for roles at "
         suffix = f"!{closing}"
         budget = 300 - len(prefix) - len(suffix)
         if budget > 8:
@@ -312,23 +314,25 @@ class RecruiterTemplateGenerator:
         salutation = self._format_salutation(recruiter_name, company)
         comp_clean = company.strip() if company else "your company"
 
-        subject = f"{role} ({self.yoe} | Kubernetes, Docker, MLflow, Terraform) — 15-Day Notice | {self.name}"
+        subject = f"{role} ({self.yoe} | Kubernetes, Docker, Terraform, Ansible) — 15-Day Notice | {self.name}"
 
         body = (
             f"{salutation}\n\n"
             f"Hope you're having a productive week.\n\n"
             f"I am reaching out regarding {role} opportunities at {comp_clean}. I bring {self.yoe} "
-            f"specializing in Kubernetes orchestration, CI/CD automation, and ML infrastructure platforms "
+            f"specializing in Kubernetes orchestration, IaC/CI/CD automation, and stateful distributed infrastructure "
             f"across CGI India and HFCL Limited.\n\n"
             f"Key Production Highlights (01_FACT_MATRIX.md Ground Truth):\n"
-            f"• Kubernetes Lifecycle Automation: Built 40+ Ansible roles with Jinja2 for K8s lifecycle "
+            f"• Cloud Platform & GitOps (CGI India): Standardized AWS EKS with Terraform/Ansible, Jenkins/GitLab CI + Trivy, Nginx/Kong, and ArgoCD/Helm.\n"
+            f"• Kubernetes Lifecycle Automation (HFCL): Built 40+ Ansible roles with Jinja2 for K8s lifecycle "
             f"(kubeadm, CNI, Harbor, Helm), cutting cluster bootstrap time from 2 days to 4 hours (83%).\n"
             f"• 50-Node Production Operations: Operated a 50-node bare-metal K8s platform for 15+ distributed "
             f"microservices with namespace isolation, RBAC, and HPA, sustaining 99.95% uptime.\n"
             f"• Stateful Data Backbones: Managed Kafka, Redis, PostgreSQL/TimescaleDB, and MongoDB StatefulSets "
             f"with Velero DR, cutting RTO from 8h to 30min (93%) and MTTR by 45%.\n"
-            f"• AI Gateway Projects: Authored AegisAgent (AI Security Gateway in Rust/Cedar/K8s) and Vulcan "
-            f"(Automation Platform with Redis & pgvector).\n\n"
+            f"• Open-Source Projects: AegisAgent (https://github.com/lavkushry/AegisAgent), Project Vulcan "
+            f"(https://github.com/lavkushry/vulcan), and Azure Medallion Lakehouse "
+            f"(https://github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project).\n\n"
             f"Availability & Compensation:\n"
             f"• Notice Period: 15 Days or less (Immediate joiner)\n"
             f"• Target CTC: ₹20–25 LPA\n"
@@ -336,7 +340,8 @@ class RecruiterTemplateGenerator:
             f"Direct Contact:\n"
             f"• Phone: {self.phone}\n"
             f"• Email: {self.email}\n"
-            f"• LinkedIn: {self.linkedin}\n\n"
+            f"• LinkedIn: {self.linkedin}\n"
+            f"• GitHub: {self.github}\n\n"
             f"Would you have 5 minutes for a brief introductory call this week?\n\n"
             f"Best regards,\n"
             f"{self.name}"
@@ -348,28 +353,28 @@ class RecruiterTemplateGenerator:
         self,
         recruiter_name: str,
         company: str,
-        role: str = "Azure Data Engineer"
+        role: str = "Platform & MLOps Engineer"
     ) -> Dict[str, str]:
         """
-        Template 2: Direct InMail / First Message.
-        Value pitch: 2.5 YOE, 2M+ events, 15-day notice, contact info.
+        Template 2: Direct InMail / First Message grounded in 01_FACT_MATRIX.md.
         """
         salutation = self._format_salutation(recruiter_name, company)
         comp_clean = company.strip() if company else "your company"
 
-        subject = f"{role} ({self.yoe} | Databricks, PySpark, Delta Lake) — 15-Day Notice | {self.name}"
+        subject = f"{role} ({self.yoe} | Kubernetes, Terraform, Ansible, Kafka) — 15-Day Notice | {self.name}"
 
         body = (
             f"{salutation}\n\n"
             f"Hope you're having a productive week.\n\n"
             f"I am reaching out regarding {role} opportunities at {comp_clean}. I bring {self.yoe} "
-            f"(DevOps Engineer at CGI / Platform Engineering at HFCL) targeting Azure Data Engineer roles, "
-            f"with project depth in Azure Databricks, PySpark, Delta Lake, and ADF.\n\n"
+            f"(DevOps Engineer at CGI India / Engineer 1 — DevOps / Platform Engineering at HFCL Limited) "
+            f"with project depth in AI security/automation and cloud data platforms.\n\n"
             f"Key Proof Points:\n"
-            f"• Project Medallion Lakehouse: ADF & PySpark pipelines processing 2M+ events/day into Bronze/Silver/"
-            f"Gold Delta tables.\n"
-            f"• Project Performance: Spark SQL optimizations cutting batch ETL runtime by ~35%.\n"
-            f"• Employment DataOps: Terraform, Docker, Kubernetes (50-node), Jenkins/GitLab CI, ArgoCD/Helm.\n\n"
+            f"• Employment Scale: 50-node bare-metal kubeadm K8s, 40+ Ansible roles (2d -> 4h bootstrap), "
+            f"Kafka/Redis/TimescaleDB/MongoDB StatefulSets with Velero DR (RTO 8h -> 30min, MTTR -45%, 99.95% uptime).\n"
+            f"• Cloud & GitOps: AWS EKS, Terraform, Jenkins/GitLab CI + Trivy, Nginx/Kong, ArgoCD/Helm, ELK Stack.\n"
+            f"• Open-Source GitHub: AegisAgent (github.com/lavkushry/AegisAgent), Vulcan (github.com/lavkushry/vulcan), "
+            f"and Medallion Lakehouse (github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project).\n\n"
             f"Availability & Compensation:\n"
             f"• Notice Period: 15 Days or less (Immediate joiner)\n"
             f"• Target CTC: ₹20–25 LPA\n"
@@ -377,7 +382,8 @@ class RecruiterTemplateGenerator:
             f"Direct Contact:\n"
             f"• Phone: {self.phone}\n"
             f"• Email: {self.email}\n"
-            f"• LinkedIn: {self.linkedin}\n\n"
+            f"• LinkedIn: {self.linkedin}\n"
+            f"• GitHub: {self.github}\n\n"
             f"Would you have 5 minutes for a brief introductory call this week?\n\n"
             f"Best regards,\n"
             f"{self.name}"
@@ -388,33 +394,31 @@ class RecruiterTemplateGenerator:
         self,
         lead_name: str,
         company: str,
-        role: str = "Azure Data Engineer"
+        role: str = "Platform & MLOps Engineer"
     ) -> Dict[str, str]:
         """
         Template 3: Hiring Manager / Tech Lead Outreach.
-        Lakehouse scaling pitch, Delta ACID, 15-day notice, engineering depth.
         """
         salutation = self._format_salutation(lead_name, company)
         comp_clean = company.strip() if company else "your engineering team"
 
-        subject = f"{role} Architecture & Lakehouse Scaling | {self.name} (15-Day Notice)"
+        subject = f"{role} — Kubernetes, IaC & AI Infrastructure | {self.name} (15-Day Notice)"
 
         body = (
             f"{salutation}\n\n"
             f"I have been following {comp_clean}'s engineering deliverables and wanted to reach out directly.\n\n"
-            f"I am targeting Azure Data Engineer roles ({self.yoe}). Day job: DevOps Engineer at CGI "
-            f"(PNC Bank GCC) on EKS/Terraform/GitOps; project proof: Medallion Lakehouse on Azure Databricks/"
-            f"PySpark/Delta (2M+ events/day, 35% ETL runtime cut).\n\n"
-            f"What I can immediately deliver for your data platform:\n"
-            f"1. Lakehouse Scaling (project): Medallion pipelines with Delta Lake ACID transactions, CDC, schema enforcement.\n"
-            f"2. Query & Pipeline Optimization (project): PySpark/Spark SQL tuning cutting ETL runtime ~35%.\n"
-            f"3. Reliable DataOps (employment): Terraform IaC, Ansible, Jenkins/GitLab CI, ArgoCD/Helm on K8s.\n\n"
-            f"I am on a 15-day notice period and actively targeting ₹20–25 LPA Azure Data Engineering roles.\n\n"
-            f"I would welcome a 10-minute technical chat to discuss your current data platform challenges and share "
-            f"how my background aligns with {comp_clean}'s roadmap.\n\n"
+            f"I am targeting {role} roles ({self.yoe}). Currently DevOps Engineer at CGI India (AWS EKS/Terraform/GitOps) "
+            f"and previously Engineer 1 at HFCL Limited (50-node kubeadm K8s, 40+ Ansible roles, Kafka/Redis StatefulSets, "
+            f"Velero DR cutting RTO 8h -> 30min).\n\n"
+            f"Open-source systems I have built:\n"
+            f"1. AegisAgent (github.com/lavkushry/AegisAgent): Rust/Cedar AI agent security gateway (<75ms ABAC) + K8s Helm charts.\n"
+            f"2. Project Vulcan (github.com/lavkushry/vulcan): FastAPI automation control plane with Redis Redlock & pgvector HNSW.\n"
+            f"3. Azure Medallion Lakehouse (github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project): PySpark/Databricks/Delta (35% ETL cut).\n\n"
+            f"I am on a 15-day notice period and targeting ₹20–25 LPA Platform / MLOps / DevOps Engineering roles.\n\n"
+            f"I would welcome a 10-minute technical chat to discuss how my infrastructure background aligns with {comp_clean}'s roadmap.\n\n"
             f"Best regards,\n"
             f"{self.name}\n"
-            f"Phone: {self.phone} | Email: {self.email} | LinkedIn: {self.linkedin}"
+            f"Phone: {self.phone} | Email: {self.email} | LinkedIn: {self.linkedin} | GitHub: {self.github}"
         )
         return {"subject": subject, "body": body}
 
@@ -422,7 +426,7 @@ class RecruiterTemplateGenerator:
         self,
         recruiter_name: str,
         company: str,
-        role: str = "Azure Data Engineer"
+        role: str = "Platform & MLOps Engineer"
     ) -> Dict[str, str]:
         """
         Template 4: 48-Hour Follow-Up (Brief, high urgency).
@@ -435,13 +439,13 @@ class RecruiterTemplateGenerator:
         body = (
             f"{salutation}\n\n"
             f"Following up on my note from earlier this week regarding {role} roles at {comp_clean}.\n\n"
-            f"I am currently in active interview rounds, but {comp_clean} is a top priority for me given "
-            f"your data platform stack and engineering scope. As a quick reminder, I bring {self.yoe} in "
-            f"Azure Databricks, PySpark, Delta Lake, and a confirmed 15-day notice period (immediate joiner).\n\n"
+            f"I am currently in active interview rounds, and {comp_clean} is a top priority given your "
+            f"infrastructure and platform engineering scope. As a quick reminder, I bring {self.yoe} across "
+            f"Kubernetes (EKS/kubeadm), Terraform, Ansible, CI/CD, and Kafka, with a 15-day notice period.\n\n"
             f"Would you have 5 minutes for a quick sync today or tomorrow? You can reach me directly at {self.phone}.\n\n"
             f"Best,\n"
             f"{self.name}\n"
-            f"{self.email} | {self.linkedin}"
+            f"{self.email} | {self.linkedin} | {self.github}"
         )
         return {"subject": subject, "body": body}
 
@@ -449,7 +453,7 @@ class RecruiterTemplateGenerator:
         self,
         recruiter_name: str,
         company: str,
-        role: str = "Azure Data Engineer",
+        role: str = "Platform & MLOps Engineer",
         portal_or_req_id: Optional[str] = None,
         req_id_or_portal: Optional[str] = None
     ) -> Dict[str, str]:
@@ -466,15 +470,13 @@ class RecruiterTemplateGenerator:
         body = (
             f"{salutation}\n\n"
             f"I recently submitted my application for the {role} position at {comp_clean} (via {portal}).\n\n"
-            f"Given the direct alignment between your stack requirements and my {self.yoe} in Azure Databricks, "
-            f"PySpark, Delta Lake, and ADF, I wanted to reach out personally to ensure my profile is on your radar.\n\n"
+            f"Given the alignment between your infrastructure requirements and my {self.yoe} in Kubernetes (EKS/kubeadm), "
+            f"Terraform, Ansible, CI/CD, and distributed systems, I wanted to reach out personally.\n\n"
             f"Quick Snapshot:\n"
-            f"• Stack: Azure Databricks, PySpark, Delta Lake, ADF, Kafka, SQL, Terraform\n"
-            f"• Scale: 2M+ events/day Medallion Lakehouses, 35% ETL runtime cut, 99.95% uptime\n"
-            f"• Availability: 15 Days or less (Immediate joiner)\n"
-            f"• Target CTC: ₹20–25 LPA\n\n"
-            f"I have attached my resume and would welcome the opportunity to discuss how I can hit the ground "
-            f"running on {comp_clean}'s data engineering deliverables.\n\n"
+            f"• Stack: Kubernetes, Docker, Helm, ArgoCD, Terraform, Ansible, Jenkins/GitLab CI, Kafka, Prometheus, Python, Rust\n"
+            f"• Scale: 50-node K8s (99.95% uptime), 2d -> 4h bootstrap, RTO 8h -> 30min, 45% MTTR cut\n"
+            f"• Projects: AegisAgent, Project Vulcan, Azure Medallion Lakehouse ({self.github})\n"
+            f"• Availability: 15 Days or less | Target CTC: ₹20–25 LPA\n\n"
             f"Direct Contact: {self.phone} | {self.email} | {self.linkedin}\n\n"
             f"Thanks for your time and consideration,\n"
             f"{self.name}"
@@ -486,14 +488,14 @@ class RecruiterTemplateGenerator:
         template_type: str,
         recruiter_name: str,
         company: str,
-        role: str = "Azure Data Engineer",
+        role: str = "Platform & MLOps Engineer",
         **kwargs
     ) -> Dict[str, str]:
         """Unified template dispatcher."""
         t_lower = template_type.lower()
         if "connect" in t_lower or "note" in t_lower:
             note = self.generate_connection_note(
-                recruiter_name, company, kwargs.get("tech_stack", "Databricks, PySpark & Delta Lake")
+                recruiter_name, company, kwargs.get("tech_stack", "Kubernetes, Terraform & Ansible"), role=role
             )
             return {"subject": f"Connection Note for {company}", "body": note}
         elif "lead" in t_lower or "manager" in t_lower or "tech" in t_lower:
@@ -579,7 +581,7 @@ class RecruiterOutreachCRM:
         self,
         recruiter_name: str,
         company: str,
-        target_role: str = "Azure Data Engineer",
+        target_role: str = "Platform & MLOps Engineer",
         platform: str = "LinkedIn",
         message_type: str = "Connection Request Note",
         status: str = "CONTACTED",
@@ -812,7 +814,7 @@ class RecruiterOutreachCRM:
                     l.get("date", ""),
                     l.get("recruiter_name", ""),
                     l.get("company", ""),
-                    l.get("target_role", "Azure Data Engineer"),
+                    l.get("target_role", "Platform & MLOps Engineer"),
                     l.get("platform", "LinkedIn"),
                     l.get("message_type", "Connection Request Note"),
                     l.get("status", "CONTACTED"),
@@ -866,12 +868,12 @@ class RecruiterOutreachCRM:
     def batch_generate_gcc_outreach(
         self,
         target_list: Optional[List[Dict[str, str]]] = None,
-        persona: str = "de",
+        persona: str = "mlops",
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Generates recruiter pitches for top target GCC companies and logs them.
-        Supports both DE and MLOps personas, up to limit (default 15).
+        Supports unified Platform/MLOps and DevOps personas, up to limit (default 10).
         """
         targets = (target_list or TOP_GCC_TARGETS)[:limit]
 
@@ -879,7 +881,7 @@ class RecruiterOutreachCRM:
         for t in targets:
             comp = t.get("company", "Tech Company")
             rec = t.get("recruiter", "Recruiter")
-            role = t.get("role", "MLOps Engineer" if persona == "mlops" else "Azure Data Engineer")
+            role = t.get("role", "MLOps Engineer" if persona == "mlops" else "Platform & MLOps Engineer")
 
             # Alternating templates: direct inmail & tech lead pitch or MLOps inmail
             if persona == "mlops":
@@ -921,7 +923,7 @@ _default_generator = RecruiterTemplateGenerator()
 def generate_mlops_connection_note(
     recruiter_name: str,
     company: str,
-    tech_stack: str = "Kubernetes, Docker & MLflow"
+    tech_stack: str = "Kubernetes, Docker & Terraform"
 ) -> str:
     """Module-level generator for MLOps connection notes."""
     return _default_generator.generate_mlops_connection_note(

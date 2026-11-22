@@ -182,71 +182,79 @@ TOTAL_EXP_REGEX = re.compile(
     re.IGNORECASE
 )
 
-# Tool Specific Experience Patterns
+# Tool Specific Experience Patterns (Calibrated strictly to 01_FACT_MATRIX.md)
 TOOL_EXP_PATTERNS = {
     # Streaming & Event Hubs (Specific patterns before generic)
-    "spark_structured_streaming": (re.compile(r"\b(spark\s*structured\s*streaming|structured\s*streaming)\b", re.IGNORECASE), "2.0"),
-    "event_streaming": (re.compile(r"\b(event\s*streaming|event-driven)\b", re.IGNORECASE), "2.0"),
-    "kafka_connect": (re.compile(r"\b(kafka\s*connect)\b", re.IGNORECASE), "2.0"),
-    "azure_event_hubs": (re.compile(r"\b(azure\s*event\s*hubs?|event\s*hubs?)\b", re.IGNORECASE), "2.0"),
-    "kafka": (re.compile(r"\b(apache\s*kafka|kafka)\b", re.IGNORECASE), "2.0"),
+    "spark_structured_streaming": (re.compile(r"\b(spark\s*structured\s*streaming|structured\s*streaming)\b", re.IGNORECASE), "0.5"),
+    "event_streaming": (re.compile(r"\b(event\s*streaming|event-driven)\b", re.IGNORECASE), "1.0"),
+    "kafka_connect": (re.compile(r"\b(kafka\s*connect)\b", re.IGNORECASE), "0"),
+    "azure_event_hubs": (re.compile(r"\b(azure\s*event\s*hubs?|event\s*hubs?)\b", re.IGNORECASE), "0"),
+    "kafka": (re.compile(r"\b(apache\s*kafka|kafka)\b", re.IGNORECASE), "1.0"),
 
-    # Data Engineering & Lakehouse Core
-    "delta_lake": (re.compile(r"\b(delta\s*lake|delta\s*tables?)\b", re.IGNORECASE), "2.5"),
-    "spark_sql": (re.compile(r"\b(spark\s*sql)\b", re.IGNORECASE), "2.5"),
-    "spark": (re.compile(r"\b(pyspark|apache\s*spark|\bspark\b)\b", re.IGNORECASE), "2.5"),
-    "data_engineering": (re.compile(r"\b(data\s*engineering)\b", re.IGNORECASE), "2.5"),
-    "etl_pipelines": (re.compile(r"\b(etl|etl\s*pipelines?)\b", re.IGNORECASE), "2.5"),
-    "elt_pipelines": (re.compile(r"\b(elt|elt\s*pipelines?)\b", re.IGNORECASE), "2.5"),
-    "data_lakehouse": (re.compile(r"\b(data\s*lakehouse|lakehouse)\b", re.IGNORECASE), "2.5"),
-    "medallion_architecture": (re.compile(r"\b(medallion\s*architecture|medallion|bronze\s*silver\s*gold)\b", re.IGNORECASE), "2.5"),
-    "adls_gen2": (re.compile(r"\b(adls\s*gen2|adls|azure\s*data\s*lake(\s*storage)?)\b", re.IGNORECASE), "2.5"),
-    "synapse": (re.compile(r"\b(azure\s*synapse(\s*analytics)?|synapse)\b", re.IGNORECASE), "2.5"),
-    "microsoft_fabric": (re.compile(r"\b(microsoft\s*fabric|fabric)\b", re.IGNORECASE), "2.0"),
-    "cdc": (re.compile(r"\b(change\s*data\s*capture|cdc)\b", re.IGNORECASE), "2.0"),
-    "unity_catalog": (re.compile(r"\b(unity\s*catalog)\b", re.IGNORECASE), "2.0"),
-    "databricks": (re.compile(r"\b(databricks|azure\s*databricks)\b", re.IGNORECASE), "2.5"),
-    "azure_adf": (re.compile(r"\b(azure\s*data\s*factory|adf|azure)\b", re.IGNORECASE), "2.5"),
+    # Data Engineering & Lakehouse Core (Project-only or unverified in employment)
+    "delta_lake": (re.compile(r"\b(delta\s*lake|delta\s*tables?)\b", re.IGNORECASE), "0.5"),
+    "spark_sql": (re.compile(r"\b(spark\s*sql)\b", re.IGNORECASE), "0.5"),
+    "spark": (re.compile(r"\b(pyspark|apache\s*spark|\bspark\b)\b", re.IGNORECASE), "0.5"),
+    "data_engineering": (re.compile(r"\b(data\s*engineering)\b", re.IGNORECASE), "0.5"),
+    "etl_pipelines": (re.compile(r"\b(etl|etl\s*pipelines?)\b", re.IGNORECASE), "0.5"),
+    "elt_pipelines": (re.compile(r"\b(elt|elt\s*pipelines?)\b", re.IGNORECASE), "0.5"),
+    "data_lakehouse": (re.compile(r"\b(data\s*lakehouse|lakehouse)\b", re.IGNORECASE), "0.5"),
+    "medallion_architecture": (re.compile(r"\b(medallion\s*architecture|medallion|bronze\s*silver\s*gold)\b", re.IGNORECASE), "0.5"),
+    "adls_gen2": (re.compile(r"\b(adls\s*gen2|adls|azure\s*data\s*lake(\s*storage)?)\b", re.IGNORECASE), "0.5"),
+    "synapse": (re.compile(r"\b(azure\s*synapse(\s*analytics)?|synapse)\b", re.IGNORECASE), "0"),
+    "microsoft_fabric": (re.compile(r"\b(microsoft\s*fabric|fabric)\b", re.IGNORECASE), "0"),
+    "cdc": (re.compile(r"\b(change\s*data\s*capture|cdc)\b", re.IGNORECASE), "0.5"),
+    "unity_catalog": (re.compile(r"\b(unity\s*catalog)\b", re.IGNORECASE), "0"),
+    "databricks": (re.compile(r"\b(databricks|azure\s*databricks)\b", re.IGNORECASE), "0.5"),
+    "azure_adf": (re.compile(r"\b(azure\s*data\s*factory|adf)\b", re.IGNORECASE), "0.5"),
+    "azure": (re.compile(r"\b(azure|microsoft\s*azure)\b", re.IGNORECASE), "1.0"),
 
     # Data Modeling & Databases
-    "sql": (re.compile(r"\b(sql|tsql|transact-sql)\b", re.IGNORECASE), "2.5"),
-    "postgresql": (re.compile(r"\b(postgresql|postgres)\b", re.IGNORECASE), "2.0"),
-    "data_modeling": (re.compile(r"\b(data\s*modeling)\b", re.IGNORECASE), "2.5"),
-    "star_schema": (re.compile(r"\b(star\s*schema|snowflake\s*schema)\b", re.IGNORECASE), "2.5"),
-    "snowflake": (re.compile(r"\b(snowflake)\b", re.IGNORECASE), "2.0"),
-    "redis": (re.compile(r"\b(redis)\b", re.IGNORECASE), "2.0"),
-    "mongodb": (re.compile(r"\b(mongodb|mongo)\b", re.IGNORECASE), "2.0"),
-    "query_optimization": (re.compile(r"\b(query\s*optimization|query\s*tuning|sql\s*optimization)\b", re.IGNORECASE), "2.5"),
-    "cloud_data_management": (re.compile(r"\b(cloud\s*data\s*management)\b", re.IGNORECASE), "2.5"),
+    "sql": (re.compile(r"\b(sql|tsql|transact-sql)\b", re.IGNORECASE), "2.0"),
+    "postgresql": (re.compile(r"\b(postgresql|postgres|timescaledb)\b", re.IGNORECASE), "1.5"),
+    "data_modeling": (re.compile(r"\b(data\s*modeling)\b", re.IGNORECASE), "0.5"),
+    "star_schema": (re.compile(r"\b(star\s*schema|snowflake\s*schema)\b", re.IGNORECASE), "0.5"),
+    "snowflake": (re.compile(r"\b(snowflake)\b", re.IGNORECASE), "0"),
+    "redis": (re.compile(r"\b(redis)\b", re.IGNORECASE), "1.5"),
+    "mongodb": (re.compile(r"\b(mongodb|mongo)\b", re.IGNORECASE), "1.0"),
+    "query_optimization": (re.compile(r"\b(query\s*optimization|query\s*tuning|sql\s*optimization)\b", re.IGNORECASE), "1.5"),
+    "cloud_data_management": (re.compile(r"\b(cloud\s*data\s*management)\b", re.IGNORECASE), "0.5"),
 
-    # DataOps, IaC & CI/CD
-    "terraform": (re.compile(r"\b(terraform|iac|infrastructure\s*as\s*code)\b", re.IGNORECASE), "2.0"),
-    "azure_devops": (re.compile(r"\b(azure\s*devops|ado)\b", re.IGNORECASE), "2.5"),
-    "cicd": (re.compile(r"\b(ci/cd|ci-cd|continuous\s*integration)\b", re.IGNORECASE), "2.5"),
-    "docker": (re.compile(r"\b(docker|containers?|containerization)\b", re.IGNORECASE), "2.5"),
-    "kubernetes": (re.compile(r"\b(kubernetes|k8s|kubeadm|eks|aks)\b", re.IGNORECASE), "2.5"),
-    "helm": (re.compile(r"\b(helm|helm\s*charts?)\b", re.IGNORECASE), "2.0"),
+    # Platform, IaC, CI/CD & Cloud
+    "terraform": (re.compile(r"\b(terraform|iac|infrastructure\s*as\s*code)\b", re.IGNORECASE), "1.5"),
+    "azure_devops": (re.compile(r"\b(azure\s*devops|ado)\b", re.IGNORECASE), "0"),
+    "cicd": (re.compile(r"\b(ci/cd|ci-cd|continuous\s*integration|jenkins)\b", re.IGNORECASE), "2.0"),
+    "docker": (re.compile(r"\b(docker|containers?|containerization|containerd)\b", re.IGNORECASE), "2.0"),
+    "kubernetes": (re.compile(r"\b(kubernetes|k8s|kubeadm|eks|aks)\b", re.IGNORECASE), "1.5"),
+    "helm": (re.compile(r"\b(helm|helm\s*charts?)\b", re.IGNORECASE), "1.0"),
+    "argocd": (re.compile(r"\b(argocd|gitops)\b", re.IGNORECASE), "0.5"),
+    "aws": (re.compile(r"\b(aws|amazon\s*web\s*services)\b", re.IGNORECASE), "1.5"),
     "git": (re.compile(r"\b(git|github|version\s*control)\b", re.IGNORECASE), "2.5"),
-    "github_actions": (re.compile(r"\b(github\s*actions?)\b", re.IGNORECASE), "2.5"),
-    "gitlab_ci": (re.compile(r"\b(gitlab|gitlab\s*ci)\b", re.IGNORECASE), "2.0"),
+    "github_actions": (re.compile(r"\b(github\s*actions?)\b", re.IGNORECASE), "2.0"),
+    "gitlab_ci": (re.compile(r"\b(gitlab|gitlab\s*ci)\b", re.IGNORECASE), "1.0"),
     "linux_bash": (re.compile(r"\b(linux|bash|shell\s*scripting)\b", re.IGNORECASE), "2.5"),
-    "dbt": (re.compile(r"\b(dbt|data\s*build\s*tool)\b", re.IGNORECASE), "2.0"),
+    "dbt": (re.compile(r"\b(dbt|data\s*build\s*tool)\b", re.IGNORECASE), "0"),
 
-    # Observability & Data Quality
-    "great_expectations": (re.compile(r"\b(great\s*expectations)\b", re.IGNORECASE), "2.0"),
-    "data_quality_gates": (re.compile(r"\b(data\s*quality\s*gates?|data\s*quality)\b", re.IGNORECASE), "2.0"),
-    "prometheus": (re.compile(r"\b(prometheus)\b", re.IGNORECASE), "2.0"),
-    "grafana": (re.compile(r"\b(grafana)\b", re.IGNORECASE), "2.0"),
-    "opentelemetry": (re.compile(r"\b(opentelemetry|otel)\b", re.IGNORECASE), "2.0"),
-    "data_pipelines_observability": (re.compile(r"\b(data\s*pipelines?\s*observability|pipeline\s*observability)\b", re.IGNORECASE), "2.0"),
+    # Observability, AI Projects & Languages
+    "great_expectations": (re.compile(r"\b(great\s*expectations)\b", re.IGNORECASE), "0"),
+    "data_quality_gates": (re.compile(r"\b(data\s*quality\s*gates?|data\s*quality)\b", re.IGNORECASE), "0"),
+    "prometheus": (re.compile(r"\b(prometheus)\b", re.IGNORECASE), "1.5"),
+    "grafana": (re.compile(r"\b(grafana)\b", re.IGNORECASE), "1.5"),
+    "opentelemetry": (re.compile(r"\b(opentelemetry|otel)\b", re.IGNORECASE), "0"),
+    "data_pipelines_observability": (re.compile(r"\b(data\s*pipelines?\s*observability|pipeline\s*observability)\b", re.IGNORECASE), "0.5"),
     "python": (re.compile(r"\b(python|python\s*programming(\s*language)?)\b", re.IGNORECASE), "2.5"),
-    "ansible": (re.compile(r"\b(ansible|configuration\s+management)\b", re.IGNORECASE), "2.0"),
+    "rust": (re.compile(r"\b(rust)\b", re.IGNORECASE), "0.5"),
+    "fastapi": (re.compile(r"\b(fastapi)\b", re.IGNORECASE), "0.5"),
+    "pgvector": (re.compile(r"\b(pgvector|vector\s*(?:db|database|search))\b", re.IGNORECASE), "0.5"),
+    "mlflow": (re.compile(r"\b(mlflow)\b", re.IGNORECASE), "0.5"),
+    "airflow": (re.compile(r"\b(airflow|apache\s*airflow)\b", re.IGNORECASE), "0.5"),
+    "ansible": (re.compile(r"\b(ansible|configuration\s+management)\b", re.IGNORECASE), "1.5"),
     "elk": (re.compile(r"\b(elk|elasticsearch|logstash|kibana|grok)\b", re.IGNORECASE), "1.5"),
 }
 
 # Forbidden / Synthetic Skills (per 01_FACT_MATRIX.md -> Return "0" or Quarantine)
 FORBIDDEN_TECH_REGEX = re.compile(
-    r"\b(triton\s*(inference\s*server)?|nvidia\s*mps|gpu\s*slicing|model\s*validation\s*gates)\b",
+    r"\b(triton\s*(inference\s*server)?|vllm|deepspeed|tensorrt|kserve|cuda|nvidia\s*mps|gpu\s*slicing|model\s*validation\s*gates)\b",
     re.IGNORECASE
 )
 
@@ -281,13 +289,15 @@ class FactMatrixScreeningSolver:
                 self.config = {}
 
         candidate = self.config.get("candidate", {})
-        self.candidate_name = candidate.get("name", "Lavkush Kumar")
-        self.candidate_email = candidate.get("email", "lav84095@gmail.com")
-        self.candidate_phone = candidate.get("phone", "+91 9122036484")
-        self.candidate_linkedin = candidate.get("linkedin", "https://linkedin.com/in/lavkush-kumar")
-        self.candidate_github = candidate.get("github", "https://github.com/lavkush-kumar")
-        self.total_exp = str(candidate.get("total_experience_years", "2.5"))
-        self.notice_days = str(candidate.get("notice_period_days", "15"))
+        self.candidate_name = candidate.get("name") or "Lavkush Kumar"
+        self.candidate_email = candidate.get("email") or "lav84095@gmail.com"
+        self.candidate_phone = candidate.get("phone") or "+91 9122036484"
+        li_raw = (candidate.get("linkedin") or "https://www.linkedin.com/in/lavkushry/").strip()
+        self.candidate_linkedin = li_raw if li_raw.startswith(("http://", "https://")) else f"https://{li_raw.lstrip('/')}"
+        gh_raw = (candidate.get("github") or "https://github.com/lavkushry").strip()
+        self.candidate_github = gh_raw if gh_raw.startswith(("http://", "https://")) else f"https://{gh_raw.lstrip('/')}"
+        self.total_exp = str(candidate.get("total_experience_years") or "2.5")
+        self.notice_days = str(candidate.get("notice_period_days") or "15")
         
         curr_ctc = candidate.get("current_ctc_lakhs", 12)
         try:
@@ -303,11 +313,11 @@ class FactMatrixScreeningSolver:
         except Exception:
             self.expected_ctc_lpa = str(exp_ctc)
 
-        self.current_company = candidate.get("current_company", "CGI India")
-        self.current_designation = candidate.get("current_title", "DevOps Engineer")
-        self.degree = candidate.get("degree", "B.Tech in Computer Science and Engineering")
-        self.university = candidate.get("university", "Maharishi Dayanand University")
-        self.graduation_year = str(candidate.get("graduation_year", "2023"))
+        self.current_company = candidate.get("current_company") or "CGI India"
+        self.current_designation = candidate.get("current_designation") or candidate.get("current_title") or "DevOps Engineer"
+        self.degree = candidate.get("degree") or "B.Tech in Computer Science and Engineering"
+        self.university = candidate.get("university") or "World College of Technology and Management (MDU, Rohtak)"
+        self.graduation_year = str(candidate.get("graduation_year") or "2023")
 
     def solve_question(
         self,
@@ -544,7 +554,27 @@ class FactMatrixScreeningSolver:
                 opts = ctx.get("options")
                 if opts:
                     opts_low = [str(o).lower().strip() for o in opts]
-                    # If Yes/No question
+                    dur_val = float(duration)
+                    if dur_val == 0.0:
+                        if any(o in ("no", "n", "none") for o in opts_low):
+                            no_opt = next((opts[i] for i, o in enumerate(opts_low) if o in ("no", "n", "none")), "No")
+                            return ScreeningDecision(
+                                answer=no_opt,
+                                confidence=0.95,
+                                is_ambiguous=False,
+                                category=ScreeningCategory.EXPERIENCE_TOOL,
+                                rationale=f"Zero verified experience for {tool_key}",
+                                raw_question=raw
+                            )
+                        return ScreeningDecision(
+                            answer="0",
+                            confidence=0.95,
+                            is_ambiguous=False,
+                            category=ScreeningCategory.EXPERIENCE_TOOL,
+                            rationale=f"Zero verified experience for {tool_key}",
+                            raw_question=raw
+                        )
+                    # If Yes/No question for positive experience
                     if any(o in ("yes", "y") for o in opts_low):
                         yes_opt = next((opts[i] for i, o in enumerate(opts_low) if o in ("yes", "y")), "Yes")
                         return ScreeningDecision(
@@ -555,9 +585,10 @@ class FactMatrixScreeningSolver:
                             rationale=f"Affirmative match for candidate skill {tool_key}",
                             raw_question=raw
                         )
-                    # If experience range options (e.g. 2-3 years, 2+)
-                    dur_val = float(duration)
-                    for target in [f"{int(dur_val)}-", f"{int(dur_val)} to", f"{int(dur_val)}+", "1-3", "2-3", "2-4", "2+"]:
+                    targets = ["0-1", "< 1", "less than 1"] if dur_val < 1.0 else [
+                        f"{int(dur_val)}-", f"{int(dur_val)} to", f"{int(dur_val)}+", "1-3", "2-3", "2-4", "2+"
+                    ]
+                    for target in targets:
                         for idx, o in enumerate(opts_low):
                             if target in o:
                                 return ScreeningDecision(

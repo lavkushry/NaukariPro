@@ -111,6 +111,9 @@ def _reorder_experience(
             {
                 "company": str(role.get("company") or ""),
                 "title": str(role.get("title") or ""),
+                "dates": str(role.get("dates") or role.get("duration") or ""),
+                "duration": str(role.get("duration") or role.get("dates") or ""),
+                "location": str(role.get("location") or ""),
                 "bullets": bullets_ranked,
                 "relevance": relevance,
                 "start": role.get("start"),
@@ -170,7 +173,7 @@ def tailor_from_facts(
     mirrored = list(dict.fromkeys(coverage["have"]))
     gaps = [m for m in must if m.lower() not in blob]
 
-    skills = facts.get("skills") or facts.get("key_skills") or []
+    skills = facts.get("skills") or facts.get("key_skills") or facts.get("default_keywords") or []
     if isinstance(skills, str):
         skills = [s.strip() for s in skills.split(",") if s.strip()]
     skills_list = [str(s) for s in skills]
@@ -181,13 +184,14 @@ def tailor_from_facts(
     )
 
     experience_ordered = _reorder_experience(facts.get("experience") or [], ats_kw, must)
-    summary = str(facts.get("summary") or facts.get("headline") or "")
+    summary = str(facts.get("summary") or facts.get("profile_summary") or facts.get("headline") or "")
 
     sections = [
         {"name": "summary", "content": summary},
         {"name": "skills", "content": skills_ranked},
         {"name": "experience_bullets", "content": ranked},
         {"name": "experience", "content": experience_ordered or (facts.get("experience") or [])},
+        {"name": "projects", "content": facts.get("projects") or []},
         {"name": "education", "content": facts.get("education") or []},
         {"name": "certifications", "content": facts.get("certifications") or []},
     ]

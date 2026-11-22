@@ -65,14 +65,14 @@ class TestRoleGuard:
 
     @pytest.mark.parametrize("title", [
         "Azure Data Engineer",
-        "Lead Azure Data Engineer",
+        "Azure Data Platform Engineer",
         "Data Engineer( Snowflake & Azure)",
-        "Senior Azure Data Engineer",
+        "Junior Azure Data Engineer",
         "Azure Databricks PySpark Engineer",
         "Data Platform Engineer",
         "Big Data Engineer",
         "ETL Developer - Spark / Azure",
-        "Data Lakehouse Architect",
+        "Data Lakehouse Engineer",
         "DevOps Engineer",
         "MLOps Engineer",
         "AI Infrastructure Engineer",

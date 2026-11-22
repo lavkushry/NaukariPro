@@ -563,10 +563,10 @@ def solve_screening_text_question(question: str) -> str:
     ):
         return _CANDIDATE.get("name", "Lavkush Kumar")
     if "linkedin" in q_lower:
-        li = _CANDIDATE.get("linkedin", "linkedin.com/in/lavkush-kumar")
+        li = _CANDIDATE.get("linkedin", "https://www.linkedin.com/in/lavkushry/")
         return f"https://{li}" if not li.startswith("http") else li
     if any(k in q_lower for k in ("github", "portfolio", "git repo", "website", "personal site")):
-        gh = _CANDIDATE.get("github", "github.com/lavkush-kumar")
+        gh = _CANDIDATE.get("github", "https://github.com/lavkushry")
         return f"https://{gh}" if not gh.startswith("http") else gh
 
     # 3. Notice Period & Availability

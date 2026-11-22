@@ -31,9 +31,9 @@ logger = logging.getLogger("naukariPro.ProfileUpdater")
 COOLDOWN_SECONDS: int = 7200  # Strict 2-hour cooldown
 
 MLOPS_HEADLINE_TEMPLATE: str = (
-    "MLOps Engineer | Kubernetes · Docker · Helm · Terraform · "
-    "CI/CD · Prometheus · MLflow · Kafka · FastAPI · AWS EKS | "
-    "2.5 YOE Platform Engineering | 15 Days Notice"
+    "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
+    "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
+    "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
 )
 
 MLOPS_KEY_SKILLS: List[str] = [
@@ -45,8 +45,8 @@ MLOPS_KEY_SKILLS: List[str] = [
     "Terraform",
     "Prometheus",
     "Grafana",
-    "Triton",
-    "vLLM",
+    "Velero",
+    "Nginx Ingress",
     "MLflow",
     "Kafka",
     "Python",
@@ -61,23 +61,24 @@ MLOPS_KEY_SKILLS: List[str] = [
     "PostgreSQL",
     "TimescaleDB",
     "ELK Stack",
-    "OpenTelemetry"
+    "Rust"
 ]
 
 MLOPS_IT_SKILLS: List[Dict[str, Any]] = [
-    {"skill": "Kubernetes", "version": "1.28+", "last_used": "2026", "exp_years": 2, "exp_months": 5},
-    {"skill": "Docker & Helm", "version": "v24+", "last_used": "2026", "exp_years": 2, "exp_months": 5},
-    {"skill": "Terraform", "version": "1.5+", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "CI/CD (Jenkins, GitLab CI, GitHub Actions)", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 5},
-    {"skill": "Prometheus & Grafana", "version": "2.x", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "MLflow & Model Serving", "version": "2.x", "last_used": "2026", "exp_years": 1, "exp_months": 6},
-    {"skill": "Apache Kafka & Event Streaming", "version": "3.x", "last_used": "2026", "exp_years": 1, "exp_months": 6},
-    {"skill": "AWS Cloud Infrastructure (EKS, VPC, IAM)", "version": "Current", "last_used": "2026", "exp_years": 2, "exp_months": 0},
-    {"skill": "Linux & Bash Automation", "version": "Ubuntu/RHEL", "last_used": "2026", "exp_years": 2, "exp_months": 5},
-    {"skill": "Python & FastAPI Tooling", "version": "3.10+", "last_used": "2026", "exp_years": 2, "exp_months": 5},
+    {"skill": "Kubernetes", "version": "1.30+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Docker & Helm", "version": "v24+", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+    {"skill": "Terraform", "version": "1.8+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Ansible", "version": "2.16+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "CI/CD (Jenkins, GitLab CI, GitHub Actions)", "version": "Latest", "last_used": "2026", "exp_years": 2, "exp_months": 0},
+    {"skill": "Prometheus & Grafana", "version": "2.x", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "MLflow & FastAPI (Projects)", "version": "2.x", "last_used": "2026", "exp_years": 0, "exp_months": 6},
+    {"skill": "Apache Kafka & Event Streaming", "version": "3.x", "last_used": "2026", "exp_years": 1, "exp_months": 0},
+    {"skill": "AWS Cloud Infrastructure (EKS, VPC, IAM)", "version": "Current", "last_used": "2026", "exp_years": 1, "exp_months": 6},
+    {"skill": "Linux & Bash Automation", "version": "Ubuntu/RHEL", "last_used": "2026", "exp_years": 2, "exp_months": 6},
+    {"skill": "Python & FastAPI Tooling", "version": "3.11+", "last_used": "2026", "exp_years": 2, "exp_months": 6},
     {"skill": "Redis & Stateful Caching", "version": "7.x", "last_used": "2026", "exp_years": 1, "exp_months": 6},
-    {"skill": "ArgoCD & GitOps", "version": "v2.8+", "last_used": "2026", "exp_years": 1, "exp_months": 6},
-    {"skill": "ELK Stack Telemetry", "version": "8.x", "last_used": "2026", "exp_years": 2, "exp_months": 0}
+    {"skill": "ArgoCD & GitOps", "version": "v2.8+", "last_used": "2026", "exp_years": 1, "exp_months": 0},
+    {"skill": "ELK Stack Telemetry", "version": "8.x", "last_used": "2026", "exp_years": 1, "exp_months": 6}
 ]
 
 STATE_FILE = os.path.join(WORKSPACE_DIR, "naukri_system", "session_state.json")
