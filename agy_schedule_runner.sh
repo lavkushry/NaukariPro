@@ -82,6 +82,12 @@ fi
 # Closed-loop keyword mining after every cycle
 ./naukariPro mine-keywords --limit 15 2>&1 | tee -a "$RUN_LOG" || echo "[!] Keyword mining notice: non-critical." | tee -a "$RUN_LOG"
 
+# Morning Block 1: Ensure live LinkedIn profile stays synchronized alongside Naukri
+if [ "$BLOCK" -eq 1 ] && [ -f "$WORKSPACE/scripts/sync_linkedin_live_profile.py" ]; then
+    echo "[*] Synchronizing live LinkedIn profile (Block 1 daily check)..." | tee -a "$RUN_LOG"
+    python3 "$WORKSPACE/scripts/sync_linkedin_live_profile.py" 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn profile sync notice: non-critical." | tee -a "$RUN_LOG"
+fi
+
 echo "[*] Cycle Finished: $(date)" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 echo "========================================================================" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 

@@ -840,9 +840,9 @@ def sync_preferred_locations(page, locations=None):
             loc_input.type(loc, delay=60)
             time.sleep(1.2)
 
-            suggestion = page.locator(f'li:has-text("{loc}"), .sWrap li:has-text("{loc}"), div.layer li:has-text("{loc}")').first
+            suggestion = page.locator(f'.ltCont.open .sWrap li:has-text("{loc}"), #sugDrp_locationSugg li:has-text("{loc}"), .sWrap li:has-text("{loc}")').first
             if suggestion.count() > 0 and suggestion.is_visible():
-                suggestion.click()
+                suggestion.click(timeout=3000)
                 time.sleep(0.4)
             else:
                 loc_input.press("Enter")
@@ -907,9 +907,9 @@ def sync_key_skills(page, keywords=None, mutator=None):
             skill_input.type(skill, delay=50)
             time.sleep(1.0)
 
-            suggestion = page.locator(f'li:has-text("{skill}"), .sWrap li:has-text("{skill}")').first
+            suggestion = page.locator(f'.ltCont.open .sWrap li:has-text("{skill}"), #sugDrp_keySkillSugg li:has-text("{skill}"), .sWrap li:has-text("{skill}")').first
             if suggestion.count() > 0 and suggestion.is_visible():
-                suggestion.click()
+                suggestion.click(timeout=3000)
                 time.sleep(0.3)
             else:
                 skill_input.press("Enter")
