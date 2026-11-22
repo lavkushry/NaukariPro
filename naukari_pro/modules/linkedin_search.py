@@ -1236,6 +1236,7 @@ class LinkedInJobCardParser:
     ]
 
     CARD_SELECTORS = [
+        "div[role='button'][componentkey^='job-card-component-ref-']",
         "li.jobs-search-results__list-item",
         "li.scaffold-layout__list-item",
         "div.job-card-container[data-job-id]",
@@ -1492,6 +1493,13 @@ class LinkedInJobCardParser:
 
     async def extract_job_id(self, card: Any, page: Optional[Any] = None) -> Optional[str]:
         """Extracts and normalizes numeric job ID following 5-tier priority hierarchy."""
+        # Tier 0 (2026 LinkedIn SDUI): componentkey="job-card-component-ref-<ID>"
+        ck = await safe_get_attribute(card, "componentkey")
+        if ck:
+            m_ck = re.search(r"job-card-component-ref-(\d{8,12})", ck)
+            if m_ck:
+                return m_ck.group(1)
+
         # Tier 1: data-job-id attribute on card
         val = await safe_get_attribute(card, "data-job-id")
         if val and re.match(r"^\d{8,12}$", val):
@@ -1532,6 +1540,22 @@ class LinkedInJobCardParser:
 
         return None
 
+    @staticmethod
+    def _parse_sdui_lines(raw_text: str) -> Tuple[str, str, str]:
+        """Parses (title, company, location) from 2026 LinkedIn SDUI card innerText lines."""
+        lines = [s.strip() for s in (raw_text or "").split("\n") if s.strip() and s.strip() != "·"]
+        if not lines:
+            return "", "", ""
+        t0 = re.sub(r"\s*\(Verified\s+job\)\s*$", "", lines[0], flags=re.I).strip()
+        idx = 1
+        if len(lines) > 1:
+            t1 = re.sub(r"\s*\(Verified\s+job\)\s*$", "", lines[1], flags=re.I).strip()
+            if t1.lower() == t0.lower():
+                idx = 2
+        company = lines[idx] if len(lines) > idx else ""
+        location = lines[idx + 1] if len(lines) > idx + 1 else ""
+        return t0, company, location
+
     async def extract_title(self, card: Any) -> str:
         """Extracts job title using prioritized selector fallbacks."""
         title_selectors = [
@@ -1551,6 +1575,11 @@ class LinkedInJobCardParser:
                     if text and len(text) > 2 and not re.match(r"^view\s+(?:job|details|role|more)\b", text, re.I):
                         cleaned = text.split("\n")[0].strip()
                         return cleaned
+        ck = await safe_get_attribute(card, "componentkey")
+        if ck and "job-card-component-ref-" in ck:
+            t, _, _ = self._parse_sdui_lines(await safe_inner_text(card))
+            if t:
+                return t
         return ""
 
     async def extract_company(self, card: Any) -> str:
@@ -1570,6 +1599,11 @@ class LinkedInJobCardParser:
                     text = await safe_inner_text(first_loc)
                     if text:
                         return text.split("\n")[0].strip()
+        ck = await safe_get_attribute(card, "componentkey")
+        if ck and "job-card-component-ref-" in ck:
+            _, comp, _ = self._parse_sdui_lines(await safe_inner_text(card))
+            if comp:
+                return comp
         return ""
 
     async def extract_location_and_workplace(self, card: Any) -> Tuple[str, str]:
@@ -1590,6 +1624,12 @@ class LinkedInJobCardParser:
                     if text:
                         loc_text = text
                         break
+        if not loc_text:
+            ck = await safe_get_attribute(card, "componentkey")
+            if ck and "job-card-component-ref-" in ck:
+                _, _, sdui_loc = self._parse_sdui_lines(await safe_inner_text(card))
+                if sdui_loc:
+                    loc_text = sdui_loc
 
         # Detect workplace type
         full_card_text = await safe_inner_text(card)

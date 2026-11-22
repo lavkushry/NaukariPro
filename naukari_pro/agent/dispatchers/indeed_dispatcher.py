@@ -248,3 +248,127 @@ class IndeedDispatcher(BasePlatformDispatcher):
 
         report.success = report.failed_count == 0 and not report.errors
         return report
+
+    def search_and_apply(
+        self,
+        keywords: Optional[List[str]] = None,
+        locations: Optional[List[str]] = None,
+        limit: int = 10,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Discovers DevOps / MLOps / Platform / Data Engineering roles on Indeed India
+        (https://in.indeed.com/jobs) and routes matching 1-4 YOE roles through apply_job().
+        If Cloudflare / anti-bot challenge is detected, queues to AttentionQueue and exits cleanly.
+        """
+        from urllib.parse import quote_plus
+        from naukari_pro.modules.role_guard import is_target_role
+
+        target_keywords = keywords or [
+            "DevOps Engineer",
+            "MLOps Engineer",
+            "Platform Engineer",
+            "Site Reliability Engineer",
+            "Azure Data Engineer",
+        ]
+        target_locations = locations or ["Bengaluru", "Hyderabad", "Pune"]
+
+        if dry_run:
+            return {
+                "discovered": len(target_keywords),
+                "applied": 0,
+                "blocked": 0,
+                "status": "DRY_RUN",
+            }
+
+        from playwright.sync_api import sync_playwright
+        from naukari_pro.session import get_stealth_context
+        from naukari_pro.modules.career_portals import PORTALS_SESSION_DIR
+
+        discovered: List[Dict[str, str]] = []
+        blocked_count = 0
+
+        try:
+            with sync_playwright() as p:
+                context = get_stealth_context(
+                    p, headless=self.headless, session_dir=PORTALS_SESSION_DIR, lock_timeout=60.0
+                )
+                try:
+                    page = context.pages[0] if context.pages else context.new_page()
+                    for kw in target_keywords:
+                        if len(discovered) >= limit or blocked_count > 0:
+                            break
+                        for loc in target_locations:
+                            if len(discovered) >= limit or blocked_count > 0:
+                                break
+                            search_url = (
+                                f"https://in.indeed.com/jobs?q={quote_plus(kw)}"
+                                f"&l={quote_plus(loc)}&fromage=3"
+                            )
+                            page.goto(search_url, wait_until="domcontentloaded", timeout=35000)
+                            time.sleep(2.5)
+                            try:
+                                body = (page.inner_text("body") or "")[:4000]
+                                title_txt = page.title() or ""
+                            except Exception:
+                                body = ""
+                                title_txt = ""
+                            blocker = detect_blocker(body + "\n" + title_txt, url=search_url)
+                            if (
+                                blocker == BlockerClass.CAPTCHA
+                                or "just a moment" in title_txt.lower()
+                                or "additional verification required" in body.lower()
+                            ):
+                                self.attention.push(
+                                    BlockerClass.CAPTCHA,
+                                    search_url,
+                                    "Indeed India Cloudflare verification required on search landing",
+                                )
+                                self._persist_attention()
+                                blocked_count += 1
+                                break
+
+                            cards = page.evaluate(
+                                r"""() => {
+                                    return Array.from(document.querySelectorAll("a[data-jk], a.jcs-JobTitle")).map(a => {
+                                        const jk = a.getAttribute("data-jk") || "";
+                                        const card = a.closest(".job_seen_beacon, .resultContent, li, td") || a.parentElement;
+                                        const compEl = card ? card.querySelector("[data-testid='company-name'], .companyName") : null;
+                                        return {
+                                            jk,
+                                            title: (a.innerText || "").replace(/\s+/g, " ").trim(),
+                                            company: compEl ? (compEl.innerText || "").trim() : "Indeed Employer",
+                                            href: a.href || (jk ? "https://in.indeed.com/viewjob?jk=" + jk : "")
+                                        };
+                                    }).filter(c => c.title && c.href);
+                                }"""
+                            )
+                            for c in cards:
+                                ok_role, _ = is_target_role(c["title"])
+                                if not ok_role:
+                                    continue
+                                discovered.append(c)
+                                if len(discovered) >= limit:
+                                    break
+                finally:
+                    context.close()
+        except Exception as exc:
+            logger.warning("Indeed discovery notice: %s", exc)
+
+        applied = 0
+        for item in discovered[:limit]:
+            res = self.apply_job(
+                job_url=item["href"],
+                company=item["company"],
+                title=item["title"],
+                dry_run=False,
+            )
+            if res.get("success"):
+                applied += 1
+
+        return {
+            "discovered": len(discovered),
+            "applied": applied,
+            "blocked": blocked_count,
+            "status": "BLOCKED_CAPTCHA_QUEUED" if blocked_count > 0 and applied == 0 else ("SUCCESS" if applied > 0 else "IDLE"),
+        }

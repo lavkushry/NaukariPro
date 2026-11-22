@@ -407,6 +407,21 @@ class ProAutoPilotEngine:
         except Exception as e_red:
             print(f"  [!] External redirects process notice: {e_red}")
 
+        # Execute Indeed India Discovery & Company-Site ATS Bridge
+        try:
+            from naukari_pro.agent.dispatchers.indeed_dispatcher import IndeedDispatcher
+            print("  [*] Executing Indeed India Discovery & Company-Site ATS Bridge...")
+            indeed_disp = IndeedDispatcher(filler=self.portal_filler, headless=self.headless)
+            indeed_res = indeed_disp.search_and_apply(limit=10, dry_run=self.dry_run)
+            indeed_applied = int(indeed_res.get("applied", 0) or 0)
+            applied_external += indeed_applied
+            print(
+                f"  [✓] Indeed India Bridge: {indeed_applied} applied, "
+                f"{indeed_res.get('discovered', 0)} discovered (status={indeed_res.get('status')})."
+            )
+        except Exception as e_ind:
+            print(f"  [!] Indeed India bridge notice: {e_ind}")
+
         # ── TRACK 3: GET CALLS (Block-aware) ──
         outreach_pitches = 0
         followups_dispatched = 0
@@ -423,7 +438,7 @@ class ProAutoPilotEngine:
                     block2_res = goal_engine.run_block(2, dry_run=self.dry_run, execute_live=live)
                     for act in block2_res.get("actions_executed", []):
                         outreach_pitches += int(act.get("count", 0) or 0)
-                    if live and sys.platform == "darwin":
+                    if live and li_session_valid:
                         try:
                             from naukari_pro.modules.linkedin_outreach import LinkedInOutreachSender
                             sender = LinkedInOutreachSender()
