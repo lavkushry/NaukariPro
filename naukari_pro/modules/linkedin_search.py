@@ -822,6 +822,13 @@ class JobMatchScorer:
         r"\bdatabase\s+(engineer|developer)\b",
         r"\b(dwh|data\s+warehouse)\s+engineer\b",
         r"\bdevops\s+engineer\b",
+        r"\bmlops\s+engineer\b",
+        r"\bplatform\s+engineer\b",
+        r"\bsite\s+reliability\s+engineer\b",
+        r"\bsre\b",
+        r"\bai\s+infrastructure\s+engineer\b",
+        r"\bml\s+platform\s+engineer\b",
+        r"\binfrastructure\s+engineer\b",
         r"\bcloud\s+engineer\b",
         r"\bpython\s+data\s+developer\b",
         r"\bsoftware\s+engineer\s*-\s*data\b",
@@ -1077,7 +1084,21 @@ class JobMatchScorer:
                 if s_clean in full_text and s_clean not in distinct_ops:
                     distinct_ops.add(s_clean)
 
-        tech_score = min(45.0, c1_score + c2_score + c3_score + c4_score + c5_score)
+        # Cluster 6: DevOps, Platform & MLOps Stack (allows pure mid-level DevOps/Platform/MLOps JDs to score up to 45.0 pts)
+        devops_matches = set(
+            re.findall(
+                r"\b(kubernetes|k8s|docker|terraform|ansible|helm|argocd|jenkins|ci/cd|github actions|gitlab ci|prometheus|grafana|opentelemetry|aws|eks|aks|mlflow|linux|kafka|fastapi|vllm|triton)\b",
+                full_text,
+            )
+        )
+        is_senior_title = bool(re.search(r"\b(senior|sr\.?)\b", title_lower))
+        devops_tech_score = (
+            min(45.0, len(devops_matches) * 9.0)
+            if (len(devops_matches) >= 3 and not is_senior_title)
+            else 0.0
+        )
+
+        tech_score = min(45.0, max(c1_score + c2_score + c3_score + c4_score + c5_score, devops_tech_score))
         matched_skills_list = []
         if has_azure:
             matched_skills_list.append("Azure")

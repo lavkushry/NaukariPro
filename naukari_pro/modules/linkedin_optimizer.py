@@ -31,10 +31,11 @@ logger = logging.getLogger("naukariPro.LinkedInOptimizer")
 
 LINKEDIN_100K_MLOPS_BLUEPRINT: Dict[str, Any] = {
     "headline": (
-        "Platform & MLOps Engineer | Kubernetes (EKS, kubeadm) · Docker · Helm · "
-        "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · Kafka · Python · Rust | 2.5 YOE | 15 Days Notice"
+        "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · "
+        "Kubernetes (EKS/AKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · "
+        "Python · SQL · PySpark · Databricks · Kafka · Prometheus"
     ),
-    "headline_length": 173,  # Under 220-character limit
+    "headline_length": 211,  # Under 220-character limit
     "target_titles": [
         "MLOps Engineer",
         "ML Platform Engineer",

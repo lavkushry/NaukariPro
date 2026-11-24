@@ -581,8 +581,17 @@ class LinkedInApplyEngine:
         }
 
         try:
-            target_keywords = keywords or DEFAULT_KEYWORDS[:4]
-            target_locations = locations or ["India", "Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Remote"]
+            target_keywords = keywords or [
+                "DevOps Engineer",
+                "Platform Engineer",
+                "MLOps Engineer",
+                "Site Reliability Engineer",
+                "Azure Data Engineer",
+                "Databricks",
+                "PySpark",
+                "Kubernetes",
+            ]
+            target_locations = locations or ["Bengaluru", "Hyderabad", "Pune", "Gurugram", "Noida", "Mumbai", "Chennai", "Remote"]
 
             async with async_playwright() as p:
                 context = await self.session_manager.create_stealth_context(p, headless=headless)

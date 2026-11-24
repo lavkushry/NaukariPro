@@ -275,8 +275,8 @@
     "test_start_date": "2026-10-28",
     "test_end_date": "2026-11-04",
     "evaluation_date": "2026-11-05",
-    "control_headline": "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | 2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice",
-    "test_headline": "Platform & MLOps Engineer | 2.5 YOE | Kubernetes · Terraform · Ansible · CI/CD · Kafka · Prometheus | 50-Node K8s & AI Infra | 15 Days Notice",
+    "control_headline": "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · Kubernetes (EKS/AKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Jenkins · Python · SQL · PySpark · Databricks · Delta Lake · Kafka · Prometheus · Linux",
+    "test_headline": "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · Kubernetes (EKS/AKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Jenkins · Python · SQL · PySpark · Databricks · Delta Lake · Kafka · Prometheus · Linux",
     "baseline_7day_metrics": {
       "search_appearances": 642,
       "profile_views": 7,
@@ -287,7 +287,7 @@
     },
     "protocol": "Keep constant for 7 days. Day 8 compare against baseline variance. Declare win ONLY if delta > normal variance."
   },
-  "headline_template": "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | 2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice",
+  "headline_template": "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · Kubernetes (EKS/AKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · Jenkins · Python · SQL · PySpark · Databricks · Delta Lake · Kafka · Prometheus · Linux",
   "tracker_excel_path": "Naukri_Live_Application_Tracker.xlsx",
   "skill_demand_data": {
     "Core Platform & MLOps": [

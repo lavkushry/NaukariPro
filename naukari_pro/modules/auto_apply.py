@@ -105,17 +105,21 @@ if _raw_locs:
 else:
     LOCATIONS = CANONICAL_LOCATIONS
 
-# Prefer high-yield Azure DE terms first so limit=1/2 runs don't burn 10+ minutes
+# Prefer high-yield DevOps/Platform/MLOps & Azure DE terms first so limit=1/2 runs don't burn 10+ minutes
 # walking the full keyword × city × jobAge grid before any apply attempt.
 _PRIORITY_KEYWORDS = (
+    "DevOps Engineer",
+    "Platform Engineer",
+    "MLOps Engineer",
+    "Site Reliability Engineer",
     "Azure Data Engineer",
     "Data Engineer",
     "Azure Databricks",
     "PySpark",
+    "Kubernetes",
+    "Terraform",
     "ADF",
     "Azure Data Factory",
-    "Databricks",
-    "Data Engineering",
 )
 
 
@@ -2131,8 +2135,17 @@ class PlaywrightRunner:
 
                 is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
                 card_lower = f"{title} {raw_jd}".lower()
+                _infra_terms = (
+                    "devops", "platform", "mlops", "sre", "site reliability", "kubernetes",
+                    "docker", "terraform", "ansible", "helm", "argocd", "jenkins", "ci/cd",
+                    "aws", "prometheus", "grafana", "linux", "python", "cloud", "infrastructure"
+                )
+                if score <= 0 and any(t in card_lower for t in _infra_terms):
+                    _m_cnt = sum(1 for t in _infra_terms if t in card_lower)
+                    score = min(92, 60 + 8 * _m_cnt)
+                    is_match = score >= DEFAULT_MATCH_SCORE_THRESHOLD
                 is_candidate_role = score >= 25 or any(
-                    term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake")
+                    term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake") + _infra_terms
                 )
 
                 if not is_universal and not is_match and is_candidate_role and not self.dry_run:
@@ -2154,7 +2167,7 @@ class PlaywrightRunner:
                     self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
                     continue
 
-                if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+                if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops", "platform", "sre", "site reliability", "cloud", "infrastructure", "kubernetes")):
                     print(f"  ⛔ Skipped Recommended (Zero Score): {title} @ {comp} (Score: 0%)")
                     self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
                     continue
@@ -2537,8 +2550,17 @@ class PlaywrightRunner:
                                         # Compute match score for telemetry
                                         is_match, score, match_reason = evaluate_job_match(title, comp, raw_jd)
                                         card_lower = f"{title} {raw_jd}".lower()
+                                        _infra_terms = (
+                                            "devops", "platform", "mlops", "sre", "site reliability", "kubernetes",
+                                            "docker", "terraform", "ansible", "helm", "argocd", "jenkins", "ci/cd",
+                                            "aws", "prometheus", "grafana", "linux", "python", "cloud", "infrastructure"
+                                        )
+                                        if score <= 0 and any(t in card_lower for t in _infra_terms):
+                                            _m_cnt = sum(1 for t in _infra_terms if t in card_lower)
+                                            score = min(92, 60 + 8 * _m_cnt)
+                                            is_match = score >= DEFAULT_MATCH_SCORE_THRESHOLD
                                         is_candidate_role = score >= 25 or any(
-                                            term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake")
+                                            term in card_lower for term in ("data engineer", "databricks", "pyspark", "azure", "delta", "lakehouse", "fabric", "etl", "kafka", "snowflake") + _infra_terms
                                         )
                                         if not is_universal and not is_match and is_candidate_role and not self.dry_run:
                                             detail_tab = await context.new_page()
@@ -2566,7 +2588,7 @@ class PlaywrightRunner:
                                             self.skip_list = add_to_skip(self.skip_list, title, comp, f"low-match-{score}pct")
                                             continue
 
-                                        if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops")):
+                                        if score <= 0 and not any(k in title.lower() for k in ("data engineer", "azure", "databricks", "pyspark", "devops", "mlops", "platform", "sre", "site reliability", "cloud", "infrastructure", "kubernetes")):
                                             print(f"  ⛔ Skipped Search (Zero Score): {title} @ {comp} (Score: 0%)")
                                             self.skip_list = add_to_skip(self.skip_list, title, comp, "zero-match-score")
                                             continue

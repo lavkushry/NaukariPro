@@ -31,9 +31,9 @@ logger = logging.getLogger("naukariPro.ProfileUpdater")
 COOLDOWN_SECONDS: int = 7200  # Strict 2-hour cooldown
 
 MLOPS_HEADLINE_TEMPLATE: str = (
-    "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
-    "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
-    "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
+    "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · "
+    "Kubernetes (EKS/AKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · "
+    "Jenkins · Python · SQL · PySpark · Databricks · Delta Lake · Kafka · Prometheus · Linux"
 )
 
 MLOPS_KEY_SKILLS: List[str] = [
