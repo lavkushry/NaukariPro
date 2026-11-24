@@ -814,13 +814,31 @@ class LinkedInApplyEngine:
                                         job.get("title"), job.get("company"), getattr(score_res, "score", 0.0)
                                     )
 
-                                # 5. Execute Easy Apply Workflow
-                                app_res = await self.navigator.execute_easy_apply(
-                                    page=page,
-                                    job_info=job,
-                                    resume_path=RESUME_PDF_PATH,
-                                    dry_run=dry_run
-                                )
+                                # 5. Execute Easy Apply Workflow (hard 75s per-job timeout to prevent modal stalls)
+                                try:
+                                    app_res = await asyncio.wait_for(
+                                        self.navigator.execute_easy_apply(
+                                            page=page,
+                                            job_info=job,
+                                            resume_path=RESUME_PDF_PATH,
+                                            dry_run=dry_run
+                                        ),
+                                        timeout=75.0,
+                                    )
+                                except asyncio.TimeoutError:
+                                    logger.warning("Easy Apply for job %s timed out after 75s; dismissing modal.", job_id)
+                                    try:
+                                        await self.navigator.dismiss_modal(page)
+                                    except Exception:
+                                        pass
+                                    app_res = {
+                                        "success": False,
+                                        "status": "STALLED_TIMEOUT",
+                                        "job_id": job_id,
+                                        "title": job.get("title"),
+                                        "company": job.get("company"),
+                                        "detail": "Timed out after 75s in Easy Apply modal",
+                                    }
 
                                 job_record = {
                                     "job_id": job_id,
