@@ -159,6 +159,17 @@ def is_strictly_data_or_cloud_role(
             if forbidden in title_clean:
                 return False, f"Rejected: Non-data role detected in title ('{forbidden}')"
 
+    # 1b. Seniority Abbreviation & Explicit 5+ YOE Title Leak Gate
+    # Blocks "Sen ML Engineer", "5+ Yrs", "6years+", "Experience: 9–15 Year" in job titles
+    if re.search(r"(?:^|\b)sen\.?\s+(?:ml|ai|data|devops|cloud|software|platform|sre|site|engineer|developer)\b", title_clean):
+        return False, "Rejected: Senior ('Sen') role abbreviation detected in title"
+    title_yoe_match = re.search(
+        r"\b([5-9]|[12]\d)\s*(?:\+|\s*[-–—to]+\s*\d+)?\s*(?:yrs?|years?|yoe)\b|\b([5-9]|[12]\d)(?:yrs?|years?)\+?",
+        title_clean,
+    )
+    if title_yoe_match:
+        return False, f"Rejected: Title requires {title_yoe_match.group(0)} (> 4 YOE max for 2.5 YOE candidate)"
+
     # 2. Positive Target Role Check in title
     has_target = (
         any(target in title_clean for target in TARGET_ROLE_KEYWORDS)

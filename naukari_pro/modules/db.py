@@ -321,10 +321,11 @@ def generate_job_id(title: str, company: str, job_url: Optional[str] = None) -> 
         m_gh = re.search(r"gh_jid=(\d+)", u)
         if m_gh:
             return f"greenhouse_{m_gh.group(1)}"
-        # Ashby / Lever / Workday URL slug hash
-        url_hash = hashlib.md5(u.encode("utf-8")).hexdigest()[:12]
-        norm = re.sub(r"[^a-z0-9]+", "_", f"{title.lower().strip()}_{company.lower().strip()}")[:30]
-        return f"{norm}_{url_hash}"
+        # Ashby / Lever / Workday URL slug hash (exclude generic search listing URLs like /jobs/search/)
+        if "/jobs/search" not in u.lower():
+            url_hash = hashlib.md5(u.encode("utf-8")).hexdigest()[:12]
+            norm = re.sub(r"[^a-z0-9]+", "_", f"{title.lower().strip()}_{company.lower().strip()}")[:30]
+            return f"{norm}_{url_hash}"
 
     norm = re.sub(r"[^a-z0-9]+", "_", f"{title.lower().strip()}_{company.lower().strip()}")
     norm_hash = hashlib.md5(norm.encode("utf-8")).hexdigest()[:8]
@@ -576,7 +577,12 @@ def record_applied_job(
                     job_url, applied_at, applicant_email, raw_metadata, evidence_path, policy_version, is_backfill
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
-                    status=excluded.status,
+                    status=CASE
+                        WHEN applied_jobs.status IN ('APPLIED', 'Submitted (Confirmed)', 'Form Auto-Filled', 'Form Auto-Filled (Ready for Review)', 'EXTERNAL_PORTAL_APPLIED')
+                             AND (excluded.status LIKE 'SKIPPED%' OR excluded.status LIKE 'FAILED%')
+                        THEN applied_jobs.status
+                        ELSE excluded.status
+                    END,
                     match_score=COALESCE(excluded.match_score, applied_jobs.match_score),
                     application_type=COALESCE(excluded.application_type, applied_jobs.application_type),
                     job_url=COALESCE(excluded.job_url, applied_jobs.job_url),

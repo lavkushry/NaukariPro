@@ -158,16 +158,17 @@ class RecruiterKeywordOptimizer:
 
 PROFILE_VARIATIONS: Dict[str, Dict[str, Any]] = {
     "Variation_A_Lakehouse_Scale": {
-        "name": "Variation A — Platform, Kubernetes & MLOps Scale",
-        "rationale": "Prioritizes Kubernetes, Docker, Terraform, Ansible, ArgoCD, and 50-node platform reliability.",
+        "name": "Variation A — DevOps, Platform, MLOps & Cloud Scale",
+        "rationale": "Front-loads DevOps, Platform & MLOps Engineer + 2.5 YOE + 15 Days Notice + AWS/Azure/Kubernetes/Databricks.",
         "naukri_headline": (
-            "Platform & MLOps Engineer | Kubernetes (kubeadm, EKS) · Docker · Helm · "
-            "Terraform · Ansible · ArgoCD · CI/CD · Prometheus · ELK · Kafka · Python · Rust | "
-            "2.5 YOE AI & Cloud Infrastructure | AZ-900 · CKA (In Progress) | 15 Days Notice"
+            "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · "
+            "Kubernetes (EKS/AKS) · Docker · Helm · Terraform · Ansible · ArgoCD · CI/CD · "
+            "Jenkins · Python · SQL · PySpark · Databricks · Delta Lake · Kafka · Prometheus · Linux."
         ),
         "linkedin_headline": (
-            "Platform & MLOps Engineer | Kubernetes (EKS, kubeadm) · Terraform · Ansible · "
-            "Docker · Helm · ArgoCD · CI/CD · Kafka · Prometheus · Python · Rust | 2.5 YOE | 15 Days Notice"
+            "DevOps, Platform & MLOps Engineer (2.5 YOE | 15 Days Notice) | AWS · Azure · "
+            "Kubernetes (EKS/AKS) · Docker · Terraform · Ansible · ArgoCD · CI/CD · Python · "
+            "PySpark · Databricks · Delta Lake · Kafka · Prometheus"
         ),
         "key_skills": [
             "Kubernetes",

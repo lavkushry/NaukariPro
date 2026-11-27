@@ -112,22 +112,26 @@ _PRIORITY_KEYWORDS = (
     "Platform Engineer",
     "MLOps Engineer",
     "Site Reliability Engineer",
+    "Kubernetes Engineer",
+    "Cloud Engineer",
+    "AWS DevOps Engineer",
+    "Azure DevOps Engineer",
     "Azure Data Engineer",
     "Data Engineer",
     "Azure Databricks",
     "PySpark",
     "Kubernetes",
     "Terraform",
-    "ADF",
+    "Docker Kubernetes",
     "Azure Data Factory",
 )
 
 
 def _phase3_search_plan(limit: int) -> tuple:
-    """Bound Phase-3 keyword/location/age/page fan-out for small daily limits."""
+    """Bound Phase-3 keyword/location/age/page fan-out so Stage 6 never starves Stage 7/8 or Outreach."""
     locs = list(LOCATIONS if LOCATIONS else CANONICAL_LOCATIONS)
     kws = list(DEFAULT_KEYWORDS)
-    # De-dupe while putting priority terms first
+    # De-dupe while putting high-yield role titles first
     ordered = []
     for k in list(_PRIORITY_KEYWORDS) + kws:
         if k and k not in ordered:
@@ -138,7 +142,7 @@ def _phase3_search_plan(limit: int) -> tuple:
         return ordered[:8], locs[:2], (1,), 1, max(12, lim * 10)
     if lim <= 5:
         return ordered[:16], locs[:3], (1,), 2, max(24, lim * 10)
-    return ordered, locs, (1, 7), 3, max(60, lim * 12)
+    return ordered[:16], locs[:4], (1, 7), 2, min(36, max(24, lim * 3))
 
 
 async def safe_close_tab(tab, timeout: float = 5.0):
@@ -2414,22 +2418,26 @@ class PlaywrightRunner:
                 search_kws, search_locs, job_ages, max_pages, max_scans = _phase3_search_plan(limit)
                 idle_scans = 0
                 scans_done = 0
+                phase3_start_ts = time.time()
+                phase3_max_sec = float(os.getenv("NAUKRI_PHASE3_MAX_SEC", "1100"))
                 print(
                     f"  Plan: {len(search_kws)} keywords × {len(search_locs)} locs × "
-                    f"ages={job_ages} × pages≤{max_pages} (cap {max_scans} scans)"
+                    f"ages={job_ages} × pages≤{max_pages} (cap {max_scans} scans, wall-clock≤{int(phase3_max_sec)}s)"
                 )
                 for job_age in job_ages:
-                    if total_applied >= limit or scans_done >= max_scans:
+                    if total_applied >= limit or scans_done >= max_scans or (time.time() - phase3_start_ts) >= phase3_max_sec:
                         break
                     for loc in search_locs:
-                        if total_applied >= limit or scans_done >= max_scans:
+                        if total_applied >= limit or scans_done >= max_scans or (time.time() - phase3_start_ts) >= phase3_max_sec:
                             break
                         for kw in search_kws:
-                            if total_applied >= limit or scans_done >= max_scans:
+                            if total_applied >= limit or scans_done >= max_scans or (time.time() - phase3_start_ts) >= phase3_max_sec:
                                 break
 
                             for page_num in range(1, max_pages + 1):
-                                if total_applied >= limit or scans_done >= max_scans:
+                                if total_applied >= limit or scans_done >= max_scans or (time.time() - phase3_start_ts) >= phase3_max_sec:
+                                    if (time.time() - phase3_start_ts) >= phase3_max_sec:
+                                        print(f"  ⏱️ Phase-3 wall-clock cap ({int(phase3_max_sec)}s) reached after {scans_done} scans ({total_applied} applied). Handing off to Stage 7/8.")
                                     break
 
                                 url = build_search_url(kw, loc, page_num, job_age=job_age)

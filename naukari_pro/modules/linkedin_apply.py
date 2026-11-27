@@ -673,14 +673,16 @@ class LinkedInApplyEngine:
                                 is_dup_in_db = (not dry_run) and is_job_already_applied(title=job.get("title"), company=job.get("company"), job_url=job_url, db_path=db_file)
                                 if not job_id or self.tracker.is_applied(job_id) or is_dup_in_db:
                                     stats["skipped"] += 1
-                                    sync_dual_log(
-                                        title=job.get("title"),
-                                        company=job.get("company"),
-                                        platform="linkedin",
-                                        status="SKIPPED_ALREADY_APPLIED",
-                                        job_url=job_url,
-                                        db_path=db_file
-                                    )
+                                    # Do NOT overwrite an existing confirmed application in applied_jobs.db with SKIPPED_ALREADY_APPLIED
+                                    if not is_dup_in_db and not self.tracker.is_applied(job_id):
+                                        sync_dual_log(
+                                            title=job.get("title"),
+                                            company=job.get("company"),
+                                            platform="linkedin",
+                                            status="SKIPPED_ALREADY_APPLIED",
+                                            job_url=job_url,
+                                            db_path=db_file
+                                        )
                                     continue
 
                                 # 3. Match Scoring (telemetry & legacy gating)

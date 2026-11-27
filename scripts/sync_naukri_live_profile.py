@@ -187,7 +187,20 @@ def sync_employment_designation(page, target_title="DevOps Engineer"):
         pass
 
     first_role_text = emp_section.inner_text()
-    if target_title in first_role_text and "CGI" in first_role_text:
+    page_header_text = ""
+    try:
+        page_header_text = page.locator(".hdn, .profile-info, .fullname").first.inner_text()
+    except Exception:
+        pass
+    combined_role_text = f"{first_role_text}\n{page_header_text}"
+    has_inflated_prefix = bool(
+        re.search(
+            r"\b(?:lead|senior|sr\.?|principal|staff|architect|manager|director|head|vp)\s+devops\s+engineer\b",
+            combined_role_text,
+            re.I,
+        )
+    )
+    if target_title in first_role_text and "CGI" in first_role_text and not has_inflated_prefix:
         logger.info("CGI current designation is already set to '%s'.", target_title)
         return True
 
@@ -199,23 +212,42 @@ def sync_employment_designation(page, target_title="DevOps Engineer"):
     desig_input.click()
     desig_input.fill("")
     time.sleep(0.3)
-    page.keyboard.type(target_title, delay=80)
-    time.sleep(1.5)
+    desig_input.fill(target_title)
+    time.sleep(1.0)
 
-    first_match = page.locator(
-        f'li:has-text("{target_title}"), .sWrap li:has-text("{target_title}"), div:has-text("{target_title}")'
-    ).last
-    if first_match.count() > 0 and first_match.is_visible():
-        first_match.click()
-        time.sleep(1)
-    else:
+    # Select ONLY an exact case-insensitive match for target_title ("DevOps Engineer"), never "Lead DevOps Engineer"
+    clicked_exact = False
+    try:
+        clicked_exact = bool(
+            page.evaluate(
+                """(target) => {
+                    const items = Array.from(document.querySelectorAll('.ltCont.open .sWrap li, #sugDrp_designationSugg li, .sWrap li'));
+                    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                    const exact = items.find(el => el.offsetWidth > 0 && norm(el.innerText) === norm(target));
+                    if (exact) {
+                        exact.click();
+                        return true;
+                    }
+                    return false;
+                }""",
+                target_title,
+            )
+        )
+    except Exception:
+        clicked_exact = False
+
+    if not clicked_exact:
+        try:
+            desig_input.press("Escape")
+        except Exception:
+            pass
         desig_input.press("Tab")
-        time.sleep(1)
+    time.sleep(1)
 
     save_btn = page.locator('#submitEmployment')
     save_btn.click()
     time.sleep(4)
-    logger.info("Successfully updated CGI current designation.")
+    logger.info("Successfully updated CGI current designation to exact '%s'.", target_title)
     return True
 
 def _safe_count(loc) -> int:
@@ -894,6 +926,43 @@ def sync_key_skills(page, keywords=None, mutator=None):
     if skill_input is None:
         logger.warning("Key skill input field not visible.")
         return False
+
+    # Purge unverified/drifted skill chips so core DevOps/Platform/MLOps + verified Azure Data skills fit
+    unverified_skill_patterns = [
+        "data build tool",
+        "dbt",
+        "azure synapse",
+        "synapse",
+        "microsoft fabric",
+        "fabric",
+        "unity catalog",
+        "airflow",
+        "snowflake",
+    ]
+    try:
+        removed_count = page.evaluate(
+            """(badPatterns) => {
+                let removed = 0;
+                const chips = Array.from(document.querySelectorAll('.ltCont.open .chip, .ltCont.open .tag, .chipsContainer .chip'));
+                for (const chip of chips) {
+                    const txt = (chip.innerText || '').toLowerCase();
+                    if (badPatterns.some(p => txt.includes(p))) {
+                        const closeBtn = chip.querySelector('.close, .cross, a.material-icons, span.material-icons, i, a');
+                        if (closeBtn) {
+                            closeBtn.click();
+                            removed++;
+                        }
+                    }
+                }
+                return removed;
+            }""",
+            unverified_skill_patterns,
+        )
+        if removed_count:
+            logger.info("Purged %d unverified skill chips from Naukri Key Skills modal.", removed_count)
+            time.sleep(0.5)
+    except Exception as pe:
+        logger.debug("Unverified chip purge notice: %s", pe)
 
     for skill in target_skills:
         try:
