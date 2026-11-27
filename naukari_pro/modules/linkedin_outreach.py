@@ -83,10 +83,14 @@ CONNECTED_SELECTORS = [
 ]
 
 DIRECT_CONNECT_SELECTORS = [
+    "main a[aria-label*='Invite'][aria-label*='to connect']",
+    "a[aria-label*='Invite'][aria-label*='to connect']",
+    "main button[aria-label*='Invite'][aria-label*='to connect']",
     "div.pvs-profile-actions button:has-text('Connect')",
     "div.ph5 button:has-text('Connect')",
     "button[aria-label*='Invite'][aria-label*='to connect']",
     "button[aria-label^='Connect with']",
+    "main a:has-text('Connect')",
     "button:has-text('Connect')",
     "button[aria-label*='Connect']",
 ]
@@ -374,40 +378,91 @@ class LinkedInOutreachSender:
             if health_err:
                 return health_err
 
-            # Find real recruiter profile link in search results (excluding own profile /in/lavkushry)
+            # Find real recruiter profile link in search results (matching company & excluding US-staffing / self)
             found_profile = False
-            for sel in SEARCH_PROFILE_SELECTORS:
-                loc = page.locator(sel)
-                cnt = await safe_count(loc)
-                if cnt > 0:
-                    for idx in range(cnt):
-                        target = loc.nth(idx) if hasattr(loc, "nth") else loc
-                        href_res = target.get_attribute("href")
-                        href = await href_res if inspect.isawaitable(href_res) else href_res
-                        if href and "/in/" in href and "lavkushry" not in href.lower():
-                            clean_href = href.split("?")[0].strip()
-                            if clean_href.startswith("/"):
-                                clean_href = f"https://www.linkedin.com{clean_href}"
-                            elif not clean_href.startswith("http://") and not clean_href.startswith("https://"):
-                                clean_href = f"https://{clean_href}"
-                            target_profile_url = clean_href
-                            p_goto = page.goto(clean_href, wait_until="domcontentloaded")
-                            if inspect.isawaitable(p_goto):
-                                await p_goto
-                            await humanized_delay(2000, 3000, page=page)
-                            # Extract real recruiter name from profile H1 for authentic personalization
-                            try:
-                                h1 = page.locator("h1").first
-                                if await safe_count(h1) > 0:
-                                    h1_txt = (await h1.inner_text()).strip()
-                                    if h1_txt and len(h1_txt) < 60 and "linkedin" not in h1_txt.lower():
-                                        recruiter_name = h1_txt
-                            except Exception:
-                                pass
-                            found_profile = True
-                            break
-                if found_profile:
-                    break
+            comp_low = (company or "").lower().strip()
+            comp_token = comp_low.split()[0] if comp_low else ""
+            candidate_hrefs: List[str] = []
+            try:
+                js_profiles = await page.evaluate(
+                    """(compTok) => {
+                        const links = Array.from(document.querySelectorAll("main a[href*='/in/'], a[href*='/in/']"));
+                        const exact = [];
+                        const fallback = [];
+                        const seen = new Set();
+                        for (const a of links) {
+                            const href = (a.href || "").split("?")[0].trim();
+                            if (!href || !href.includes("/in/") || href.toLowerCase().includes("lavkushry") || seen.has(href)) continue;
+                            seen.add(href);
+                            const card = a.closest("li, div[data-view-name], div.entity-result__item") || a.parentElement?.parentElement;
+                            const txt = ((card ? card.innerText : a.innerText) || "").toLowerCase();
+                            if (txt.includes("us it recruiter") || txt.includes("bench sales")) continue;
+                            if (compTok && txt.includes(compTok) && /(recruit|talent|hiring|hr|sourc|people)/.test(txt)) {
+                                exact.push(href);
+                            } else if (compTok && txt.includes(compTok)) {
+                                fallback.push(href);
+                            }
+                        }
+                        return exact.concat(fallback);
+                    }""",
+                    comp_token,
+                )
+                if isinstance(js_profiles, list):
+                    candidate_hrefs = js_profiles
+            except Exception:
+                candidate_hrefs = []
+
+            if candidate_hrefs:
+                clean_href = candidate_hrefs[0]
+                target_profile_url = clean_href
+                p_goto = page.goto(clean_href, wait_until="domcontentloaded")
+                if inspect.isawaitable(p_goto):
+                    await p_goto
+                await humanized_delay(2000, 3000, page=page)
+                found_profile = True
+            else:
+                for sel in SEARCH_PROFILE_SELECTORS:
+                    loc = page.locator(sel)
+                    cnt = await safe_count(loc)
+                    if cnt > 0:
+                        for idx in range(cnt):
+                            target = loc.nth(idx) if hasattr(loc, "nth") else loc
+                            href_res = target.get_attribute("href")
+                            href = await href_res if inspect.isawaitable(href_res) else href_res
+                            if href and "/in/" in href and "lavkushry" not in href.lower():
+                                clean_href = href.split("?")[0].strip()
+                                if clean_href.startswith("/"):
+                                    clean_href = f"https://www.linkedin.com{clean_href}"
+                                elif not clean_href.startswith("http://") and not clean_href.startswith("https://"):
+                                    clean_href = f"https://{clean_href}"
+                                target_profile_url = clean_href
+                                p_goto = page.goto(clean_href, wait_until="domcontentloaded")
+                                if inspect.isawaitable(p_goto):
+                                    await p_goto
+                                await humanized_delay(2000, 3000, page=page)
+                                found_profile = True
+                                break
+                    if found_profile:
+                        break
+
+            # Extract real recruiter name from Invite aria-label or heading
+            if found_profile:
+                try:
+                    real_name = await page.evaluate(
+                        """() => {
+                            const inv = document.querySelector("a[aria-label*='Invite'][aria-label*='to connect'], button[aria-label*='Invite'][aria-label*='to connect']");
+                            if (inv) {
+                                const m = (inv.getAttribute("aria-label") || "").match(/Invite\\s+(.+?)\\s+to connect/i);
+                                if (m && m[1]) return m[1].trim();
+                            }
+                            const h = document.querySelector("main h1, main h2");
+                            return h ? (h.innerText || "").trim() : "";
+                        }"""
+                    )
+                    if isinstance(real_name, str) and real_name and len(real_name) < 60 and "linkedin" not in real_name.lower():
+                        recruiter_name = real_name
+                except Exception:
+                    pass
 
             if not found_profile:
                 curr_url = getattr(page, "url", "") or ""
