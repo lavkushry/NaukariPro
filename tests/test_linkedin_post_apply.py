@@ -208,7 +208,7 @@ def test_evaluate_hiring_post_gates():
     ok_usa_remote, _, _ = evaluate_hiring_post(
         _make_lead(
             location="Remote / Hybrid – USA",
-            post_body="Hiring MLOps Engineer USA-Based Candidates Only 2-4 years send resume rida@gmail.com",
+            post_body="Hiring MLOps Engineer USA-Based Candidates Only 2-4 years Applications from India not considered send resume rida@gmail.com",
         )
     )
     assert ok_usa_remote is False

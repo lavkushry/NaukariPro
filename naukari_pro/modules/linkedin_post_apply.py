@@ -46,11 +46,13 @@ logger = logging.getLogger("naukariPro.LinkedInPostApply")
 
 DEFAULT_POST_QUERIES: Tuple[str, ...] = (
     "hiring devops engineer hyderabad",
+    "hiring devops engineer bengaluru",
     "hiring mlops engineer india",
     "hiring platform engineer hyderabad OR bengaluru",
-    "hiring cloud engineer devops bengaluru",
+    "hiring cloud engineer devops hyderabad",
     "hiring azure data engineer hyderabad",
-    "hiring devops kubernetes hyderabad email",
+    "send resume devops india",
+    "share cv devops OR mlops hyderabad OR bengaluru",
 )
 
 EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -804,6 +806,28 @@ def evaluate_hiring_post(
         return False, 0.0, f"Rejected: Fresher/junior max YOE {lead.max_yoe:g} below 2.5 YOE target"
 
     # 6. Location check: India hub required (bare "remote" alone is NOT enough); block US/W2/foreign
+    loc_low = (lead.location or "").lower()
+    loc_has_foreign = any(
+        re.search(rf"\b{re.escape(marker)}\b", loc_low) if len(marker) <= 4 else (marker in loc_low)
+        for marker in FOREIGN_ONLY_MARKERS
+    )
+    loc_has_india = any(re.search(rf"\b{re.escape(city)}\b", loc_low) for city in INDIA_CITIES)
+    if loc_has_foreign and not loc_has_india:
+        return False, 0.0, f"Rejected: Explicit non-India location '{lead.location}'"
+
+    if any(
+        phrase in body_low
+        for phrase in (
+            "from india not considered",
+            "india not considered",
+            "not open to india",
+            "usa-based candidates only",
+            "only candidates currently residing in the united states",
+            "us citizens only",
+        )
+    ):
+        return False, 0.0, "Rejected: Post explicitly excludes India applicants"
+
     combined_loc = f"{lead.location} {body_low}".lower()
     has_india = any(
         re.search(rf"\b{re.escape(loc)}\b", combined_loc)
@@ -1099,7 +1123,7 @@ class LinkedInPostApplyEngine:
         self,
         queries: Optional[List[str]] = None,
         date_posted: str = "past-week",
-        max_posts_per_query: int = 15,
+        max_posts_per_query: int = 20,
         headless: bool = True,
     ) -> List[LinkedInPostLead]:
         """
