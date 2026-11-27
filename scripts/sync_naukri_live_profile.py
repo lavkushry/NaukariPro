@@ -979,9 +979,9 @@ def sync_key_skills(page, keywords=None, mutator=None):
     except Exception as pe:
         logger.debug("Unverified chip purge notice: %s", pe)
 
-    for skill in target_skills:
+    for skill in target_skills[:25]:
         try:
-            chip = page.locator(f'.chip:has-text("{skill}"), .tag:has-text("{skill}"), .sugChips span:has-text("{skill}")').first
+            chip = page.locator(f'.ltCont.open .chip:has-text("{skill}"), .ltCont.open .tag:has-text("{skill}"), .chip:has-text("{skill}")').first
             if chip.count() > 0 and chip.is_visible():
                 continue
 
@@ -989,22 +989,42 @@ def sync_key_skills(page, keywords=None, mutator=None):
             skill_input.fill("")
             time.sleep(0.15)
             skill_input.type(skill, delay=50)
-            time.sleep(1.0)
+            time.sleep(0.9)
 
-            suggestion = page.locator(f'.ltCont.open .sWrap li:has-text("{skill}"), #sugDrp_keySkillSugg li:has-text("{skill}"), .sWrap li:has-text("{skill}")').first
+            suggestion = page.locator(f'.ltCont.open .sWrap li:has-text("{skill}"), #sugDrp_keySkillSugg li:has-text("{skill}")').first
             if suggestion.count() > 0 and suggestion.is_visible():
                 suggestion.click(timeout=3000)
-                time.sleep(0.3)
+                time.sleep(0.25)
             else:
                 skill_input.press("Enter")
-                time.sleep(0.3)
+                time.sleep(0.25)
         except Exception as e:
             logger.warning("Could not add skill %s: %s", skill, e)
 
-    save_btn = page.locator('#saveKeySkills, #submitKeySkills, button:has-text("Save"), .saveKeySkills').first
+    save_btn = page.locator(
+        '.ltCont.open #saveKeySkills, .ltCont.open #submitKeySkills, #saveKeySkills, #submitKeySkills, .ltCont.open button:has-text("Save"), .saveKeySkills'
+    ).first
+    saved_ok = False
     if save_btn.count() > 0 and save_btn.is_visible():
         save_btn.scroll_into_view_if_needed()
         save_btn.click()
+        saved_ok = True
+    else:
+        try:
+            saved_ok = bool(
+                page.evaluate(
+                    """() => {
+                        const btns = Array.from(document.querySelectorAll('#saveKeySkills, #submitKeySkills, .ltCont.open button, .saveKeySkills'));
+                        const btn = btns.find(b => b.offsetWidth > 0 && (b.id === 'saveKeySkills' || b.id === 'submitKeySkills' || (b.innerText || '').trim().toLowerCase() === 'save'));
+                        if (btn) { btn.click(); return true; }
+                        return false;
+                    }"""
+                )
+            )
+        except Exception:
+            saved_ok = False
+
+    if saved_ok:
         time.sleep(4)
 
         try:
