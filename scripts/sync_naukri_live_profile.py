@@ -1064,9 +1064,9 @@ def sync_it_skills(page, it_skills=None):
         time.sleep(0.2)
     time.sleep(1)
 
-    it_section = page.locator('#lazyItSkills, .itSkills')
+    it_section = page.locator('#lazyITSkills, #lazyItSkills, .itSkills').first
     if it_section.count() == 0:
-        logger.warning("#lazyItSkills section not found.")
+        logger.warning("#lazyITSkills section not found.")
         return False
 
     it_section.scroll_into_view_if_needed()

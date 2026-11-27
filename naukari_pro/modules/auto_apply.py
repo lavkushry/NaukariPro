@@ -2535,6 +2535,14 @@ class PlaywrightRunner:
                                             self.skip_list = add_to_skip(self.skip_list, title, comp, "non-target-role")
                                             continue
 
+                                        # Enforce minimum salary floor (e.g. 20 LPA+) whenever salary is explicitly disclosed
+                                        # Note: Undisclosed / Not disclosed salaries ALWAYS pass is_salary_acceptable()
+                                        acceptable, sal_reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
+                                        if not acceptable:
+                                            print(f"  ⛔ Skipped Search Low Salary: {title} @ {comp} ({sal_reason})")
+                                            self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
+                                            continue
+
                                         if not is_universal:
                                             # Upfront Experience Verification Gate
                                             is_exp_ok, exp_reason, min_e, max_e = is_experience_eligible(
@@ -2548,11 +2556,6 @@ class PlaywrightRunner:
                                             if not is_exp_ok:
                                                 print(f"  ⛔ Skipped Search Experience: {title} @ {comp} ({exp_reason})")
                                                 self.skip_list = add_to_skip(self.skip_list, title, comp, "exp-mismatch")
-                                                continue
-
-                                            acceptable, reason = is_salary_acceptable(salary, MIN_SALARY_LPA)
-                                            if not acceptable:
-                                                self.skip_list = add_to_skip(self.skip_list, title, comp, "low-salary")
                                                 continue
 
                                         # Compute match score for telemetry
