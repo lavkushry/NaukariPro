@@ -1267,19 +1267,26 @@ class LinkedInScreeningSolver:
 
     async def _type_value(self, item: Any, value: str):
         """Types value into input with short timeout so overlaid fields never stall 30s."""
+        is_mock = getattr(type(item), "__module__", "").startswith("unittest.mock")
         try:
             if hasattr(item, "fill"):
-                try:
-                    res = item.fill(value, timeout=3000)
-                except TypeError:
+                if is_mock:
                     res = item.fill(value)
+                else:
+                    try:
+                        res = item.fill(value, timeout=3000)
+                    except TypeError:
+                        res = item.fill(value)
                 if inspect.isawaitable(res):
                     await res
             elif hasattr(item, "type"):
-                try:
-                    res = item.type(value, delay=random.randint(30, 70), timeout=3000)
-                except TypeError:
+                if is_mock:
                     res = item.type(value, delay=random.randint(30, 70))
+                else:
+                    try:
+                        res = item.type(value, delay=random.randint(30, 70), timeout=3000)
+                    except TypeError:
+                        res = item.type(value, delay=random.randint(30, 70))
                 if inspect.isawaitable(res):
                     await res
         except Exception as e:

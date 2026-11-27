@@ -1165,6 +1165,59 @@ def dismiss_open_modals(page):
         pass
 
 
+def share_interest_early_access_roles(page, min_salary_lpa: float = 20.0, max_clicks: int = 10) -> int:
+    """
+    Clicks 'Share interest' on eligible >= min_salary_lpa (or undisclosed), <= 4 YOE
+    DevOps / Cloud / Platform / MLOps / SRE / Data Engineering Early Access roles on
+    https://www.naukri.com/mnjuser/recommended-earjobs so active Resdex recruiters are pinged.
+    """
+    try:
+        page.goto("https://www.naukri.com/mnjuser/recommended-earjobs", wait_until="domcontentloaded", timeout=45000)
+        time.sleep(4)
+        for y in (600, 1400, 2400, 3400):
+            page.evaluate(f"window.scrollTo(0, {y})")
+            time.sleep(0.35)
+        clicked = page.evaluate(
+            """({minSal, maxClicks}) => {
+                const btns = Array.from(document.querySelectorAll("button, a, span")).filter(
+                    e => e.offsetWidth > 0 && /^share interest$/i.test((e.innerText || "").trim())
+                );
+                const hit = [];
+                for (const b of btns) {
+                    if (hit.length >= maxClicks) break;
+                    let box = b;
+                    for (let i = 0; i < 6 && box.parentElement; i++) {
+                        box = box.parentElement;
+                        if ((box.innerText || "").includes("Yrs") || (box.innerText || "").includes("Lacs")) break;
+                    }
+                    const txt = (box.innerText || "").replace(/\\s+/g, " ").trim();
+                    const low = txt.toLowerCase();
+                    const head = txt.split(" ").slice(0, 6).join(" ");
+                    const isBlocked = /\\b(sr\\.?|senior|lead|principal|staff|architect|manager|director|vp|golang|java|frontend|php|sales|hr)\\b/i.test(head);
+                    const salMatch = low.match(/(\\d+(?:\\.\\d+)?)\\s*-\\s*(\\d+(?:\\.\\d+)?)\\s*lacs/);
+                    const maxSal = salMatch ? parseFloat(salMatch[2]) : 99;
+                    const yoeMatch = low.match(/(\\d+)\\s*-\\s*(\\d+)\\s*yrs/);
+                    const minYoe = yoeMatch ? parseInt(yoeMatch[1], 10) : 0;
+                    const isTarget = /(devops|cloud|platform|mlops|sre|site reliability|data engineer|kubernetes|aws|azure|infrastructure|ai engineer|ml engineer)/i.test(head);
+                    if (isTarget && !isBlocked && maxSal >= minSal && minYoe <= 4) {
+                        b.scrollIntoView();
+                        b.click();
+                        hit.push(txt.slice(0, 120));
+                    }
+                }
+                return hit;
+            }""",
+            {"minSal": float(min_salary_lpa), "maxClicks": int(max_clicks)},
+        )
+        time.sleep(2.5)
+        if clicked:
+            logger.info("Shared interest on %d matching %.0f+ LPA Early Access roles.", len(clicked), min_salary_lpa)
+        return len(clicked or [])
+    except Exception as e:
+        logger.warning("Early Access roles check notice: %s", e)
+        return 0
+
+
 def sync_full_naukri_profile(page, config=None, force=False):
     """
     Executes complete end-to-end live profile synchronization and bumping.
@@ -1280,7 +1333,15 @@ def sync_full_naukri_profile(page, config=None, force=False):
     except Exception as e_up:
         logger.warning("Resume upload notice: %s", e_up)
 
-    # 12. Micro-bump profile timestamp
+    # 12. Ping matching 20+ LPA Naukri Early Access roles (direct recruiter alerts before jobs go public)
+    try:
+        dismiss_open_modals(page)
+        min_sal = float(os.getenv("MIN_SALARY_LPA", "20"))
+        share_interest_early_access_roles(page, min_salary_lpa=min_sal, max_clicks=10)
+    except Exception as e_ea:
+        logger.warning("Early Access Share Interest notice: %s", e_ea)
+
+    # 13. Micro-bump profile timestamp
     try:
         dismiss_open_modals(page)
         enhancer = ProfileEnhancerEngine()

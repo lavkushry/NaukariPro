@@ -194,7 +194,7 @@ def list_incomplete_portal_jobs(limit: int = 25, db_path: Optional[Path] = None)
         placeholders = ",".join("?" for _ in DRAIN_STATUSES)
         rows = conn.execute(
             f"""
-            SELECT id, job_id, company, title, job_url, status, match_score, applied_at, raw_metadata
+            SELECT id, job_id, company, title, location, job_url, status, match_score, applied_at, raw_metadata
             FROM applied_jobs
             WHERE platform LIKE '%career%'
               AND status IN ({placeholders})
@@ -204,11 +204,29 @@ def list_incomplete_portal_jobs(limit: int = 25, db_path: Optional[Path] = None)
             ORDER BY applied_at DESC
             LIMIT ?
             """,
-            (*DRAIN_STATUSES, int(limit) * 3),
+            (*DRAIN_STATUSES, int(limit) * 6),
         ).fetchall()
+        india_or_global_tokens = (
+            "india", "hyderabad", "bengaluru", "bangalore", "pune",
+            "gurugram", "gurgaon", "noida", "mumbai", "chennai",
+            "ind--", "kolkata", "remote", "worldwide", "anywhere"
+        )
+        foreign_only_tokens = (
+            "united states", ", usa", "remote - us", "remote - mexico",
+            "san jose", "san francisco", "mountain view", "sunnyvale",
+            "bellevue", "new york", "seattle", "austin", "boston",
+            "belgrade", "aarhus", "paris", "london", "toronto", "berlin", "dublin"
+        )
         eligible: List[Dict[str, Any]] = []
         for r in rows:
             d = dict(r)
+            loc_blob = f"{d.get('location') or ''} {d.get('title') or ''} {d.get('job_url') or ''}".lower()
+            has_india = any(t in loc_blob for t in india_or_global_tokens)
+            is_foreign = any(t in loc_blob for t in foreign_only_tokens)
+            if is_foreign and "india" not in loc_blob:
+                continue
+            if loc_blob.strip() and not has_india and d.get("location"):
+                continue
             meta_raw = d.get("raw_metadata")
             attempts = 0
             if meta_raw:
