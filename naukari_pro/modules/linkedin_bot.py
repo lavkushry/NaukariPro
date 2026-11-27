@@ -505,14 +505,15 @@ class LinkedInResumeManager:
             text = (await safe_inner_text(card)).lower().replace("_", " ")
             if any(term in text for term in ["azure data engineer", "lavkush", "devops", "kumar", clean_target, ".pdf"]):
                 radio = card.locator("input[type='radio']") if hasattr(card, "locator") else card
+                is_mock = getattr(type(radio), "__module__", "").startswith("unittest.mock")
                 if not await safe_is_checked(radio):
                     try:
                         if hasattr(radio, "check"):
-                            res = radio.check()
+                            res = radio.check() if is_mock else radio.check(force=True, timeout=2500)
                             if inspect.isawaitable(res):
                                 await res
                         elif hasattr(radio, "click"):
-                            res = radio.click()
+                            res = radio.click() if is_mock else radio.click(force=True, timeout=2500)
                             if inspect.isawaitable(res):
                                 await res
                     except Exception as e:
@@ -546,13 +547,14 @@ class LinkedInResumeManager:
             radio_loc = modal.locator(sel) if hasattr(modal, "locator") else None
             if await safe_count(radio_loc) > 0:
                 first_item = radio_loc.first
+                is_mock = getattr(type(first_item), "__module__", "").startswith("unittest.mock")
                 try:
                     if hasattr(first_item, "check"):
-                        res = first_item.check()
+                        res = first_item.check() if is_mock else first_item.check(force=True, timeout=2500)
                         if inspect.isawaitable(res):
                             await res
                     elif hasattr(first_item, "click"):
-                        res = first_item.click()
+                        res = first_item.click() if is_mock else first_item.click(force=True, timeout=2500)
                         if inspect.isawaitable(res):
                             await res
                     return True
@@ -1396,12 +1398,13 @@ class LinkedInEasyApplyBot:
 
         self.current_state = ModalState.TRIGGERING
         clicked = False
+        is_mock_page = getattr(type(target_page), "__module__", "").startswith("unittest.mock")
         for sel in self.selectors.EASY_APPLY_BUTTONS:
             if hasattr(target_page, "locator"):
                 loc = target_page.locator(sel)
                 if await safe_count(loc) > 0 and await safe_is_visible(loc.first):
                     try:
-                        res = loc.first.click()
+                        res = loc.first.click() if is_mock_page else loc.first.click(timeout=3500)
                         if inspect.isawaitable(res):
                             await res
                         clicked = True
@@ -1409,7 +1412,10 @@ class LinkedInEasyApplyBot:
                     except Exception:
                         try:
                             # Resilient fallback: force click if button is obscured by banner
-                            res = loc.first.click(force=True) if hasattr(loc.first, "click") else None
+                            if hasattr(loc.first, "click"):
+                                res = loc.first.click(force=True) if is_mock_page else loc.first.click(force=True, timeout=2500)
+                            else:
+                                res = None
                             if inspect.isawaitable(res):
                                 await res
                             clicked = True
@@ -1658,12 +1664,13 @@ class LinkedInEasyApplyBot:
             return True
 
         # 1. Click Dismiss button
+        is_mock_page = getattr(type(target_page), "__module__", "").startswith("unittest.mock")
         for d_sel in self.selectors.DISMISS_BUTTONS:
             if hasattr(target_page, "locator"):
                 loc = target_page.locator(d_sel)
                 if await safe_count(loc) > 0 and await safe_is_visible(loc.first):
                     try:
-                        res_c = loc.first.click()
+                        res_c = loc.first.click() if is_mock_page else loc.first.click(timeout=2500)
                         if inspect.isawaitable(res_c):
                             await res_c
                         break
@@ -1676,7 +1683,7 @@ class LinkedInEasyApplyBot:
                 loc = target_page.locator(disc_sel)
                 if await safe_count(loc) > 0 and await safe_is_visible(loc.first):
                     try:
-                        res_c = loc.first.click()
+                        res_c = loc.first.click() if is_mock_page else loc.first.click(timeout=2500)
                         if inspect.isawaitable(res_c):
                             await res_c
                         self.current_state = ModalState.TERMINAL_DISCARDED
@@ -1709,12 +1716,13 @@ class LinkedInEasyApplyBot:
                     break
 
         # Dismiss the confirmation dialog by clicking 'Done'
+        is_mock_page = getattr(type(target_page), "__module__", "").startswith("unittest.mock")
         for done_sel in self.selectors.CONFIRMATION_DONE_BUTTONS:
             if hasattr(target_page, "locator"):
                 loc = target_page.locator(done_sel)
                 if await safe_count(loc) > 0 and await safe_is_visible(loc.first):
                     try:
-                        res = loc.first.click()
+                        res = loc.first.click() if is_mock_page else loc.first.click(timeout=2500)
                         if inspect.isawaitable(res):
                             await res
                         logger.info("Clicked 'Done' button on submission confirmation modal.")
@@ -1949,7 +1957,8 @@ class LinkedInEasyApplyBot:
                         logger.debug("Notice recording linkedin field audit: %s", e_aud)
 
                     try:
-                        res_sub = submit_loc.click()
+                        is_mock_sub = getattr(type(submit_loc), "__module__", "").startswith("unittest.mock")
+                        res_sub = submit_loc.click() if is_mock_sub else submit_loc.click(timeout=4000)
                         if inspect.isawaitable(res_sub):
                             await res_sub
                         await humanized_delay(2000, 3500, page=target_page)

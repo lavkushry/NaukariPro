@@ -827,12 +827,14 @@ class LinkedInApplyEngine:
                                     )
 
                                 # 5. Execute Easy Apply Workflow (hard 75s per-job timeout to prevent modal stalls)
+                                mlops_pdf = os.path.join(WORKSPACE_DIR, "Lavkush_Kumar_MLOps_Resume.pdf")
+                                target_resume_path = mlops_pdf if os.path.exists(mlops_pdf) else RESUME_PDF_PATH
                                 try:
                                     app_res = await asyncio.wait_for(
                                         self.navigator.execute_easy_apply(
                                             page=page,
                                             job_info=job,
-                                            resume_path=RESUME_PDF_PATH,
+                                            resume_path=target_resume_path,
                                             dry_run=dry_run
                                         ),
                                         timeout=75.0,

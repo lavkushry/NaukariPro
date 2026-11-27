@@ -78,9 +78,11 @@ FORBIDDEN_ROLE_KEYWORDS = (
     # Clerical, Back Office & Admin
     "mis analyst", "data entry", "back office", "typist", "clerk",
     "receptionist", "office assistant", "executive assistant", "admin executive",
-    # Non-Engineering Analyst
+    # Non-Engineering Analyst & Support / Visa Spam
     "business analyst", "data analyst", "financial analyst", "operations analyst",
     "reporting analyst", "bi analyst", "risk analyst", "mis executive",
+    "l1/l2", "l2/l3", "immigration", "visa consultant", "canada opportunities",
+    "data scientist",
     # Finance, Accounting, Legal & HR
     "accountant", "chartered accountant", "bookkeeper", "tax consultant",
     "audit associate", "hr executive", "recruiter", "talent acquisition",
