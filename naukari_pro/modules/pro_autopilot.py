@@ -394,6 +394,35 @@ class ProAutoPilotEngine:
         else:
             print(f"\n[TRACK 3] GET CALLS skipped this cycle (Block {self.block}; use --force for all tracks).")
 
+        # ── TRACK 3B: Apply on LinkedIn Hiring Posts (Direct HR Email + Resume PDF) ──
+        applied_linkedin_posts = 0
+        if (self.block in (1, 2) or self.force) and li_session_valid:
+            print(f"\n[TRACK 3B] Scanning fresh LinkedIn Hiring Posts (Direct HR Email, budget <= 5)...")
+            try:
+                if self.dry_run:
+                    print("  [DRY-RUN] LinkedIn Hiring Posts engine ready (offline skip in dry-run pipeline).")
+                else:
+                    from naukari_pro.modules.linkedin_post_apply import LinkedInPostApplyEngine
+                    post_engine = LinkedInPostApplyEngine()
+                    post_res = post_engine.run_cycle(
+                        limit=min(self.limit_linkedin, 5),
+                        date_posted="past-week",
+                        dry_run=False,
+                        headless=self.headless,
+                        apply_ats_links=False,
+                    )
+                    applied_linkedin_posts = int(post_res.get("emails_sent", 0) or 0)
+                    applied_linkedin += applied_linkedin_posts
+                    if applied_linkedin_posts > 0:
+                        for _ in range(applied_linkedin_posts):
+                            self.scorecard.record_applied("linkedin_post", confirmed=True)
+                    print(
+                        f"  [✓] LinkedIn Hiring Posts: {applied_linkedin_posts} direct HR emails sent "
+                        f"(eligible={post_res.get('eligible', 0)}, dm_leads={len(post_res.get('dm_leads') or [])})."
+                    )
+            except Exception as e_post:
+                print(f"  [!] LinkedIn Hiring Posts notice (isolated): {e_post}")
+
         # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects (Time-boxed) ──
         stage7_start = time.time()
         stage7_max_sec = float(os.getenv("STAGE7_MAX_SEC", "900"))
@@ -548,6 +577,7 @@ class ProAutoPilotEngine:
             "applied_count": applied_naukri + applied_linkedin + applied_external,
             "applied_naukri": applied_naukri,
             "applied_linkedin": applied_linkedin,
+            "applied_linkedin_posts": applied_linkedin_posts,
             "applied_external": applied_external,
             "li_dry_run_verified": li_dry_run_verified,
             "total_tracked": total_live_tracked,

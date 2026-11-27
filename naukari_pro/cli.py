@@ -87,6 +87,7 @@ def print_menu():
     print("  [L-IN] Authenticate LinkedIn (Interactive Login & Cookie Sync)")
     print("  [V] LinkedIn Session Diagnostic (Verify li_at cookie & Identity)")
     print("  [L] LinkedIn Easy Apply (Autonomous Multi-Step Bot & Screening Solver)")
+    print("  [LP] Apply on LinkedIn Hiring Posts (Direct HR Email + Resume PDF)")
     print("  [K] LinkedIn 100k+ Search SEO & Recruiter Optimizer (Blueprint & Audit)")
     print("  [O] 5-Calls/Day Recruiter Outreach & Goal Achievement Engine")
     print("  [0] Exit")
@@ -1130,6 +1131,105 @@ def handle_linkedin_apply(args=None, limit=25, dry_run=False, headless=True, min
     print("=" * 76 + "\n")
     return 0
 
+
+def handle_linkedin_post_apply(
+    args=None,
+    limit: int = 10,
+    date_posted: str = "past-week",
+    dry_run: bool = False,
+    headless: bool = True,
+) -> int:
+    """
+    Runs LinkedIn Hiring Posts discovery & direct HR email / ATS apply engine.
+    """
+    from naukari_pro.modules.linkedin_post_apply import LinkedInPostApplyEngine
+
+    queries = None
+    max_min_yoe = 3.0
+    min_salary = 20.0
+    apply_ats_links = True
+
+    if args is not None:
+        raw_limit = getattr(args, "limit", None)
+        if isinstance(raw_limit, int):
+            limit = raw_limit
+        raw_dp = getattr(args, "date_posted", None)
+        if isinstance(raw_dp, str) and raw_dp:
+            date_posted = raw_dp
+        raw_dry = getattr(args, "dry_run", None)
+        if isinstance(raw_dry, bool):
+            dry_run = raw_dry
+        if getattr(args, "headed", False) is True:
+            headless = False
+        elif isinstance(getattr(args, "headless", None), bool):
+            headless = args.headless or headless
+        raw_q = getattr(args, "query", None)
+        if isinstance(raw_q, list) and raw_q:
+            queries = [str(x).strip() for x in raw_q if str(x).strip()]
+        elif isinstance(raw_q, str) and raw_q.strip():
+            queries = [raw_q.strip()]
+        raw_yoe = getattr(args, "max_min_yoe", None)
+        if isinstance(raw_yoe, (int, float)):
+            max_min_yoe = float(raw_yoe)
+        raw_sal = getattr(args, "min_salary", None)
+        if isinstance(raw_sal, (int, float)):
+            min_salary = float(raw_sal)
+        if getattr(args, "no_ats_links", False) is True:
+            apply_ats_links = False
+
+    engine = LinkedInPostApplyEngine(
+        max_min_yoe=max_min_yoe,
+        min_salary_lpa=min_salary,
+    )
+    print("\n" + "=" * 76)
+    print("   AUTONOMOUS LINKEDIN HIRING POSTS APPLIER (DIRECT HR EMAIL + ATS)")
+    print("=" * 76)
+    print(f"  • Mode:          {'DRY-RUN' if dry_run else 'LIVE'} | Date Window: {date_posted}")
+    print(f"  • Limit:         {limit} emails | Max Min-YOE: {max_min_yoe:g} | Floor: ₹{min_salary:g} LPA")
+    print(f"  • Resume PDF:    {os.path.basename(engine.resume_path)}")
+    print("-" * 76)
+
+    res = engine.run_cycle(
+        limit=limit,
+        queries=queries,
+        date_posted=date_posted,
+        dry_run=dry_run,
+        headless=headless,
+        apply_ats_links=apply_ats_links,
+    )
+
+    print(f"  • Discovered Posts:      {res.get('discovered', 0)}")
+    print(f"  • Eligible Target Roles: {res.get('eligible', 0)} (Rejected: {res.get('rejected', 0)})")
+    if dry_run:
+        print(f"  • Emails Ready (Dry):    {res.get('emails_dry_ready', 0)}")
+    else:
+        print(f"  • Direct Emails Sent:    {res.get('emails_sent', 0)}")
+    print(f"  • ATS Links Applied:     {res.get('ats_applied', 0)}")
+    print(f"  • DM-Only Leads:         {len(res.get('dm_leads') or [])}")
+    print(f"  • Digest Report:         {res.get('digest_path')}")
+
+    email_rows = res.get("email_results") or []
+    if email_rows:
+        print("\n  Direct Email Results:")
+        for row in email_rows:
+            print(
+                f"    - [{row.get('status')}] {row.get('recipient')} | "
+                f"{row.get('role_title')} @ {row.get('company')} ({row.get('location')}, "
+                f"score={row.get('match_score')}, age={row.get('post_age')})"
+            )
+
+    dm_rows = res.get("dm_leads") or []
+    if dm_rows:
+        print("\n  DM-Only Leads (See Digest for ready-to-paste private DMs):")
+        for row in dm_rows[:10]:
+            print(
+                f"    - {row.get('role_title')} @ {row.get('company')} ({row.get('location')}) "
+                f"by {row.get('author_name')} [{row.get('author_profile_url')}]"
+            )
+    print("=" * 76 + "\n")
+    return 0
+
+
 def handle_linkedin_seo(args=None, output_path: str = None) -> int:
     """
     Audits candidate profile parameters and generates the 100k+ monthly recruiter
@@ -1911,6 +2011,8 @@ def interactive_loop():
             handle_linkedin_verify(headless=True)
         elif choice == "L":
             handle_linkedin_apply(dry_run=True)
+        elif choice == "LP":
+            handle_linkedin_post_apply(dry_run=True)
         elif choice == "K":
             handle_linkedin_seo()
         elif choice == "O":
@@ -2021,6 +2123,20 @@ def main():
     apply_parser.add_argument("--keyword", "--keywords", dest="keyword", type=str, default=None, help="Override search keyword(s), comma-separated (e.g. 'Azure Data Engineer,Databricks')")
     apply_parser.add_argument("--location", "--locations", dest="location", type=str, default=None, help="Override search location(s), comma-separated (e.g. 'Bengaluru,Hyderabad')")
     apply_parser.set_defaults(limit=25)
+
+    for post_cmd in ("linkedin-post-apply", "post-apply"):
+        post_parser = subparsers.add_parser(
+            post_cmd,
+            help="Scan fresh LinkedIn hiring posts and apply via direct HR email (+ resume PDF) & ATS links",
+            parents=[common_parser],
+        )
+        post_parser.add_argument("--date-posted", dest="date_posted", choices=["past-24h", "past-week"], default="past-week", help="Recency filter for LinkedIn content search (default: past-week)")
+        post_parser.add_argument("--query", action="append", default=None, help="Override/add LinkedIn content search query (repeatable)")
+        post_parser.add_argument("--max-min-yoe", dest="max_min_yoe", type=float, default=3.0, help="Reject posts whose minimum YOE exceeds this threshold (default: 3.0)")
+        post_parser.add_argument("--min-salary", dest="min_salary", type=float, default=20.0, help="Disclosed minimum salary floor in LPA (default: 20.0)")
+        post_parser.add_argument("--no-ats-links", dest="no_ats_links", action="store_true", default=False, help="Skip applying embedded external ATS portal URLs")
+        post_parser.add_argument("--headed", action="store_true", default=False, help="Run browser in visible GUI mode (default: headless)")
+        post_parser.set_defaults(limit=10)
 
     seo_parser = subparsers.add_parser("linkedin-seo", help="Audit and export LinkedIn 100k+ Recruiter Search SEO blueprint", parents=[common_parser])
     seo_parser.add_argument("--output", type=str, default=None, help="Custom export path for the markdown blueprint")
@@ -2346,6 +2462,9 @@ def main():
         sys.exit(exit_code)
     elif args.command == "linkedin-apply":
         exit_code = handle_linkedin_apply(args)
+        sys.exit(exit_code)
+    elif args.command in ("linkedin-post-apply", "post-apply"):
+        exit_code = handle_linkedin_post_apply(args)
         sys.exit(exit_code)
     elif args.command in ("linkedin-seo", "linkedin-optimize"):
         exit_code = handle_linkedin_seo(args)
