@@ -57,7 +57,7 @@ CANDIDATE_FACTS = {
     "target_role": "Platform & MLOps Engineer",
     "target_ctc": "₹20–25 LPA",
     "notice_period": "15 Days or less",
-    "location": "Bangalore (Open to Bengaluru, Hyderabad, Pune, Gurugram, Remote)",
+    "location": "Hyderabad, India (Open to Hyderabad, Bengaluru, Pune, Gurugram, Remote)",
     "core_stack": "Kubernetes (EKS/kubeadm), Docker, Helm, Terraform, Ansible, ArgoCD, Jenkins/GitLab CI, Prometheus/Grafana, ELK Stack, Kafka, Redis, Python, Rust",
     "key_metrics": (
         "Employment: 50-node K8s, 40+ Ansible roles (2d->4h bootstrap), RTO 8h->30min, 45% MTTR, 99.95% uptime; "
@@ -71,21 +71,24 @@ CANDIDATE_FACTS = {
 }
 
 TOP_GCC_TARGETS = [
-    {"company": "Microsoft", "role": "Platform & MLOps Engineer", "recruiter": "Kavita Rao", "title": "Cloud & AI Technical Recruiter"},
-    {"company": "Walmart Global Tech", "role": "MLOps Engineer", "recruiter": "Priya Sharma", "title": "Platform Engineering Recruiter"},
-    {"company": "JPMorgan Chase", "role": "DevOps / Platform Engineer", "recruiter": "Rohan Gupta", "title": "Corporate Technology Talent Acquisition"},
-    {"company": "Amazon", "role": "Cloud Infrastructure Engineer", "recruiter": "Ananya Sen", "title": "AWS Infrastructure Tech Recruiting"},
-    {"company": "PNC Bank GCC", "role": "Platform Engineer", "recruiter": "Amit Verma", "title": "GCC Campus & Lateral Talent Acquisition"},
-    {"company": "Barclays", "role": "Platform / DevOps Engineer", "recruiter": "Vikram Malhotra", "title": "Global Technology Recruiter"},
-    {"company": "HSBC Technology", "role": "DevOps / MLOps Engineer", "recruiter": "Sneha Kulkarni", "title": "Cloud Platform Talent Sourcing"},
-    {"company": "Lloyds Technology Centre", "role": "Cloud Platform Engineer", "recruiter": "Arjun Nair", "title": "India Tech Hub Talent Partner"},
-    {"company": "Salesforce", "role": "Platform / Infrastructure Engineer", "recruiter": "Neha Kapoor", "title": "Core Engineering Recruiting Lead"},
-    {"company": "Adobe", "role": "AI Infrastructure / MLOps Engineer", "recruiter": "Siddharth Joshi", "title": "Cloud Platform Tech Sourcing"},
-    {"company": "Goldman Sachs", "role": "Platform Reliability Engineer", "recruiter": "Meera Iyer", "title": "Technology Division Talent Acquisition"},
-    {"company": "Morgan Stanley", "role": "Cloud Platform Engineer", "recruiter": "Kunal Deshmukh", "title": "Core Tech Recruiting"},
-    {"company": "Uber", "role": "ML Infrastructure Engineer", "recruiter": "Tanvi Agarwal", "title": "Platform Engineering Recruiter"},
-    {"company": "Atlassian", "role": "Platform Engineer", "recruiter": "Ritu Saxena", "title": "Cloud & Platform Talent Partner"},
-    {"company": "Target Tech India", "role": "DevOps / MLOps Engineer", "recruiter": "Deepak Menon", "title": "Platform Tech Sourcing"}
+    {"company": "Microsoft", "role": "DevOps / Platform & MLOps Engineer", "recruiter": "Technical Recruiter", "title": "Cloud & AI Technical Recruiter Hyderabad"},
+    {"company": "Amazon", "role": "Cloud Infrastructure / DevOps Engineer", "recruiter": "Technical Recruiter", "title": "AWS Infrastructure Tech Recruiter Hyderabad"},
+    {"company": "Google", "role": "Site Reliability / Platform Engineer", "recruiter": "Technical Recruiter", "title": "Cloud & SRE Technical Recruiter Hyderabad"},
+    {"company": "ServiceNow", "role": "DevOps / Platform Engineer", "recruiter": "Technical Recruiter", "title": "Platform & Cloud Recruiter Hyderabad"},
+    {"company": "Salesforce", "role": "Infrastructure / DevOps Engineer", "recruiter": "Technical Recruiter", "title": "Cloud Infrastructure Recruiter Hyderabad"},
+    {"company": "JPMorgan Chase", "role": "DevOps / Platform Engineer", "recruiter": "Technical Recruiter", "title": "Technology Talent Acquisition Hyderabad"},
+    {"company": "Goldman Sachs", "role": "Platform / SRE Engineer", "recruiter": "Technical Recruiter", "title": "Engineering Recruiter Hyderabad Bengaluru"},
+    {"company": "Databricks", "role": "Platform / Cloud Infrastructure Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "Uber", "role": "ML Infrastructure / Platform Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "Atlassian", "role": "Site Reliability / Platform Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "Walmart Global Tech", "role": "MLOps / DevOps Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "NVIDIA", "role": "AI Infrastructure / MLOps Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "Adobe", "role": "Cloud / DevOps Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "Razorpay", "role": "DevOps / SRE Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter Bengaluru"},
+    {"company": "Qualcomm", "role": "DevOps / Cloud Infrastructure Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter Hyderabad"},
+    {"company": "Oracle", "role": "Cloud Infrastructure / DevOps Engineer", "recruiter": "Technical Recruiter", "title": "OCI Technical Recruiter Hyderabad"},
+    {"company": "PayPal", "role": "Platform / SRE Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
+    {"company": "Intuit", "role": "DevOps / Platform Engineer", "recruiter": "Technical Recruiter", "title": "Technical Recruiter India"},
 ]
 
 

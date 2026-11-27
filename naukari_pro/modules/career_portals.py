@@ -10483,14 +10483,34 @@ class ExternalPortalBatchRunner:
                 from naukari_pro.modules.db import is_job_already_applied
 
                 store = AggregationStore()
-                cached = store.list_active_jobs(limit=max(active_limit * 10, 400))
+                cached = store.list_active_jobs(limit=max(active_limit * 20, 800))
                 if cached:
+                    india_tokens = (
+                        "india", "hyderabad", "bengaluru", "bangalore", "pune",
+                        "gurugram", "gurgaon", "noida", "mumbai", "chennai",
+                        "ind--", "apac", "remote - global", "anywhere"
+                    )
+                    non_india_only_tokens = (
+                        "united states", ", usa", "usa only", "us only", "us-remote",
+                        "remote - us", "remote (us)", "san francisco", "new york",
+                        "seattle", "austin", "boston", "chicago", "los angeles",
+                        "mountain view", "menlo park", "sunnyvale", "bellevue",
+                        "washington, dc", "canada", "united kingdom", "london",
+                        "germany", "berlin", "amsterdam", "paris", "dublin", "australia",
+                        "emea", "latam", "north america"
+                    )
                     for j in cached:
                         v = j.to_legacy_vacancy()
                         v_title = v.get("title", "")
                         v_company = v.get("company", "")
                         v_url = v.get("url", "")
                         v_jd = v.get("jd", "")
+                        v_loc = (v.get("location") or "").lower()
+                        loc_blob = f"{v_loc} {v_title.lower()} {v_url.lower()}"
+                        has_india = any(tok in loc_blob for tok in india_tokens)
+                        is_foreign_only = (not has_india) and any(tok in loc_blob for tok in non_india_only_tokens)
+                        if is_foreign_only:
+                            continue
                         score = float(calculate_match_score(f"{v_title} {v_company} {v_jd}"))
                         is_ok, _ = is_strictly_data_or_cloud_role(v_title, v_jd, score=score, company=v_company)
                         if is_ok and not is_job_already_applied(title=v_title, company=v_company, job_url=v_url):

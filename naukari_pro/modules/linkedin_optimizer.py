@@ -87,7 +87,7 @@ LINKEDIN_100K_MLOPS_BLUEPRINT: Dict[str, Any] = {
         "• Open-Source AI & Data Projects: AegisAgent (github.com/lavkushry/AegisAgent, Rust/Cedar/K8s <75ms policy eval), "
         "Project Vulcan (github.com/lavkushry/vulcan, FastAPI/pgvector/Redis Redlock), and Azure Medallion Lakehouse "
         "(github.com/lavkushry/Azure-Data-Engineering-Medallion-Lakehouse-Project, PySpark/Databricks/Delta Lake/ADF).\n\n"
-        "📍 Current Location: Bangalore, India\n"
+        "📍 Current Location: Hyderabad, India\n"
         "🎯 Preferred Hubs: Bengaluru, Hyderabad, Pune, Gurugram, Noida, Mumbai, Chennai, Remote\n"
         "⏱ Notice Period: 15 Days or less (Immediate Joiner)\n"
         "📫 Contact: lav84095@gmail.com | +91-9122036484 | https://www.linkedin.com/in/lavkushry/ | https://github.com/lavkushry"

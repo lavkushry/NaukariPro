@@ -362,19 +362,19 @@ class LinkedInOutreachSender:
                 await goto_res
             await humanized_delay(400, 800, page=page)
         else:
-            search_kw = f"{recruiter_name} {company}".strip()
+            search_kw = f"Technical Recruiter {company} India" if recruiter_name.lower() in ("recruiter", "technical recruiter", "") else f"{recruiter_name} {company}".strip()
             search_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote_plus(search_kw)}"
             goto_res = page.goto(search_url, wait_until="domcontentloaded")
             if inspect.isawaitable(goto_res):
                 await goto_res
-            await humanized_delay(500, 900, page=page)
+            await humanized_delay(2500, 3500, page=page)
 
             # Health check on search results
             health_err = await self._check_page_health(page, recruiter_name, company, dry_run)
             if health_err:
                 return health_err
 
-            # Find profile link in search results
+            # Find real recruiter profile link in search results (excluding own profile /in/lavkushry)
             found_profile = False
             for sel in SEARCH_PROFILE_SELECTORS:
                 loc = page.locator(sel)
@@ -384,7 +384,7 @@ class LinkedInOutreachSender:
                         target = loc.nth(idx) if hasattr(loc, "nth") else loc
                         href_res = target.get_attribute("href")
                         href = await href_res if inspect.isawaitable(href_res) else href_res
-                        if href and "/in/" in href:
+                        if href and "/in/" in href and "lavkushry" not in href.lower():
                             clean_href = href.split("?")[0].strip()
                             if clean_href.startswith("/"):
                                 clean_href = f"https://www.linkedin.com{clean_href}"
@@ -394,7 +394,16 @@ class LinkedInOutreachSender:
                             p_goto = page.goto(clean_href, wait_until="domcontentloaded")
                             if inspect.isawaitable(p_goto):
                                 await p_goto
-                            await humanized_delay(400, 800, page=page)
+                            await humanized_delay(2000, 3000, page=page)
+                            # Extract real recruiter name from profile H1 for authentic personalization
+                            try:
+                                h1 = page.locator("h1").first
+                                if await safe_count(h1) > 0:
+                                    h1_txt = (await h1.inner_text()).strip()
+                                    if h1_txt and len(h1_txt) < 60 and "linkedin" not in h1_txt.lower():
+                                        recruiter_name = h1_txt
+                            except Exception:
+                                pass
                             found_profile = True
                             break
                 if found_profile:
@@ -628,6 +637,38 @@ class LinkedInOutreachSender:
                 break
 
         if not typed:
+            # Free LinkedIn caps personalized notes at 5/month; if "Send without a note" is visible in live mode, use it!
+            if not dry_run:
+                for sw_sel in ("button:has-text('Send without a note')", "button[aria-label*='Send without a note']"):
+                    sw_loc = page.locator(sw_sel).first
+                    if await safe_is_visible(sw_loc):
+                        sw_res = sw_loc.click()
+                        if inspect.isawaitable(sw_res):
+                            await sw_res
+                        self.sent_today_count += 1
+                        entry = self.crm.log_outreach(
+                            recruiter_name=recruiter_name,
+                            company=company,
+                            target_role=role or "DevOps / Platform & MLOps Engineer",
+                            platform="LinkedIn",
+                            message_type="Connection Request Note",
+                            status="CONTACTED",
+                            notes="Live connection request sent without note (monthly note cap fallback)",
+                            message_content="(Sent without note — Headline visible in invite)"
+                        )
+                        return {
+                            "status": "SENT",
+                            "recruiter_name": recruiter_name,
+                            "company": company,
+                            "profile_url": target_profile_url,
+                            "note": "",
+                            "note_length": 0,
+                            "sent": True,
+                            "dry_run": False,
+                            "lead": entry,
+                            "detail": "Live connection request sent without note (monthly personalized-note cap reached)."
+                        }
+
             # Dismiss modal safely without sending blank invitation
             for dis_sel in DISMISS_SELECTORS:
                 loc = page.locator(dis_sel)
