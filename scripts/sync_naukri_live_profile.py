@@ -1270,11 +1270,13 @@ def sync_full_naukri_profile(page, config=None, force=False):
     except Exception as e_loc:
         logger.warning("Preferred locations sync notice: %s", e_loc)
 
-    # 11. Upload ATS Resume PDF
+    # 11. Upload ATS Resume PDF (prefer Lavkush_Kumar_MLOps_Resume.pdf per AGENTS.md §2 to match DevOps/MLOps headline)
     try:
         dismiss_open_modals(page)
         enhancer = ProfileEnhancerEngine()
-        enhancer.upload_resume_pdf(page, pdf_path=pdf_path)
+        mlops_pdf = os.path.join(BASE_DIR, "Lavkush_Kumar_MLOps_Resume.pdf")
+        naukri_pdf = mlops_pdf if os.path.exists(mlops_pdf) else pdf_path
+        enhancer.upload_resume_pdf(page, pdf_path=naukri_pdf)
     except Exception as e_up:
         logger.warning("Resume upload notice: %s", e_up)
 

@@ -354,78 +354,10 @@ class ProAutoPilotEngine:
         except Exception as e:
             print(f"  [!] Naukri apply error (isolated): {e}")
 
-        # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects ──
-        print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)... Target: {self.limit_external}")
-        applied_external = 0
-        drained = 0
-        ext_stats = {}
-
-        # Drain incomplete Ready-for-Review / SUBMIT_NOT_FOUND / SIGNIN_WALL / CAPTCHA rows first
-        if self.drain_pending:
-            try:
-                from naukari_pro.modules.autonomous_loop import drain_incomplete_portal_applies
-                print(f"  [*] Draining incomplete external ATS queue (auto-submit)...")
-                drain_res = drain_incomplete_portal_applies(
-                    limit=self.limit_external,
-                    headless=self.headless,
-                    dry_run=self.dry_run,
-                    universal_apply=self.universal_apply,
-                )
-                drained = int(drain_res.submitted or 0)
-                applied_external += drained
-                print(
-                    f"  [✓] Drain queue: {drained} submitted, "
-                    f"{drain_res.needs_human} needs_human, {drain_res.skipped} skipped."
-                )
-            except Exception as e_drain:
-                print(f"  [!] Drain incomplete queue notice: {e_drain}")
-
-        try:
-            ext_stats = self.portal_runner.run_batch(
-                limit=self.limit_external,
-                dry_run=self.dry_run,
-                universal_apply=self.universal_apply
-            )
-            applied_external += ext_stats.get("submitted", 0)
-            print(f"  [✓] External ATS Portal Batch: {ext_stats.get('submitted', 0)} submitted, {ext_stats.get('skipped', 0)} skipped.")
-        except Exception as e_ext:
-            print(f"  [!] External portal batch notice: {e_ext}")
-
-        # Check pending redirects from tracker
-        try:
-            print(f"  [*] Processing pending external portal redirects (Target: {self.limit_redirects})...")
-            red_res = self.portal_filler.process_external_redirects(
-                limit=self.limit_redirects,
-                headless=self.headless,
-                dry_run=self.dry_run,
-                auto_submit=True,
-                universal_apply=self.universal_apply
-            )
-            if red_res.get("submitted", 0) > 0:
-                print(f"  [✓] Processed {red_res.get('submitted')} pending external portal redirects.")
-                applied_external += red_res.get("submitted", 0)
-        except Exception as e_red:
-            print(f"  [!] External redirects process notice: {e_red}")
-
-        # Execute Indeed India Discovery & Company-Site ATS Bridge
-        try:
-            from naukari_pro.agent.dispatchers.indeed_dispatcher import IndeedDispatcher
-            print("  [*] Executing Indeed India Discovery & Company-Site ATS Bridge...")
-            indeed_disp = IndeedDispatcher(filler=self.portal_filler, headless=self.headless)
-            indeed_res = indeed_disp.search_and_apply(limit=10, dry_run=self.dry_run)
-            indeed_applied = int(indeed_res.get("applied", 0) or 0)
-            applied_external += indeed_applied
-            print(
-                f"  [✓] Indeed India Bridge: {indeed_applied} applied, "
-                f"{indeed_res.get('discovered', 0)} discovered (status={indeed_res.get('status')})."
-            )
-        except Exception as e_ind:
-            print(f"  [!] Indeed India bridge notice: {e_ind}")
-
-        # ── TRACK 3: GET CALLS (Block-aware) ──
+        # ── TRACK 3: GET CALLS (Run BEFORE External Portals so ATS slowness never starves Outreach!) ──
         outreach_pitches = 0
         followups_dispatched = 0
-        do_outreach = self.block == 2 or self.force
+        do_outreach = self.block in (1, 2) or self.force
         do_followups = self.block == 3 or self.force
         if do_outreach or do_followups:
             print(f"\n[TRACK 3] GET CALLS — Block {self.block} (outreach={do_outreach}, followups={do_followups})...")
@@ -442,13 +374,13 @@ class ProAutoPilotEngine:
                         try:
                             from naukari_pro.modules.linkedin_outreach import LinkedInOutreachSender
                             sender = LinkedInOutreachSender()
-                            send_res = asyncio.run(sender.send_batch_outreach(limit=15, dry_run=False, headless=self.headless))
+                            send_res = asyncio.run(sender.send_batch_outreach(limit=8, dry_run=False, headless=self.headless))
                             sent = int(send_res.get("sent", send_res.get("count", 0)) or 0) if isinstance(send_res, dict) else 0
                             outreach_pitches = max(outreach_pitches, sent)
-                            print(f"  [✓] Block 2 Live LinkedIn outreach: {sent} sends.")
+                            print(f"  [✓] Block {self.block} Live LinkedIn outreach: {sent} sends.")
                         except Exception as e_send:
                             print(f"  [!] Live outreach sender notice: {e_send}")
-                    print(f"  [✓] Block 2 Recruiter Outreach: {outreach_pitches} pitches (live={live}).")
+                    print(f"  [✓] Block {self.block} Recruiter Outreach: {outreach_pitches} pitches (live={live}).")
                     self.scorecard.record_outreach_sent(count=outreach_pitches)
 
                 if do_followups:
@@ -461,6 +393,81 @@ class ProAutoPilotEngine:
                 print(f"  [!] Recruiter outreach notice: {e_outreach}")
         else:
             print(f"\n[TRACK 3] GET CALLS skipped this cycle (Block {self.block}; use --force for all tracks).")
+
+        # ── TRACK 2 (STAGE 7/8): Autonomous External ATS Submissions & Pending Redirects (Time-boxed) ──
+        stage7_start = time.time()
+        stage7_max_sec = float(os.getenv("STAGE7_MAX_SEC", "900"))
+        print(f"\n[STAGE 7/8] Executing Autonomous External ATS Submissions (Greenhouse, Lever, Ashby, Workday)... Target: {self.limit_external} (budget≤{int(stage7_max_sec)}s)")
+        applied_external = 0
+        drained = 0
+        ext_stats = {}
+
+        # Drain incomplete Ready-for-Review / SUBMIT_NOT_FOUND / SIGNIN_WALL / CAPTCHA rows first (capped at 8)
+        if self.drain_pending and (time.time() - stage7_start) < stage7_max_sec:
+            try:
+                from naukari_pro.modules.autonomous_loop import drain_incomplete_portal_applies
+                print(f"  [*] Draining incomplete external ATS queue (auto-submit)...")
+                drain_res = drain_incomplete_portal_applies(
+                    limit=min(self.limit_external, 8),
+                    headless=self.headless,
+                    dry_run=self.dry_run,
+                    universal_apply=self.universal_apply,
+                )
+                drained = int(drain_res.submitted or 0)
+                applied_external += drained
+                print(
+                    f"  [✓] Drain queue: {drained} submitted, "
+                    f"{drain_res.needs_human} needs_human, {drain_res.skipped} skipped."
+                )
+            except Exception as e_drain:
+                print(f"  [!] Drain incomplete queue notice: {e_drain}")
+
+        if (time.time() - stage7_start) < stage7_max_sec:
+            try:
+                ext_stats = self.portal_runner.run_batch(
+                    limit=min(self.limit_external, 10),
+                    dry_run=self.dry_run,
+                    universal_apply=self.universal_apply
+                )
+                applied_external += ext_stats.get("submitted", 0)
+                print(f"  [✓] External ATS Portal Batch: {ext_stats.get('submitted', 0)} submitted, {ext_stats.get('skipped', 0)} skipped.")
+            except Exception as e_ext:
+                print(f"  [!] External portal batch notice: {e_ext}")
+
+        # Check pending redirects from tracker
+        if (time.time() - stage7_start) < stage7_max_sec:
+            try:
+                print(f"  [*] Processing pending external portal redirects (Target: {min(self.limit_redirects, 10)})...")
+                red_res = self.portal_filler.process_external_redirects(
+                    limit=min(self.limit_redirects, 10),
+                    headless=self.headless,
+                    dry_run=self.dry_run,
+                    auto_submit=True,
+                    universal_apply=self.universal_apply
+                )
+                if red_res.get("submitted", 0) > 0:
+                    print(f"  [✓] Processed {red_res.get('submitted')} pending external portal redirects.")
+                    applied_external += red_res.get("submitted", 0)
+            except Exception as e_red:
+                print(f"  [!] External redirects process notice: {e_red}")
+
+        # Execute Indeed India Discovery & Company-Site ATS Bridge
+        if (time.time() - stage7_start) < stage7_max_sec:
+            try:
+                from naukari_pro.agent.dispatchers.indeed_dispatcher import IndeedDispatcher
+                print("  [*] Executing Indeed India Discovery & Company-Site ATS Bridge...")
+                indeed_disp = IndeedDispatcher(filler=self.portal_filler, headless=self.headless)
+                indeed_res = indeed_disp.search_and_apply(limit=10, dry_run=self.dry_run)
+                indeed_applied = int(indeed_res.get("applied", 0) or 0)
+                applied_external += indeed_applied
+                print(
+                    f"  [✓] Indeed India Bridge: {indeed_applied} applied, "
+                    f"{indeed_res.get('discovered', 0)} discovered (status={indeed_res.get('status')})."
+                )
+            except Exception as e_ind:
+                print(f"  [!] Indeed India bridge notice: {e_ind}")
+        else:
+            print(f"  ⏱️ Stage 7/8 wall-clock budget ({int(stage7_max_sec)}s) reached; moving to Track 4 & Scorecard.")
 
         # ── TRACK 4: Self-learning (outcome labels + keyword mining) ──
         # Always-on: every beast cycle learns; heavier mutations stay Block 3 / --force

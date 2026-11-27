@@ -88,7 +88,7 @@ FORBIDDEN_ROLE_KEYWORDS = (
     "finance", "financial", "legal",
     # Seniority / Staff / Principal / Lead / Architect / Managerial exclusions (for ~2.5 YOE profile)
     "staff", "principal", "lead", "architect", "director", "vp", "vice president",
-    "head of", "chief", "manager", "mgr", "sr-mgr", "sr mgr", "senior", "sr."
+    "head of", "chief", "manager", "mgr", "sr-mgr", "sr mgr", "senior", "sr", "sr."
 )
 
 # Known gig annotation / crowd-task / spam vendors

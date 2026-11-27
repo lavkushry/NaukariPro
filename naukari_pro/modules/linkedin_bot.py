@@ -772,9 +772,9 @@ class LinkedInScreeningSolver:
 
         # 7. Current Employer & Designation
         if any(k in label_low for k in ["current company", "current employer", "present company", "organization"]):
-            return self.candidate.get("current_company", "CGI India (PNC Bank GCC)")
+            return self.candidate.get("current_company", "CGI India")
         if any(k in label_low for k in ["current job title", "current designation", "current role", "present title"]):
-            return self.candidate.get("current_designation", "Azure Data Engineer")
+            return self.candidate.get("current_designation", "DevOps Engineer")
 
         # 8. Postal code & Location
         if any(k in label_low for k in ["postal code", "pin code", "zip code", "pincode"]):
@@ -1132,7 +1132,10 @@ class LinkedInScreeningSolver:
             best_opt = self.find_best_dropdown_option(opt_texts, label_text)
             if best_opt and hasattr(select_el, "select_option"):
                 try:
-                    res_s = select_el.select_option(label=best_opt)
+                    try:
+                        res_s = select_el.select_option(label=best_opt, timeout=3000)
+                    except TypeError:
+                        res_s = select_el.select_option(label=best_opt)
                     if inspect.isawaitable(res_s):
                         await res_s
                     handled_records.append({
@@ -1263,14 +1266,20 @@ class LinkedInScreeningSolver:
         return ""
 
     async def _type_value(self, item: Any, value: str):
-        """Types value into input with human-like randomized delays."""
+        """Types value into input with short timeout so overlaid fields never stall 30s."""
         try:
             if hasattr(item, "fill"):
-                res = item.fill(value)
+                try:
+                    res = item.fill(value, timeout=3000)
+                except TypeError:
+                    res = item.fill(value)
                 if inspect.isawaitable(res):
                     await res
             elif hasattr(item, "type"):
-                res = item.type(value, delay=random.randint(30, 70))
+                try:
+                    res = item.type(value, delay=random.randint(30, 70), timeout=3000)
+                except TypeError:
+                    res = item.type(value, delay=random.randint(30, 70))
                 if inspect.isawaitable(res):
                     await res
         except Exception as e:
@@ -1566,7 +1575,10 @@ class LinkedInEasyApplyBot:
                     loc = target_page.locator(r_sel)
             if loc and await safe_count(loc) > 0 and await safe_is_visible(loc.first):
                 try:
-                    res = loc.first.click()
+                    try:
+                        res = loc.first.click(timeout=3000)
+                    except TypeError:
+                        res = loc.first.click()
                     if inspect.isawaitable(res):
                         await res
                     return True, "REVIEW"
@@ -1581,7 +1593,10 @@ class LinkedInEasyApplyBot:
                     loc = target_page.locator(n_sel)
             if loc and await safe_count(loc) > 0 and await safe_is_visible(loc.first):
                 try:
-                    res = loc.first.click()
+                    try:
+                        res = loc.first.click(timeout=3000)
+                    except TypeError:
+                        res = loc.first.click()
                     if inspect.isawaitable(res):
                         await res
                     return True, "NEXT"
@@ -1602,14 +1617,20 @@ class LinkedInEasyApplyBot:
                 item = loc.nth(i) if hasattr(loc, "nth") else loc
                 if await safe_is_checked(item):
                     try:
-                        res_un = item.uncheck()
+                        try:
+                            res_un = item.uncheck(force=True, timeout=2500)
+                        except TypeError:
+                            res_un = item.uncheck()
                         if inspect.isawaitable(res_un):
                             await res_un
                         logger.info("Unchecked 'Follow company' checkbox.")
                         return True
                     except Exception:
                         try:
-                            res_c = item.click(force=True) if hasattr(item, "click") else None
+                            try:
+                                res_c = item.click(force=True, timeout=2500) if hasattr(item, "click") else None
+                            except TypeError:
+                                res_c = item.click(force=True) if hasattr(item, "click") else None
                             if inspect.isawaitable(res_c):
                                 await res_c
                             return True

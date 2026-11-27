@@ -256,9 +256,11 @@ class ProfileEnhancerEngine:
                         logger.warning("Could not record profile mutation ledger entry: %s", le)
 
                     # Also re-upload fresh Resume PDF when due to trigger Naukri "CV Updated Today" rank multiplier
-                    if force and os.path.exists(RESUME_PDF_PATH):
+                    mlops_pdf = os.path.join(os.path.dirname(RESUME_PDF_PATH), "Lavkush_Kumar_MLOps_Resume.pdf")
+                    naukri_resume_path = mlops_pdf if os.path.exists(mlops_pdf) else RESUME_PDF_PATH
+                    if force and os.path.exists(naukri_resume_path):
                         try:
-                            self.upload_resume_pdf(page, RESUME_PDF_PATH)
+                            self.upload_resume_pdf(page, naukri_resume_path)
                         except Exception:
                             pass
 

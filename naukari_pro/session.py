@@ -614,20 +614,28 @@ def detect_challenge(page) -> Optional[str]:
     try:
         eval_js = """
         () => {
-            const bodyText = (document.body ? document.body.innerText : "").toLowerCase();
-            const challengePhrases = [
-                "verify you are human", "security check", "security verification",
-                "enter the code", "enter otp", "one-time password", "verification code",
-                "unusual traffic", "checkpoint", "are you a robot", "bot detection"
-            ];
-            for (const phrase of challengePhrases) {
-                if (bodyText.includes(phrase)) return "Checkpoint: " + phrase;
+            const href = (window.location.href || "").toLowerCase();
+            if (href.includes("/checkpoint") || href.includes("/challenge") || href.includes("captcha")) {
+                return "Checkpoint URL: " + href.slice(0, 80);
             }
             if (document.querySelector("iframe[src*='captcha'], iframe[src*='recaptcha'], iframe[src*='turnstile'], iframe[src*='hcaptcha'], #captcha, .g-recaptcha, .cf-turnstile")) {
                 return "Visual Captcha/Turnstile";
             }
             if (document.querySelector("input[placeholder*='OTP' i], #otp, input[name*='otp' i], input[autocomplete='one-time-code']")) {
                 return "OTP Verification";
+            }
+            // Ignore job description body text (e.g. "Check Point Firewall", "Delta Lake checkpoint") on full job listing pages
+            const hasApplyBtn = !!document.querySelector("button#apply-button, .apply-button, #company-site-button, .styles_jhc__apply-button-container__5BqNB");
+            const bodyText = (document.body ? document.body.innerText : "").toLowerCase();
+            if (!hasApplyBtn && bodyText.length < 3500) {
+                const challengePhrases = [
+                    "verify you are human", "security verification",
+                    "enter the code", "enter otp", "one-time password", "verification code",
+                    "unusual traffic", "are you a robot", "bot detection"
+                ];
+                for (const phrase of challengePhrases) {
+                    if (bodyText.includes(phrase)) return "Checkpoint: " + phrase;
+                }
             }
             return null;
         }
@@ -637,10 +645,9 @@ def detect_challenge(page) -> Optional[str]:
             return str(detected)
 
         # Fallback to locator check
-        body = page.locator("body").inner_text().lower()
-        if "otp" in body or page.locator("input[placeholder*='OTP'], #otp, input[name*='otp']").count() > 0:
+        if page.locator("input[placeholder*='OTP'], #otp, input[name*='otp']").count() > 0:
             challenge_type = "OTP Verification"
-        elif "captcha" in body or page.locator("iframe[src*='captcha'], iframe[src*='recaptcha'], #captcha").count() > 0:
+        elif page.locator("iframe[src*='captcha'], iframe[src*='recaptcha'], #captcha").count() > 0:
             challenge_type = "Visual Captcha"
     except Exception:
         pass
@@ -652,20 +659,27 @@ async def detect_challenge_async(page) -> Optional[str]:
     try:
         eval_js = """
         () => {
-            const bodyText = (document.body ? document.body.innerText : "").toLowerCase();
-            const challengePhrases = [
-                "verify you are human", "security check", "security verification",
-                "enter the code", "enter otp", "one-time password", "verification code",
-                "unusual traffic", "checkpoint", "are you a robot", "bot detection"
-            ];
-            for (const phrase of challengePhrases) {
-                if (bodyText.includes(phrase)) return "Checkpoint: " + phrase;
+            const href = (window.location.href || "").toLowerCase();
+            if (href.includes("/checkpoint") || href.includes("/challenge") || href.includes("captcha")) {
+                return "Checkpoint URL: " + href.slice(0, 80);
             }
             if (document.querySelector("iframe[src*='captcha'], iframe[src*='recaptcha'], iframe[src*='turnstile'], iframe[src*='hcaptcha'], #captcha, .g-recaptcha, .cf-turnstile")) {
                 return "Visual Captcha/Turnstile";
             }
             if (document.querySelector("input[placeholder*='OTP' i], #otp, input[name*='otp' i], input[autocomplete='one-time-code']")) {
                 return "OTP Verification";
+            }
+            const hasApplyBtn = !!document.querySelector("button#apply-button, .apply-button, #company-site-button, .styles_jhc__apply-button-container__5BqNB");
+            const bodyText = (document.body ? document.body.innerText : "").toLowerCase();
+            if (!hasApplyBtn && bodyText.length < 3500) {
+                const challengePhrases = [
+                    "verify you are human", "security verification",
+                    "enter the code", "enter otp", "one-time password", "verification code",
+                    "unusual traffic", "are you a robot", "bot detection"
+                ];
+                for (const phrase of challengePhrases) {
+                    if (bodyText.includes(phrase)) return "Checkpoint: " + phrase;
+                }
             }
             return null;
         }

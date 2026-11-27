@@ -66,10 +66,16 @@ fi
 
 echo "[*] Beast Block: $BLOCK" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 
-# Single brain — Always-on autonomous loop (drain incomplete + multi-channel apply)
-# Targets: Naukri (20), LinkedIn (20), External ATS (25), Redirects (25)
+# Morning Block 1: Synchronize live LinkedIn profile FIRST (before apply loops) so it is never starved
+if [ "$BLOCK" -eq 1 ] && [ -f "$WORKSPACE/scripts/sync_linkedin_live_profile.py" ]; then
+    echo "[*] Synchronizing live LinkedIn profile (Block 1 daily check)..." | tee -a "$RUN_LOG"
+    python3 "$WORKSPACE/scripts/sync_linkedin_live_profile.py" 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn profile sync notice: non-critical." | tee -a "$RUN_LOG"
+fi
+
+# Single brain — Always-on autonomous loop (drain incomplete + multi-channel apply + outreach)
+# Targets: Naukri (20), LinkedIn (20), External ATS (15), Redirects (15)
 set +e
-./naukariPro beast-autonomous --headless --limit 20 --limit-naukri 20 --limit-linkedin 20 --limit-external 25 --limit-redirects 25 --block "$BLOCK" 2>&1 | tee -a "$RUN_LOG"
+./naukariPro beast-autonomous --headless --limit 20 --limit-naukri 20 --limit-linkedin 20 --limit-external 15 --limit-redirects 15 --block "$BLOCK" 2>&1 | tee -a "$RUN_LOG"
 PRO_STATUS=${PIPESTATUS[0]}
 set -e
 
@@ -81,12 +87,6 @@ fi
 
 # Closed-loop keyword mining after every cycle
 ./naukariPro mine-keywords --limit 15 2>&1 | tee -a "$RUN_LOG" || echo "[!] Keyword mining notice: non-critical." | tee -a "$RUN_LOG"
-
-# Morning Block 1: Ensure live LinkedIn profile stays synchronized alongside Naukri
-if [ "$BLOCK" -eq 1 ] && [ -f "$WORKSPACE/scripts/sync_linkedin_live_profile.py" ]; then
-    echo "[*] Synchronizing live LinkedIn profile (Block 1 daily check)..." | tee -a "$RUN_LOG"
-    python3 "$WORKSPACE/scripts/sync_linkedin_live_profile.py" 2>&1 | tee -a "$RUN_LOG" || echo "[!] LinkedIn profile sync notice: non-critical." | tee -a "$RUN_LOG"
-fi
 
 echo "[*] Cycle Finished: $(date)" | tee -a "$RUN_LOG" "$HISTORY_LOG"
 echo "========================================================================" | tee -a "$RUN_LOG" "$HISTORY_LOG"

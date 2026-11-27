@@ -309,8 +309,240 @@ async def sync_linkedin_live() -> None:
                 await page.wait_for_timeout(4500)
                 print(f"[✓] Saved LinkedIn Project {idx + 1}: {saved}")
 
+            # 5. Open to Work — Recruiters Only (/opportunities/job-opportunities/edit/)
+            await sync_open_to_work_recruiters_only(page)
+
+            # 6. Clean unverified skills & add core DevOps/Platform/MLOps/Cloud skills
+            await sync_linkedin_skills(page)
+
         finally:
             await ctx.close()
+
+
+async def sync_open_to_work_recruiters_only(page: Any) -> bool:
+    """
+    Activates LinkedIn 'Open to work' strictly for RECRUITERS ONLY (hidden from current employer):
+    - 5 high-volume titles: DevOps Engineer, Platform Engineer, MLOps Engineer, Cloud Engineer, Site Reliability Engineer
+    - 5 India hubs: India, Bengaluru, Hyderabad, Pune, Gurugram (removing Singapore/Dubai wasted slots)
+    - Notice period: '15 days or less'
+    - Expected annual salary: '₹ 15+ Lakhs'
+    - Start date: 'Immediately, I am actively applying'
+    - Visibility: 'Recruiters only' (NEVER public #OpenToWork green frame)
+    """
+    print("\n[*] Synchronizing LinkedIn Open to Work (Recruiters Only)...")
+    await page.goto(
+        "https://www.linkedin.com/in/lavkushry/opportunities/job-opportunities/edit/",
+        wait_until="domcontentloaded",
+        timeout=35000,
+    )
+    await page.wait_for_timeout(4000)
+
+    # 1. Remove low-yield foreign locations (Singapore, Dubai) to free slots for Pune & Gurugram
+    for bad_loc in ("Singapore", "Dubai"):
+        try:
+            rm_btn = page.locator(f"button[aria-label*='Remove {bad_loc}']").first
+            if await rm_btn.count() > 0 and await rm_btn.is_visible():
+                await rm_btn.click(timeout=2500)
+                await page.wait_for_timeout(500)
+                print(f"  [✓] Removed foreign location slot: {bad_loc}")
+        except Exception:
+            pass
+
+    # 2. Add target job titles up to LinkedIn's max (5)
+    target_titles = [
+        "DevOps Engineer",
+        "Platform Engineer",
+        "MLOps Engineer",
+        "Cloud Engineer",
+        "Site Reliability Engineer",
+    ]
+    for title in target_titles:
+        try:
+            exists = await page.locator(f"button[aria-label='Remove {title}']").count()
+            if exists > 0:
+                continue
+            add_btn = page.locator("button:has-text('Add title')").first
+            if await add_btn.count() == 0 or not await add_btn.is_visible():
+                break
+            await add_btn.click(timeout=2500)
+            await page.wait_for_timeout(600)
+            inp = page.locator("input[placeholder*='title' i], input[aria-label*='title' i], input[type='text']").last
+            if await inp.count() > 0 and await inp.is_visible():
+                await inp.fill(title, timeout=2500)
+                await page.wait_for_timeout(1200)
+                opt = page.locator("div[role='option'], ul[role='listbox'] li, .basic-typeahead__selectable").first
+                if await opt.count() > 0 and await opt.is_visible():
+                    await opt.click(timeout=2500)
+                else:
+                    await inp.press("Enter")
+                await page.wait_for_timeout(600)
+                print(f"  [+] Added OTW job title: {title}")
+        except Exception as e:
+            print(f"  [!] OTW title notice ({title}): {e}")
+
+    # 3. Add India Tier-1 hubs (Pune, Gurugram) up to max (5)
+    for city in ("Pune, Maharashtra, India", "Gurugram, Haryana, India"):
+        try:
+            short = city.split(",")[0]
+            if await page.locator(f"button[aria-label*='Remove {short}']").count() > 0:
+                continue
+            add_loc = page.locator("button:has-text('Add location')").first
+            if await add_loc.count() == 0 or not await add_loc.is_visible():
+                break
+            await add_loc.click(timeout=2500)
+            await page.wait_for_timeout(600)
+            inp = page.locator("input[placeholder*='location' i], input[aria-label*='location' i], input[type='text']").last
+            if await inp.count() > 0 and await inp.is_visible():
+                await inp.fill(city, timeout=2500)
+                await page.wait_for_timeout(1200)
+                opt = page.locator("div[role='option'], ul[role='listbox'] li, .basic-typeahead__selectable").first
+                if await opt.count() > 0 and await opt.is_visible():
+                    await opt.click(timeout=2500)
+                else:
+                    await inp.press("Enter")
+                await page.wait_for_timeout(600)
+                print(f"  [+] Added OTW location: {city}")
+        except Exception as e:
+            print(f"  [!] OTW location notice ({city}): {e}")
+
+    # 4. Select Notice Period = '15 days or less' & Expected Annual Salary = '₹ 15+ Lakhs'
+    selects = page.locator("select")
+    sel_cnt = await selects.count()
+    for idx in range(sel_cnt):
+        sel = selects.nth(idx)
+        try:
+            txt = (await sel.inner_text()).lower()
+            if "15 days or less" in txt:
+                await sel.select_option(label="15 days or less", timeout=3000)
+                print("  [✓] Set OTW Notice period = '15 days or less'")
+            elif "15+ lakhs" in txt:
+                await sel.select_option(label="₹ 15+ Lakhs", timeout=3000)
+                print("  [✓] Set OTW Expected salary = '₹ 15+ Lakhs'")
+        except Exception as e:
+            print(f"  [!] OTW select notice ({idx}): {e}")
+
+    # 5. Select Start Date = 'Immediately, I am actively applying' AND enforce Visibility = 'Recruiters only'
+    otw_radios = await page.evaluate(
+        """() => {
+            let startSet = false;
+            let visSet = false;
+            const startRadios = Array.from(document.querySelectorAll("input[type='radio'][name*='START_DATE']"));
+            if (startRadios.length > 0) {
+                const target = startRadios.find(r => (r.closest('label, div')?.innerText || '').toLowerCase().includes('immediately')) || startRadios[0];
+                target.click();
+                startSet = true;
+            }
+            const visRadios = Array.from(document.querySelectorAll("input[type='radio'][name*='VISIBILITY']"));
+            if (visRadios.length > 0) {
+                const recOnly = visRadios.find(r => (r.closest('label, div')?.innerText || '').toLowerCase().includes('recruiters only')) || visRadios[0];
+                if (!recOnly.checked) recOnly.click();
+                visSet = !!recOnly.checked;
+            }
+            return {startSet, visSet};
+        }"""
+    )
+    print("  [✓] OTW Start Date & Recruiters-Only Visibility:", otw_radios)
+
+    await page.wait_for_timeout(1000)
+    saved = await click_save(page)
+    await page.wait_for_timeout(4500)
+    print(f"[✓] Saved LinkedIn Open to Work (Recruiters only): {saved}")
+    return saved
+
+
+async def sync_linkedin_skills(page: Any) -> None:
+    """
+    1. Purges unverified/drifted skills (Evidently AI, Feast, DVC, Airflow) from /details/skills/
+    2. Adds verified high-demand DevOps/Platform/Cloud/MLOps skills via /details/skills/add/
+    """
+    print("\n[*] Synchronizing LinkedIn Skills...")
+    bad_skills = {"evidently ai", "feast", "dvc", "airflow"}
+    await page.goto(
+        "https://www.linkedin.com/in/lavkushry/details/skills/",
+        wait_until="domcontentloaded",
+        timeout=35000,
+    )
+    await page.wait_for_timeout(4000)
+
+    # Check which skills are currently present
+    existing_text = (await page.evaluate("() => document.body ? document.body.innerText : ''")).lower()
+
+    # Delete unverified skills by locating edit links inside skill list items
+    bad_edit_links: List[str] = await page.evaluate(
+        """(badList) => {
+            const links = [];
+            const items = Array.from(document.querySelectorAll("li.pvs-list__paged-list-item, div[data-view-name='profile-component-entity']"));
+            for (const it of items) {
+                const txt = (it.innerText || "").toLowerCase();
+                const firstLine = txt.split("\\n").map(s => s.trim()).filter(Boolean)[0] || "";
+                if (badList.includes(firstLine)) {
+                    const a = it.querySelector("a[href*='/details/skills/edit/forms/']");
+                    if (a && a.href) links.push(a.href);
+                }
+            }
+            return Array.from(new Set(links));
+        }""",
+        list(bad_skills),
+    )
+    for edit_url in bad_edit_links:
+        try:
+            await page.goto(edit_url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(2500)
+            del_btn = page.locator("button:has-text('Delete skill')").first
+            if await del_btn.count() > 0 and await del_btn.is_visible():
+                await del_btn.click(timeout=2500)
+                await page.wait_for_timeout(1200)
+                confirm = page.locator("div[role='dialog'] button:has-text('Delete'), button.artdeco-button--primary:has-text('Delete')").last
+                if await confirm.count() > 0 and await confirm.is_visible():
+                    await confirm.click(timeout=2500)
+                    await page.wait_for_timeout(2000)
+                print(f"  [✓] Deleted unverified LinkedIn skill via {edit_url}")
+        except Exception as e:
+            print(f"  [!] Skill delete notice: {e}")
+
+    # Add core verified skills missing from the live profile
+    core_skills = [
+        "Kubernetes",
+        "Amazon Web Services (AWS)",
+        "Microsoft Azure",
+        "Docker",
+        "Terraform",
+        "Ansible",
+        "DevOps",
+        "ArgoCD",
+        "Helm",
+        "Jenkins",
+        "CI/CD",
+        "Prometheus",
+        "Grafana",
+        "Apache Kafka",
+        "Linux",
+        "SQL",
+    ]
+    for skill in core_skills:
+        short_key = skill.split("(")[0].strip().lower()
+        if f"\n{skill.lower()}\n" in existing_text or f"\n{short_key}\n" in existing_text:
+            continue
+        try:
+            await page.goto(
+                "https://www.linkedin.com/in/lavkushry/edit/forms/skills/new/?profileFormEntryPoint=PROFILE_SECTION",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            await page.wait_for_timeout(2500)
+            inp = page.locator("input[placeholder*='Skill' i], input[aria-label*='Skill' i], input[type='text']").first
+            if await inp.count() > 0 and await inp.is_visible():
+                await inp.fill(skill, timeout=2500)
+                await page.wait_for_timeout(1200)
+                opt = page.locator("div[role='option'], ul[role='listbox'] li, .basic-typeahead__selectable").first
+                if await opt.count() > 0 and await opt.is_visible():
+                    await opt.click(timeout=2500)
+                await page.wait_for_timeout(600)
+                saved = await click_save(page)
+                await page.wait_for_timeout(2500)
+                print(f"  [+] Added LinkedIn skill '{skill}': saved={saved}")
+        except Exception as e:
+            print(f"  [!] Skill add notice ({skill}): {e}")
 
 
 if __name__ == "__main__":
