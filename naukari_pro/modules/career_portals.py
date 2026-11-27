@@ -10397,6 +10397,26 @@ class CareerPortalManager:
         )
 
 
+def _is_india_or_global_remote(v: Dict[str, Any]) -> bool:
+    """Allow only India or explicit Global/Worldwide remote roles; block Poland/Serbia/US/EU-only roles."""
+    india_or_global_tokens = (
+        "india", "hyderabad", "bengaluru", "bangalore", "pune",
+        "gurugram", "gurgaon", "noida", "mumbai", "chennai",
+        "ind--", "kolkata", "ahmedabad", "remote - global",
+        "global remote", "worldwide", "anywhere"
+    )
+    foreign_only_tokens = (
+        "united states", ", usa", "poland", "warsaw", "belgrade",
+        "serbia", "aarhus", "denmark", "san jose", "san francisco",
+        "sunnyvale", "mountain view", "new york", "seattle", "austin",
+        "london", "paris", "berlin", "toronto", "mexico"
+    )
+    loc_blob = f"{v.get('location') or ''} {v.get('title') or ''} {v.get('url') or ''}".lower()
+    has_india_or_global = any(tok in loc_blob for tok in india_or_global_tokens)
+    has_foreign_only = any(tok in loc_blob for tok in foreign_only_tokens) and ("india" not in loc_blob)
+    return has_india_or_global and not has_foreign_only
+
+
 class ExternalPortalBatchRunner:
     """
     Autonomous Batch Execution Engine for External ATS Portals.
@@ -10485,23 +10505,13 @@ class ExternalPortalBatchRunner:
                 store = AggregationStore()
                 cached = store.list_active_jobs(limit=max(active_limit * 50, 2000))
                 if cached:
-                    india_or_global_tokens = (
-                        "india", "hyderabad", "bengaluru", "bangalore", "pune",
-                        "gurugram", "gurgaon", "noida", "mumbai", "chennai",
-                        "ind--", "kolkata", "ahmedabad", "remote - global",
-                        "global remote", "worldwide", "anywhere"
-                    )
                     for j in cached:
                         v = j.to_legacy_vacancy()
                         v_title = v.get("title", "")
                         v_company = v.get("company", "")
                         v_url = v.get("url", "")
                         v_jd = v.get("jd", "")
-                        v_loc = (v.get("location") or "").lower()
-                        loc_blob = f"{v_loc} {v_title.lower()} {v_url.lower()}"
-                        # Strictly whitelist India or explicit Global/Worldwide remote roles
-                        # so External ATS never wastes budget on US/EU/LatAm-only postings.
-                        if not any(tok in loc_blob for tok in india_or_global_tokens):
+                        if not _is_india_or_global_remote(v):
                             continue
                         score = float(calculate_match_score(f"{v_title} {v_company} {v_jd}"))
                         is_ok, _ = is_strictly_data_or_cloud_role(v_title, v_jd, score=score, company=v_company)
@@ -10514,15 +10524,24 @@ class ExternalPortalBatchRunner:
 
             if len(live_feed) < active_limit:
                 more_live = fetch_live_ats_vacancies(
-                    limit=max(active_limit * 5, 50), ats_types=ats_types
+                    limit=max(active_limit * 10, 100), ats_types=ats_types
                 )
                 if more_live:
                     from naukari_pro.modules.db import is_job_already_applied
+                    from naukari_pro.modules.role_guard import is_strictly_data_or_cloud_role
+                    from naukari_pro.modules.job_alerts import calculate_match_score
+                    seen_urls = {v.get("url") for v in live_feed if v.get("url")}
                     for v in more_live:
                         v_title = v.get("title", "")
                         v_company = v.get("company", "")
                         v_url = v.get("url", "")
-                        if not is_job_already_applied(title=v_title, company=v_company, job_url=v_url):
+                        v_jd = v.get("jd", "")
+                        if v_url in seen_urls or not _is_india_or_global_remote(v):
+                            continue
+                        score = float(calculate_match_score(f"{v_title} {v_company} {v_jd}"))
+                        is_ok, _ = is_strictly_data_or_cloud_role(v_title, v_jd, score=score, company=v_company)
+                        if is_ok and not is_job_already_applied(title=v_title, company=v_company, job_url=v_url):
+                            seen_urls.add(v_url)
                             live_feed.append(v)
 
             feed = live_feed if live_feed else list(self.curated_vacancies)

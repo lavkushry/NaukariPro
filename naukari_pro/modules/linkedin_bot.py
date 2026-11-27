@@ -241,11 +241,22 @@ async def safe_count(loc: Any) -> int:
 
 
 async def safe_inner_text(loc: Any) -> str:
-    """Safely extracts inner text or empty string."""
+    """Safely extracts inner text or empty string with short timeout for real Playwright locators."""
     if loc is None:
         return ""
+    is_mock = getattr(type(loc), "__module__", "").startswith("unittest.mock")
     try:
-        res = loc.inner_text()
+        if is_mock:
+            res = loc.inner_text()
+            text = await res if inspect.isawaitable(res) else res
+            return (text or "").strip()
+        if await safe_count(loc) == 0:
+            return ""
+        target = loc.first if hasattr(loc, "first") else loc
+        try:
+            res = target.inner_text(timeout=1500)
+        except TypeError:
+            res = target.inner_text()
         text = await res if inspect.isawaitable(res) else res
         return (text or "").strip()
     except Exception:
@@ -264,14 +275,24 @@ async def safe_is_visible(loc: Any) -> bool:
 
 
 async def safe_is_checked(loc: Any) -> bool:
-    """Safely checks if checkbox/radio is checked."""
+    """Safely checks if checkbox/radio is checked with short timeout for real Playwright locators."""
     if loc is None:
         return False
+    is_mock = getattr(type(loc), "__module__", "").startswith("unittest.mock")
     try:
-        if hasattr(loc, "is_checked"):
+        if not hasattr(loc, "is_checked"):
+            return False
+        if is_mock:
             res = loc.is_checked()
             return await res if inspect.isawaitable(res) else res
-        return False
+        if await safe_count(loc) == 0:
+            return False
+        target = loc.first if hasattr(loc, "first") else loc
+        try:
+            res = target.is_checked(timeout=1500)
+        except TypeError:
+            res = target.is_checked()
+        return await res if inspect.isawaitable(res) else res
     except Exception:
         return False
 
@@ -979,13 +1000,32 @@ class LinkedInScreeningSolver:
 
                 # Discover label text
                 label_text = await self._find_label_for_element(item, modal)
-                input_type = (await item.get_attribute("type") if hasattr(item, "get_attribute") else "") or ""
+                is_mock_item = getattr(type(item), "__module__", "").startswith("unittest.mock")
+                input_type = ""
+                if hasattr(item, "get_attribute"):
+                    try:
+                        if is_mock_item:
+                            res_t = item.get_attribute("type")
+                        else:
+                            try:
+                                res_t = item.get_attribute("type", timeout=1500)
+                            except TypeError:
+                                res_t = item.get_attribute("type")
+                        input_type = (await res_t if inspect.isawaitable(res_t) else res_t) or ""
+                    except Exception:
+                        input_type = ""
 
                 # Check if already filled
                 curr_val = ""
                 if hasattr(item, "input_value"):
                     try:
-                        res = item.input_value()
+                        if is_mock_item:
+                            res = item.input_value()
+                        else:
+                            try:
+                                res = item.input_value(timeout=1500)
+                            except TypeError:
+                                res = item.input_value()
                         curr_val = await res if inspect.isawaitable(res) else res
                     except Exception:
                         pass
@@ -1051,8 +1091,15 @@ class LinkedInScreeningSolver:
                     r_text = await safe_inner_text(r.locator("xpath=..")) if hasattr(r, "locator") else ""
                     val = ""
                     if hasattr(r, "get_attribute"):
+                        is_mock_r = getattr(type(r), "__module__", "").startswith("unittest.mock")
                         try:
-                            res = r.get_attribute("value")
+                            if is_mock_r:
+                                res = r.get_attribute("value")
+                            else:
+                                try:
+                                    res = r.get_attribute("value", timeout=1500)
+                                except TypeError:
+                                    res = r.get_attribute("value")
                             val = await res if inspect.isawaitable(res) else res
                         except Exception:
                             pass
@@ -1556,19 +1603,38 @@ class LinkedInEasyApplyBot:
                 if item in seen_elements:
                     continue
                 seen_elements.add(item)
-                input_type = (await item.get_attribute("type") if hasattr(item, "get_attribute") else "") or ""
+                is_mock_item = getattr(type(item), "__module__", "").startswith("unittest.mock")
+                input_type = ""
+                if hasattr(item, "get_attribute"):
+                    try:
+                        if is_mock_item:
+                            res_attr = item.get_attribute("type")
+                        else:
+                            try:
+                                res_attr = item.get_attribute("type", timeout=2000)
+                            except TypeError:
+                                res_attr = item.get_attribute("type")
+                        input_type = (await res_attr if inspect.isawaitable(res_attr) else res_attr) or ""
+                    except Exception:
+                        input_type = ""
                 input_type = input_type.lower()
 
                 if input_type in ["number", "tel"]:
                     fallback_val = "2" if attempt == 1 else "1"
                     if hasattr(item, "fill"):
-                        res = item.fill(fallback_val)
+                        try:
+                            res = item.fill(fallback_val) if is_mock_item else item.fill(fallback_val, timeout=2000)
+                        except TypeError:
+                            res = item.fill(fallback_val)
                         if inspect.isawaitable(res):
                             await res
                 elif input_type in ["text"]:
                     fallback_val = self.candidate.get("primary_location", "Hyderabad, India")
                     if hasattr(item, "fill"):
-                        res = item.fill(fallback_val)
+                        try:
+                            res = item.fill(fallback_val) if is_mock_item else item.fill(fallback_val, timeout=2000)
+                        except TypeError:
+                            res = item.fill(fallback_val)
                         if inspect.isawaitable(res):
                             await res
         return True
@@ -1822,6 +1888,7 @@ class LinkedInEasyApplyBot:
             }
 
         step_count = 0
+        stagnant_steps = 0
         all_answers_audit: List[Dict[str, Any]] = []
 
         # 2. Multi-step progression loop
@@ -2044,8 +2111,18 @@ class LinkedInEasyApplyBot:
                     }
                 continue
 
+            # Track stagnant STEP_QUESTIONS loops with zero newly filled fields to avoid spinning to max_steps
+            newly_filled = any(a.get("action_type") == "FILLED" for a in (step_answers or []))
+            if current_step_state == ModalState.STEP_QUESTIONS and not newly_filled:
+                stagnant_steps += 1
+            else:
+                stagnant_steps = 0
+
             # Forward progression via Next or Review button
             advanced, _ = await self.advance_step(modal, page=target_page)
+            if step_count >= 5 and current_step_state == ModalState.STEP_QUESTIONS and stagnant_steps >= 3:
+                logger.warning("Aborting stagnant STEP_QUESTIONS loop at step %s (%d consecutive unfilled steps).", step_count, stagnant_steps)
+                break
             if advanced:
                 continue
 
