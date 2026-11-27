@@ -45,11 +45,12 @@ from naukari_pro.modules.role_guard import FORBIDDEN_COMPANIES, is_strictly_data
 logger = logging.getLogger("naukariPro.LinkedInPostApply")
 
 DEFAULT_POST_QUERIES: Tuple[str, ...] = (
-    'hiring ("DevOps Engineer" OR "Platform Engineer") ("2+" OR "2-4" OR "2-5" OR "3+" OR "1-3") ("Hyderabad" OR "Bengaluru" OR "Remote")',
-    'hiring ("MLOps" OR "AI Infrastructure" OR "Cloud Engineer" OR "SRE") ("2+" OR "2-4" OR "2-5" OR "3+" OR "1-4") ("Hyderabad" OR "Bengaluru" OR "India")',
-    'hiring ("Data Engineer" OR "Azure Data Engineer" OR "Databricks" OR "PySpark") ("2+" OR "2-4" OR "2-5" OR "3+") ("Hyderabad" OR "Bengaluru" OR "Remote")',
-    'hiring ("DevOps" OR "Kubernetes" OR "Terraform" OR "AWS" OR "Azure") "Hyderabad" ("2-" OR "2+" OR "3-" OR "3+" OR "immediate")',
-    'hiring ("DevOps" OR "MLOps" OR "Platform" OR "Data Engineer") ("send your resume" OR "share your resume" OR "drop your resume") ("Hyderabad" OR "Bengaluru")',
+    "hiring devops engineer hyderabad",
+    "hiring mlops engineer india",
+    "hiring platform engineer hyderabad OR bengaluru",
+    "hiring cloud engineer devops bengaluru",
+    "hiring azure data engineer hyderabad",
+    "hiring devops kubernetes hyderabad email",
 )
 
 EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -202,23 +203,23 @@ INDIA_LOCATIONS = (
     "chennai",
     "mumbai",
     "india",
-    "remote",
     "pan india",
-    "wfH".lower(),
 )
 
 FOREIGN_ONLY_MARKERS = (
     "us only",
-    "usa only",
+    "usa",
+    "us-based",
     "united states",
+    "u.s.",
     "w2 only",
+    "w2",
     "c2c",
     "usc only",
     "gc holder",
     "green card",
     "h1b",
     "opt/cpt",
-    "opt ",
     "uk only",
     "london",
     "canada",
@@ -229,6 +230,17 @@ FOREIGN_ONLY_MARKERS = (
     "germany",
     "australia",
     "europe only",
+)
+
+NON_TARGET_INFRA_TOKENS = (
+    "l1/l2",
+    "l2/l3",
+    "l2 & l3",
+    "soc analyst",
+    "soc platform",
+    "microsoft sentinel",
+    "siem engineering",
+    "soar automation",
 )
 
 INDIA_CITIES = (
@@ -523,24 +535,13 @@ def extract_apply_links(
 def parse_experience_range(post_body: str) -> Tuple[Optional[float], Optional[float]]:
     """
     Extracts (min_yoe, max_yoe) from hiring post body.
-    Handles ranges ('2-4 years', '2–5 yrs', '2 to 4 yrs') and lower bounds ('5+ years', '3+ yrs').
+    Checks explicit Experience/Exp labels first, then general ranges and N+ thresholds.
     """
     if not post_body:
         return None, None
     text = post_body.lower()
 
-    # Pattern 1: Explicit range like 2-4 years / 2 – 5 yrs / 1 to 3 years
-    m_range = re.search(
-        r"\b(\d{1,2}(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d{1,2}(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?|yoe)\b",
-        text,
-    )
-    if m_range:
-        lo = float(m_range.group(1))
-        hi = float(m_range.group(2))
-        if 0 <= lo <= 30 and lo <= hi <= 35:
-            return lo, hi
-
-    # Pattern 2: Experience label followed by range without repeating unit on same token
+    # 1. Explicit labelled range: 'Experience: 2-4 Years', 'Exp - 2–5 yrs'
     m_lbl_range = re.search(
         r"(?:experience|exp|yoe)\s*[:\-–]?\s*(\d{1,2}(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d{1,2}(?:\.\d+)?)",
         text,
@@ -551,23 +552,34 @@ def parse_experience_range(post_body: str) -> Tuple[Optional[float], Optional[fl
         if 0 <= lo <= 30 and lo <= hi <= 35:
             return lo, hi
 
-    # Pattern 3: Single threshold like '5+ years', 'min 3 yrs', 'Experience: 2+ Yrs'
+    # 2. Explicit labelled threshold: 'Exp - 5+ Years', 'Experience: 6+ years'
+    m_lbl_plus = re.search(
+        r"(?:experience|exp|yoe)\s*[:\-–]?\s*(\d{1,2}(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?|yoe)\b",
+        text,
+    )
+    if m_lbl_plus:
+        lo = float(m_lbl_plus.group(1))
+        if 0 <= lo <= 30:
+            return lo, None
+
+    # 3. Unlabelled explicit year range: '2-4 years', '1 to 3 years'
+    m_range = re.search(
+        r"\b(\d{1,2}(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d{1,2}(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?|yoe)\b",
+        text,
+    )
+    if m_range:
+        lo = float(m_range.group(1))
+        hi = float(m_range.group(2))
+        if 0 <= lo <= 30 and lo <= hi <= 35:
+            return lo, hi
+
+    # 4. Single N+ years threshold: '5+ Years', 'minimum 3+ yrs'
     m_plus = re.search(
         r"(?:min(?:imum)?\s+)?(\d{1,2}(?:\.\d+)?)\s*\+\s*(?:years?|yrs?|yoe)\b",
         text,
     )
     if m_plus:
         lo = float(m_plus.group(1))
-        if 0 <= lo <= 30:
-            return lo, None
-
-    # Pattern 4: Labelled single number 'Experience: 4 Years'
-    m_lbl = re.search(
-        r"(?:experience|exp|yoe)\s*[:\-–]?\s*(\d{1,2}(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?|yoe)?\b",
-        text,
-    )
-    if m_lbl:
-        lo = float(m_lbl.group(1))
         if 0 <= lo <= 30:
             return lo, None
 
@@ -634,7 +646,14 @@ def _company_from_email(emails: List[str]) -> str:
         domain = em.split("@", 1)[1].lower().strip()
         if domain in FREE_WEBMAIL_DOMAINS:
             continue
-        root = domain.split(".")[0]
+        parts = [p for p in domain.split(".") if p]
+        # Skip short country/subdomain prefixes like in.experis.com, careers.acme.io, hr.acme.co.in
+        skip_prefixes = {"in", "us", "uk", "hr", "jobs", "careers", "talent", "mail", "tech"}
+        root = parts[0] if parts else ""
+        if len(parts) >= 3 and (root in skip_prefixes or len(root) <= 2):
+            root = parts[1]
+        elif len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net"):
+            root = parts[-3]
         if root and len(root) > 1:
             return root.capitalize()
     return ""
@@ -661,11 +680,11 @@ def extract_role_and_company(
     for pat in role_patterns:
         m = re.search(pat, body, re.IGNORECASE)
         if m:
-            raw_role = m.group(1).strip(" |•🚀🔥✨-*#")
+            raw_role = m.group(1).strip(" |•🚀🔥✨-*#!?.,;:")
             # Split off trailing "| Bengaluru | 2-4 Yrs" segments
             parts = [p.strip() for p in re.split(r"\s*[|•]\s*", raw_role) if p.strip()]
             if parts:
-                candidate_role = parts[0]
+                candidate_role = parts[0].strip(" !?.,;:-–")
                 if 3 <= len(candidate_role) <= 85:
                     role_title = candidate_role
                     break
@@ -679,19 +698,29 @@ def extract_role_and_company(
                 break
 
     if not role_title:
-        role_title = "DevOps / Platform Engineer"
+        # Check for non-target roles like Data Science so role_guard rejects them accurately
+        if "data science" in body.lower() or "data scientist" in body.lower():
+            role_title = "Data Scientist"
+        else:
+            role_title = "Unspecified Role"
 
     # Company extraction
     company = ""
-    # Skip author-headline "at X" if only body is checked; check hiring phrasing in body
-    m_co = re.search(
-        r"\b([A-Z][A-Za-z0-9&.\- ]{1,35}?)\s+(?:is|are)\s+(?:actively\s+)?(?:hiring|looking\s+for)\b",
-        body,
-    )
-    if m_co:
-        cand_co = m_co.group(1).strip()
-        if cand_co.lower() not in ("we", "our team", "my team", "our client", "team", "currently", "i"):
+    m_co_label = re.search(r"(?:company|organization|organisation|client)\s*[:\-–|]\s*([^\n|]+)", body, re.IGNORECASE)
+    if m_co_label:
+        cand_co = m_co_label.group(1).strip(" .|•")
+        if 2 <= len(cand_co) <= 50:
             company = cand_co
+
+    if not company:
+        m_co = re.search(
+            r"\b([A-Z][A-Za-z0-9&.\- ]{1,35}?)\s+(?:is|are)\s+(?:actively\s+)?(?:hiring|looking\s+for)\b",
+            body,
+        )
+        if m_co:
+            cand_co = m_co.group(1).strip()
+            if cand_co.lower() not in ("we", "our team", "my team", "our client", "team", "currently", "i"):
+                company = cand_co
 
     if not company and company_links:
         for cl in company_links:
@@ -755,6 +784,10 @@ def evaluate_hiring_post(
             if sen_tok in top_lines:
                 return False, 0.0, f"Rejected: Senior/Lead/Intern title token '{sen_tok.strip()}' in headline"
 
+    # 3b. Non-target SOC / L1-L3 support operations exclusion
+    if any(tok in body_low for tok in NON_TARGET_INFRA_TOKENS):
+        return False, 0.0, "Rejected: SOC / L1-L3 support operations role"
+
     # 4. Canonical Role Guard check
     is_role_ok, role_reason = is_strictly_data_or_cloud_role(
         lead.role_title,
@@ -770,14 +803,20 @@ def evaluate_hiring_post(
     if lead.max_yoe is not None and lead.max_yoe < 2.0:
         return False, 0.0, f"Rejected: Fresher/junior max YOE {lead.max_yoe:g} below 2.5 YOE target"
 
-    # 6. Location check: India hub / India remote required; block US/W2/foreign-only
+    # 6. Location check: India hub required (bare "remote" alone is NOT enough); block US/W2/foreign
     combined_loc = f"{lead.location} {body_low}".lower()
-    has_india = any(loc in combined_loc for loc in INDIA_LOCATIONS)
+    has_india = any(
+        re.search(rf"\b{re.escape(loc)}\b", combined_loc)
+        for loc in INDIA_LOCATIONS
+    )
     if not has_india:
-        return False, 0.0, f"Rejected: Location '{lead.location}' not in India / Remote-India"
+        return False, 0.0, f"Rejected: Location '{lead.location}' not in India"
 
-    has_foreign = any(marker in combined_loc for marker in FOREIGN_ONLY_MARKERS)
-    has_india_city = any(city in combined_loc for city in INDIA_CITIES)
+    has_foreign = any(
+        re.search(rf"\b{re.escape(marker)}\b", combined_loc) if len(marker) <= 4 else (marker in combined_loc)
+        for marker in FOREIGN_ONLY_MARKERS
+    )
+    has_india_city = any(re.search(rf"\b{re.escape(city)}\b", combined_loc) for city in INDIA_CITIES)
     if has_foreign and not has_india_city:
         return False, 0.0, "Rejected: Non-India / US W2/C2C role"
 
@@ -1426,12 +1465,16 @@ class LinkedInPostApplyEngine:
                 continue
 
             # Embedded external ATS URLs (Greenhouse / Lever / Ashby / Workday)
-            if apply_ats_links and ld.ats_urls:
+            if ld.ats_urls:
                 from naukari_pro.modules.career_portals import CareerPortalFiller
                 filler = CareerPortalFiller(db_path=self.db_path)
-                for ats_url in ld.ats_urls[:1]:
+                handled_ats = False
+                for ats_url in ld.ats_urls[:2]:
                     ats_name = filler.detect_ats(ats_url)
                     if ats_name in ("Generic Portal", "LinkedIn"):
+                        continue
+                    handled_ats = True
+                    if not apply_ats_links:
                         continue
                     try:
                         fill_res = filler.fill(
@@ -1465,7 +1508,9 @@ class LinkedInPostApplyEngine:
                             "submitted": False,
                             "status": f"ERROR: {e_ats}",
                         })
-                continue
+                    break
+                if handled_ats and apply_ats_links:
+                    continue
 
             # DM / manual application leads (never auto-commented publicly)
             templates = compose_manual_dm_and_comment(ld)

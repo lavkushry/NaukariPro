@@ -196,14 +196,46 @@ def test_evaluate_hiring_post_gates():
     )
     assert ok_seeker is False
 
-    # Foreign W2 role rejected
+    # Foreign W2 / USA role rejected even if Remote
     ok_us, _, _ = evaluate_hiring_post(
         _make_lead(
-            location="Texas, USA",
+            location="Austin, Texas",
             post_body="Hiring DevOps Engineer in Austin Texas US only W2/C2C 2-4 years send resume hr@usco.com",
         )
     )
     assert ok_us is False
+
+    ok_usa_remote, _, _ = evaluate_hiring_post(
+        _make_lead(
+            location="Remote / Hybrid – USA",
+            post_body="Hiring MLOps Engineer USA-Based Candidates Only 2-4 years send resume rida@gmail.com",
+        )
+    )
+    assert ok_usa_remote is False
+
+    # SOC L2 & L3 support role rejected
+    ok_soc, _, _ = evaluate_hiring_post(
+        _make_lead(
+            role_title="Platform Engineer",
+            post_body="Hiring SOC Platform - L2 & L3 in Hyderabad Exp - 5+ Years Microsoft Sentinel SIEM send hr@in.experis.com",
+        )
+    )
+    assert ok_soc is False
+
+    # Data Science post without DevOps/MLOps falls back to Data Scientist -> rejected by role_guard
+    role_ds, _ = extract_role_and_company(
+        "#Hiring Alert Data Science, Machine Learning and Generative AI! Email varsha@cbre.com",
+        emails=["varsha@cbre.com"],
+    )
+    assert role_ds == "Data Scientist"
+
+    # Subdomain email resolves registrable company name
+    role_exp, comp_exp = extract_role_and_company(
+        "Hiring DevOps Engineer! Hyderabad",
+        emails=["hr@in.experis.com"],
+    )
+    assert role_exp == "DevOps Engineer"
+    assert comp_exp == "Experis"
 
     # Data Scientist / QA rejected by role_guard
     ok_qa, _, _ = evaluate_hiring_post(
