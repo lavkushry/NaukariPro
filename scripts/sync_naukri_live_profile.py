@@ -213,10 +213,10 @@ def sync_employment_designation(page, target_title="DevOps Engineer"):
     desig_input.click()
     desig_input.fill("")
     time.sleep(0.3)
-    desig_input.fill(target_title)
-    time.sleep(1.0)
+    desig_input.type(target_title, delay=60)
+    time.sleep(1.2)
 
-    # Select ONLY an exact case-insensitive match for target_title ("DevOps Engineer"), never "Lead DevOps Engineer"
+    # Select ONLY an exact case-insensitive match for target_title ("DevOps Engineer"), never .last ("Lead DevOps Engineer")
     clicked_exact = False
     try:
         clicked_exact = bool(
@@ -238,18 +238,16 @@ def sync_employment_designation(page, target_title="DevOps Engineer"):
         clicked_exact = False
 
     if not clicked_exact:
-        try:
-            desig_input.press("Escape")
-        except Exception:
-            pass
         desig_input.press("Tab")
     time.sleep(1)
 
     save_btn = page.locator('#submitEmployment')
-    save_btn.click()
-    time.sleep(4)
-    logger.info("Successfully updated CGI current designation to exact '%s'.", target_title)
-    return True
+    if save_btn.count() > 0 and save_btn.is_visible():
+        save_btn.click()
+        time.sleep(4)
+        logger.info("Successfully updated CGI current designation to exact '%s'.", target_title)
+        return True
+    return False
 
 def _safe_count(loc) -> int:
     try:
@@ -499,14 +497,30 @@ def sync_employment_descriptions(page, experience_data):
                     desig_input.click()
                     desig_input.fill("")
                     time.sleep(0.2)
-                    desig_input.type("DevOps Engineer", delay=80)
-                    time.sleep(1.5)
-                    first_match = page.locator('li:has-text("DevOps Engineer"), .sWrap li:has-text("DevOps Engineer")').last
-                    if first_match.count() > 0 and first_match.is_visible():
-                        first_match.click()
-                        time.sleep(0.5)
-                    else:
+                    desig_input.type("DevOps Engineer", delay=60)
+                    time.sleep(1.2)
+                    clicked_exact = False
+                    try:
+                        clicked_exact = bool(
+                            page.evaluate(
+                                """(target) => {
+                                    const items = Array.from(document.querySelectorAll('.ltCont.open .sWrap li, #sugDrp_designationSugg li, .sWrap li'));
+                                    const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                                    const exact = items.find(el => el.offsetWidth > 0 && norm(el.innerText) === norm(target));
+                                    if (exact) {
+                                        exact.click();
+                                        return true;
+                                    }
+                                    return false;
+                                }""",
+                                "DevOps Engineer",
+                            )
+                        )
+                    except Exception:
+                        clicked_exact = False
+                    if not clicked_exact:
                         desig_input.press("Tab")
+                    time.sleep(0.5)
 
         ta = page.locator('textarea#jobDescription, textarea[name="jobDescription"]').first
         if ta.count() > 0 and ta.is_visible():
